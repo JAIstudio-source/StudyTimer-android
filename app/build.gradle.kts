@@ -10,6 +10,14 @@ val localProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
+val envProps = Properties().apply {
+    val f = File(rootDir, ".env")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
+fun secret(key: String, default: String = ""): String =
+    System.getenv(key) ?: envProps.getProperty(key) ?: localProps.getProperty(key) ?: default
+
 android {
     namespace = "com.madeby.JAI"
     compileSdk = 36
@@ -30,9 +38,9 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("keystore.p12")
-            storePassword = System.getenv("STORE_PASSWORD") ?: localProps.getProperty("STORE_PASSWORD") ?: ""
-            keyPassword = System.getenv("KEY_PASSWORD") ?: localProps.getProperty("KEY_PASSWORD") ?: ""
-            keyAlias = System.getenv("KEY_ALIAS") ?: localProps.getProperty("KEY_ALIAS") ?: "key0"
+            storePassword = secret("STORE_PASSWORD")
+            keyPassword = secret("KEY_PASSWORD")
+            keyAlias = secret("KEY_ALIAS", "key0")
             storeType = "PKCS12"
         }
     }
