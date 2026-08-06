@@ -1,0 +1,365 @@
+package com.madeby.JAI
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import androidx.core.app.NotificationCompat
+import java.text.SimpleDateFormat
+import java.util.*
+
+class TimerService : Service() {
+
+    private val NOTIFICATION_ID = 1001
+    private val CHANNEL_ID = "study_timer_channels"
+    private val COMPLETION_CHANNEL_ID = "study_timer_completion"
+    private val COMPLETION_NOTIFICATION_ID = 1002
+
+    private var currentTimerState = TimerState.IDLE
+    private var lastTimestamp: Long = 0
+    private var accumulatedStudy: Long = 0
+    private var currentBreakSeconds: Long = 0
+
+    private var timerMode: String = "STOPWATCH"
+    private var focusCountdownSecs: Long = 1500L
+    private var focusRemainingSecs: Long = 0L
+    private var prePauseState: TimerState = TimerState.STUDYING
+
+    private val handler = Handler(Looper.getMainLooper())
+    private lateinit var timerRunnable: Runnable
+
+    private var foregroundStarted = false
+    private var cachedTogglePendingIntent: PendingIntent? = null
+    private var cachedOpenAppPendingIntent: PendingIntent? = null
+    private var cachedStopPendingIntent: PendingIntent? = null
+
+    companion object {
+        const val ACTION_TOGGLE = "com.madeby.JAI.ACTION_TOGGLE"
+        const val ACTION_STOP = "com.madeby.JAI.ACTION_STOP"
+        const val ACTION_STOP_SILENT = "com.madeby.JAI.ACTION_STOP_SILENT"
+        const val ACTION_PAUSE = "com.madeby.JAI.ACTION_PAUSE"
+
+        // If the gap since the last tick exceeds this, the process was almost
+        // certainly killed and restarted by START_STICKY; don't count the dead time.
+        private const val MAX_ACCEPTABLE_GAP_SECS = 600L
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        createNotificationChannel()
+        loadSavedState()
+        startBackgroundLoop()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_TOGGLE -> handleToggle()
+            ACTION_STOP -> handleStop()
+            ACTION_STOP_SILENT -> handleStopSilent()
+            ACTION_PAUSE -> handlePause()
+        }
+        return START_STICKY
+    }
+
+    private fun handleToggle() {
+        val now = System.currentTimeMillis() / 1000
+        when (currentTimerState) {
+            TimerState.IDLE -> {
+                currentTimerState = TimerState.STUDYING
+                accumulatedStudy = 0L
+                currentBreakSeconds = 0L
+                if (timerMode == "COUNTDOWN") focusRemainingSecs = focusCountdownSecs
+            }
+            TimerState.STUDYING -> currentTimerState = TimerState.BREAK
+            TimerState.BREAK -> {
+                currentTimerState = TimerState.STUDYING
+                if (timerMode == "COUNTDOWN") focusRemainingSecs = focusCountdownSecs
+            }
+            TimerState.PAUSED -> currentTimerState = prePauseState
+        }
+        lastTimestamp = now
+        TimelineLogger.record(this, currentTimerState)
+        saveState()
+        updateForegroundNotification()
+        StudyWidgetProvider.refresh(this)
+    }
+
+    private fun handlePause() {
+        if (currentTimerState != TimerState.STUDYING && currentTimerState != TimerState.BREAK) return
+        prePauseState = currentTimerState
+        currentTimerState = TimerState.PAUSED
+        lastTimestamp = System.currentTimeMillis() / 1000
+        TimelineLogger.record(this, TimerState.IDLE)
+        saveState()
+        updateForegroundNotification()
+        StudyWidgetProvider.refresh(this)
+    }
+
+    private fun handleStop() {
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val savedFocus = sharedPrefs.getLong("${todayStr}_focus_total", 0L)
+        val savedBreak = sharedPrefs.getLong("${todayStr}_break_total", 0L)
+
+        sharedPrefs.edit().apply {
+            putLong("${todayStr}_focus_total", savedFocus + accumulatedStudy)
+            putLong("${todayStr}_break_total", savedBreak + currentBreakSeconds)
+            putLong("${todayStr}_goal_secs", sharedPrefs.getLong("daily_goal_secs", 2700L))
+            apply()
+        }
+
+        currentTimerState = TimerState.IDLE
+        lastTimestamp = 0L
+        accumulatedStudy = 0L
+        currentBreakSeconds = 0L
+        focusRemainingSecs = 0L
+        TimelineLogger.record(this, TimerState.IDLE)
+        saveState()
+
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        StudyWidgetProvider.refresh(this)
+    }
+
+    private fun handleStopSilent() {
+        currentTimerState = TimerState.IDLE
+        lastTimestamp = 0L
+        accumulatedStudy = 0L
+        currentBreakSeconds = 0L
+        focusRemainingSecs = 0L
+        saveState()
+
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        StudyWidgetProvider.refresh(this)
+    }
+
+    private fun startBackgroundLoop() {
+        timerRunnable = Runnable {
+            val now = System.currentTimeMillis() / 1000
+            if (currentTimerState != TimerState.IDLE && lastTimestamp > 0L) {
+                val gap = now - lastTimestamp
+                if (gap > MAX_ACCEPTABLE_GAP_SECS) {
+                    // Process restart after death/reboot: skip the dead period.
+                    lastTimestamp = now
+                    saveState()
+                } else if (gap > 0L) {
+                    when (currentTimerState) {
+                        TimerState.STUDYING -> {
+                            accumulatedStudy += gap
+                            if (timerMode == "COUNTDOWN") {
+                                focusRemainingSecs -= gap
+                                if (focusRemainingSecs <= 0L) {
+                                    // Countdown finished: auto-switch to break (unlimited).
+                                    currentTimerState = TimerState.BREAK
+                                    focusRemainingSecs = 0L
+                                    lastTimestamp = now
+                                    TimelineLogger.record(this, TimerState.BREAK)
+                                    saveState()
+                                    updateForegroundNotification()
+                                    postCountdownComplete()
+                                    StudyWidgetProvider.refresh(this)
+                                    return@Runnable
+                                }
+                            }
+                        }
+                        TimerState.BREAK -> currentBreakSeconds += gap
+                        else -> {}
+                    }
+                    lastTimestamp = now
+                    saveState()
+                    updateForegroundNotification()
+                    maybeFireGoalReached()
+                }
+            }
+            handler.postDelayed(timerRunnable, 1000)
+        }
+        handler.post(timerRunnable)
+    }
+
+    private fun updateForegroundNotification() {
+        if (currentTimerState == TimerState.IDLE) return
+
+        if (cachedTogglePendingIntent == null) {
+            val toggleIntent = Intent(this, MainActivity::class.java).apply {
+                putExtra("NOTIFICATION_TOGGLE_TRIGGER", true)
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            cachedTogglePendingIntent = PendingIntent.getActivity(
+                this, 0, toggleIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+        if (cachedOpenAppPendingIntent == null) {
+            val openAppIntent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            cachedOpenAppPendingIntent = PendingIntent.getActivity(
+                this, 1, openAppIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+        if (cachedStopPendingIntent == null) {
+            val stopIntent = Intent(this, TimerService::class.java).apply { action = ACTION_STOP }
+            cachedStopPendingIntent = PendingIntent.getService(
+                this, 3, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+        }
+
+        val title = when (currentTimerState) {
+            TimerState.STUDYING -> "⚡ Learning time"
+            TimerState.BREAK -> "☕ Resting on Break"
+            else -> "⏸ Paused"
+        }
+        val content = if (timerMode == "COUNTDOWN" && currentTimerState == TimerState.STUDYING) {
+            "Focus left: ${formatTime(focusRemainingSecs)} | Break: ${formatTime(currentBreakSeconds)}"
+        } else {
+            "Focus: ${formatTime(accumulatedStudy)} | Break: ${formatTime(currentBreakSeconds)}"
+        }
+        val actionText = when (currentTimerState) {
+            TimerState.STUDYING -> "SWITCH TO BREAK"
+            TimerState.BREAK -> "RESUME FOCUS"
+            else -> "RESUME"
+        }
+
+        val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val primaryColor = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && sharedPrefs.getBoolean("dynamic_color", false)) {
+            getColor(android.R.color.system_accent1_500)
+        } else {
+            sharedPrefs.safeInt("customPrimary", 0xFF7DD3FC.toInt())
+        }
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setOngoing(true)
+            .setContentIntent(cachedOpenAppPendingIntent)
+            .setColor(primaryColor)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .addAction(android.R.drawable.ic_media_next, actionText, cachedTogglePendingIntent)
+            .addAction(R.drawable.ic_clock, "END SESSION", cachedStopPendingIntent)
+            .build()
+
+        if (foregroundStarted) {
+            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTIFICATION_ID, notification)
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+            foregroundStarted = true
+        }
+    }
+
+    private fun postCountdownComplete() {
+        ensureCompletionChannel()
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openPending = PendingIntent.getActivity(
+            this, 4, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = NotificationCompat.Builder(this, COMPLETION_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_pause)
+            .setContentTitle("⏱ Focus session complete!")
+            .setContentText("Time for a break. Resume when you're ready.")
+            .setAutoCancel(true)
+            .setContentIntent(openPending)
+            .build()
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(COMPLETION_NOTIFICATION_ID, notification)
+    }
+
+    private fun ensureCompletionChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            if (nm.getNotificationChannel(COMPLETION_CHANNEL_ID) == null) {
+                val channel = NotificationChannel(COMPLETION_CHANNEL_ID, "Focus Session Complete", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Alerts when a focus countdown finishes"
+                    enableVibration(true)
+                    setSound(null, null)
+                    vibrationPattern = longArrayOf(0, 400, 200, 400)
+                    setShowBadge(false)
+                }
+                nm.createNotificationChannel(channel)
+            }
+        }
+    }
+
+    private fun maybeFireGoalReached() {
+        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        if (prefs.getString("goal_pinged_date", null) == todayStr) return
+        val focus = prefs.getLong("${todayStr}_focus_total", 0L) + accumulatedStudy
+        val goal = prefs.getLong("${todayStr}_goal_secs", prefs.getLong("daily_goal_secs", 2700L))
+        if (focus < goal) return
+        prefs.edit().putString("goal_pinged_date", todayStr).apply()
+
+        GoalReminderScheduler.ensureChannel(this)
+        val openIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val openPending = PendingIntent.getActivity(
+            this, 2, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val notification = androidx.core.app.NotificationCompat.Builder(this, GoalReminderScheduler.CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle("\uD83C\uDF89 Daily goal reached!")
+            .setContentText("You've hit ${goal / 3600}h ${(goal % 3600) / 60}m of focus. Keep going!")
+            .setAutoCancel(true)
+            .setContentIntent(openPending)
+            .build()
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(3002, notification)
+    }
+
+    private fun loadSavedState() {
+        val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        currentTimerState = TimerState.valueOf(sharedPrefs.getString("timerState", "IDLE") ?: "IDLE")
+        lastTimestamp = sharedPrefs.getLong("lastTimestamp", 0L)
+        accumulatedStudy = sharedPrefs.getLong("accumulatedStudy", 0L)
+        currentBreakSeconds = sharedPrefs.getLong("currentBreakSeconds", 0L)
+        timerMode = sharedPrefs.getString("timer_mode", "STOPWATCH") ?: "STOPWATCH"
+        focusCountdownSecs = sharedPrefs.getLong("focus_countdown_secs", 1500L)
+        focusRemainingSecs = sharedPrefs.getLong("focus_remaining_secs", 0L)
+        prePauseState = runCatching { TimerState.valueOf(sharedPrefs.getString("pre_pause_state", "STUDYING") ?: "STUDYING") }.getOrDefault(TimerState.STUDYING)
+    }
+
+    private fun saveState() {
+        getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().apply {
+            putString("timerState", currentTimerState.name)
+            putLong("lastTimestamp", lastTimestamp)
+            putLong("accumulatedStudy", accumulatedStudy)
+            putLong("currentBreakSeconds", currentBreakSeconds)
+            putLong("focus_remaining_secs", focusRemainingSecs)
+            putString("pre_pause_state", prePauseState.name)
+            apply()
+        }
+    }
+
+    private fun formatTime(totalSeconds: Long): String {
+        val hrs = totalSeconds / 3600
+        val mins = (totalSeconds % 3600) / 60
+        val secs = totalSeconds % 60
+        return String.format(Locale.US, "%02d:%02d:%02d", hrs, mins, secs)
+    }
+
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID, "Study Timer Control", NotificationManager.IMPORTANCE_LOW
+            ).apply { 
+                description = "Persistent tray utilities for active sessions"
+                setShowBadge(false) 
+            }
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
+        }
+    }
+
+    override fun onDestroy() {
+        handler.removeCallbacks(timerRunnable)
+        super.onDestroy()
+    }
+}
