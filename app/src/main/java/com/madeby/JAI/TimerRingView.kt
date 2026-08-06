@@ -3,8 +3,11 @@ package com.madeby.JAI
 import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
+import android.graphics.SweepGradient
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import kotlin.math.abs
@@ -13,7 +16,7 @@ import kotlin.math.min
 class TimerRingView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
     private val strokePx = 14f * density
-    private val padPx = 6f * density
+    private val padPx = 26f * density
 
     private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -25,12 +28,22 @@ class TimerRingView(context: Context) : View(context) {
         strokeCap = Paint.Cap.ROUND
         strokeWidth = strokePx
     }
+    private val innerHaloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeWidth = strokePx * 2.4f
+        alpha = 26
+    }
 
     private var color = 0xFF000000.toInt()
     private var trackColor = 0x1A000000.toInt()
     private var sweepDeg = 0f
     private var targetDeg = 0f
     private var animator: ValueAnimator? = null
+
+    init {
+        setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+    }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
@@ -66,6 +79,32 @@ class TimerRingView(context: Context) : View(context) {
         }
     }
 
+    private fun applyArcShader(cx: Float, cy: Float) {
+        if (sweepDeg <= 0.01f) {
+            ringPaint.shader = null
+            return
+        }
+        val light = blend(color, -1, 0.30f)
+        val shader = SweepGradient(
+            0f, 0f,
+            intArrayOf(light, color),
+            floatArrayOf(0f, 1f)
+        )
+        val matrix = Matrix().apply {
+            postTranslate(cx, cy)
+            postRotate(-90f, cx, cy)
+        }
+        shader.setLocalMatrix(matrix)
+        ringPaint.shader = shader
+    }
+
+    private fun blend(from: Int, to: Int, t: Float): Int {
+        val r = (Color.red(from) + (Color.red(to) - Color.red(from)) * t).toInt()
+        val g = (Color.green(from) + (Color.green(to) - Color.green(from)) * t).toInt()
+        val b = (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * t).toInt()
+        return Color.rgb(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
+    }
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val w = width.toFloat()
@@ -79,9 +118,15 @@ class TimerRingView(context: Context) : View(context) {
         canvas.drawCircle(cx, cy, radius, trackPaint)
 
         if (sweepDeg > 0.01f) {
-            ringPaint.color = color
             val inset = strokePx / 2f + padPx
             val bounds = RectF(inset, inset, w - inset, h - inset)
+
+            innerHaloPaint.color = color
+            innerHaloPaint.alpha = 16
+            canvas.drawArc(bounds, -90f, sweepDeg, false, innerHaloPaint)
+
+            ringPaint.setShadowLayer(10f * density, 0f, 0f, Color.argb(110, Color.red(color), Color.green(color), Color.blue(color)))
+            applyArcShader(cx, cy)
             canvas.drawArc(bounds, -90f, sweepDeg, false, ringPaint)
         }
     }

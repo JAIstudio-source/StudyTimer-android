@@ -61,7 +61,7 @@ class StudyWidgetProvider : AppWidgetProvider() {
                 TimerState.PAUSED -> "RESUME"
                 else -> "START FOCUS"
             })
-            views.setInt(R.id.widRoot, "setBackgroundColor", bgColor)
+            views.setInt(R.id.widRoot, "setBackgroundResource", if (light) R.drawable.bg_widget_light else R.drawable.bg_widget_dark)
             views.setTextColor(R.id.widTitle, primary)
             views.setTextColor(R.id.widToday, textColor)
             views.setTextColor(R.id.widStreak, textColor)

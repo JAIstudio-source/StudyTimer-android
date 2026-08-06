@@ -7,6 +7,7 @@ import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.SweepGradient
@@ -67,11 +68,13 @@ class WeeklyCardView @JvmOverloads constructor(
         val p = w * 0.06f
         val gap = 22f * sz
 
-        // ---- brand palette (fixed, not theme-driven) ----
-        val bgTop = 0xFF14102E.toInt()
-        val bgBottom = 0xFF2E1F63.toInt()
-        val accentLight = 0xFFA78BFA.toInt()
-        val focus = 0xFF7C8CF8.toInt()
+        // ---- brand palette (pure black + gold, fixed not theme-driven) ----
+        val bgTop = 0xFF000000.toInt()
+        val bgBottom = 0xFF000000.toInt()
+        val gold = 0xFFF6CB22.toInt()
+        val goldLight = 0xFFFDE68A.toInt()
+        val goldDeep = 0xFFEDB01D.toInt()
+        val breakCol = 0xFF8B5CF6.toInt()
         val amber = 0xFFFBBF24.toInt()
         val green = 0xFF34D399.toInt()
         val white = Color.WHITE
@@ -82,7 +85,6 @@ class WeeklyCardView @JvmOverloads constructor(
         val tileBg = 0x14FFFFFF.toInt()
         val deltaUp = green
         val deltaDown = 0xFFF87171.toInt()
-        val flameLight = 0xFFFDE68A.toInt()
         val shadow = 0x14000000.toInt()
 
         // ---- clip to rounded card + gradient background ----
@@ -90,13 +92,10 @@ class WeeklyCardView @JvmOverloads constructor(
             addRoundRect(RectF(0f, 0f, w, h), 44f * fs, 44f * fs, Path.Direction.CW)
         }
         canvas.clipPath(clip)
-        canvas.drawRect(0f, 0f, w, h, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(0f, 0f, w, h, bgTop, bgBottom, Shader.TileMode.CLAMP)
-        })
-
-        val deco = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = white12 }
-        canvas.drawCircle(w * 0.93f, h * 0.05f, w * 0.30f, deco)
-        canvas.drawCircle(w * 0.04f, h * 0.98f, w * 0.22f, deco)
+        }
+        canvas.drawRect(0f, 0f, w, h, bgPaint)
 
         var y = p
 
@@ -150,10 +149,18 @@ class WeeklyCardView @JvmOverloads constructor(
         val heroTop = y + heroLabelPaint.fontMetrics.descent + 14f * sz
         val heroBaseline = heroTop - heroFm.ascent
         val heroBottom = heroBaseline + heroFm.descent
+        // soft golden halo behind the hero total
+        val heroGlow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                w / 2f, heroTop, heroW * 0.85f,
+                intArrayOf(0x59F6CB22.toInt(), 0x00F6CB22.toInt()), floatArrayOf(0f, 1f), Shader.TileMode.CLAMP
+            )
+        }
+        canvas.drawCircle(w / 2f, heroTop, heroW * 0.85f, heroGlow)
         heroPaint.shader = LinearGradient(
             w / 2f - heroW / 2f, heroTop,
             w / 2f + heroW / 2f, heroBottom,
-            accentLight, green, Shader.TileMode.CLAMP
+            intArrayOf(goldLight, gold, goldDeep), floatArrayOf(0f, 0.5f, 1f), Shader.TileMode.CLAMP
         )
         canvas.drawText(heroText, w / 2f - heroW / 2f, heroBaseline, heroPaint)
         y = heroBaseline + heroFm.descent + 26f * sz
@@ -193,7 +200,7 @@ class WeeklyCardView @JvmOverloads constructor(
         y += 24f * sz
 
         val chartTop = y
-        val chartH = (h * 0.20f).coerceAtLeast(150f * sz)
+        val chartH = (h * 0.25f).coerceAtLeast(150f * sz)
         val chartBottom = chartTop + chartH
         val chartLeft = p
         val chartRight = w - p
@@ -201,7 +208,7 @@ class WeeklyCardView @JvmOverloads constructor(
         val maxSecs = d.days.maxOfOrNull { it.secs }?.coerceAtLeast(1L) ?: 1L
 
         val labelArea = 30f * sz
-        val topHeadroom = 40f * sz
+        val topHeadroom = 70f * sz
         val innerBottom = chartBottom - labelArea
         val barMaxTop = chartTop + topHeadroom
         val chartInnerH = innerBottom - barMaxTop
@@ -250,13 +257,20 @@ class WeeklyCardView @JvmOverloads constructor(
             val barLeft = cx - barW / 2f
             val barTop = innerBottom - bh
             val best = secs >= d.bestSecs && d.bestSecs > 0
-            barPaint.color = if (best) amber else focus
-            barPaint.alpha = if (best) 255 else 175
-            canvas.drawRoundRect(RectF(barLeft, barTop, barLeft + barW, innerBottom), barW / 2f, barW / 2f, barPaint)
+            barPaint.alpha = 255
             if (best) {
-                val crownH = 17f * sz
-                val crownW = 22f * sz
-                drawCrown(canvas, cx, barTop - 37f * sz, crownW, crownH, amber)
+                barPaint.shader = LinearGradient(0f, barTop, 0f, innerBottom, 0xFFFFF7D6.toInt(), gold, Shader.TileMode.CLAMP)
+                barPaint.setShadowLayer(14f * fs, 0f, 0f, 0x59F6CB22.toInt())
+            } else {
+                barPaint.shader = LinearGradient(0f, barTop, 0f, innerBottom, goldLight, gold, Shader.TileMode.CLAMP)
+            }
+            canvas.drawRoundRect(RectF(barLeft, barTop, barLeft + barW, innerBottom), barW / 2f, barW / 2f, barPaint)
+            barPaint.setShadowLayer(0f, 0f, 0f, 0)
+            barPaint.setShader(null)
+            if (best) {
+                val crownText = "\uD83D\uDC51"
+                val crownPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 34f * sz }
+                canvas.drawText(crownText, cx - crownPaint.measureText(crownText) / 2f, barTop - 36f * sz, crownPaint)
             }
             canvas.drawText(day.label, cx - dayLabelPaint.measureText(day.label) / 2f, chartBottom - 2f * sz, dayLabelPaint)
         }
@@ -277,7 +291,7 @@ class WeeklyCardView @JvmOverloads constructor(
         y = chartBottom + gap
 
         // ================= GOAL RING + FOCUS/BREAK DONUT =================
-        val ringH = (h * 0.19f).coerceAtLeast(150f * sz)
+        val ringH = (h * 0.16f).coerceAtLeast(150f * sz)
         val halfW = (chartRight - chartLeft) / 2f
         val ringR = (halfW * 0.5f).coerceAtMost(ringH * 0.40f).coerceAtLeast(44f * sz)
         val leftCx = chartLeft + halfW * 0.5f
@@ -314,9 +328,18 @@ class WeeklyCardView @JvmOverloads constructor(
             style = Paint.Style.STROKE
             strokeWidth = stroke
             strokeCap = Paint.Cap.ROUND
-            shader = SweepGradient(leftCx, cy, intArrayOf(green, accentLight, green), floatArrayOf(0f, 0.5f, 1f))
+            shader = SweepGradient(leftCx, cy, intArrayOf(goldDeep, goldLight, gold), floatArrayOf(0f, 0.5f, 1f))
         }
-        if (goalPct > 0f) canvas.drawArc(arcRect, -90f, goalPct * 3.6f, false, goalPaint)
+        if (goalPct > 0f) {
+            val goalHalo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = stroke * 1.6f
+                strokeCap = Paint.Cap.ROUND
+                color = 0x19F6CB22.toInt()
+            }
+            canvas.drawArc(arcRect, -90f, goalPct * 3.6f, false, goalHalo)
+            canvas.drawArc(arcRect, -90f, goalPct * 3.6f, false, goalPaint)
+        }
         val ringCenterPaint = textPaint(30f * sz, white, Typeface.DEFAULT_BOLD)
         val ringFm = ringCenterPaint.fontMetrics
         val pctText = "${goalPct.toInt()}%"
@@ -328,7 +351,7 @@ class WeeklyCardView @JvmOverloads constructor(
         val labelGap = 7f * sz
         val ringLabelW = ringLabelPaint.measureText(ringLabel)
         val ringStartX = leftCx - (flagW + labelGap + ringLabelW) / 2f
-        drawFlag(canvas, ringStartX, y + ringH - 4f * sz - flagH, flagW, flagH, green, fs)
+        drawFlag(canvas, ringStartX, y + ringH - 4f * sz - flagH, flagW, flagH, goldDeep, fs)
         canvas.drawText(ringLabel, ringStartX + flagW + labelGap, y + ringH - 4f * sz, ringLabelPaint)
 
         // focus / break donut
@@ -336,18 +359,25 @@ class WeeklyCardView @JvmOverloads constructor(
         val total = d.totalSecs + d.breakSecs
         val focusFrac = if (total > 0) d.totalSecs.toFloat() / total.toFloat() else 0f
         if (focusFrac > 0f) {
+            val focusHalo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = stroke * 1.6f
+                strokeCap = Paint.Cap.BUTT
+                color = 0x19F6CB22.toInt()
+            }
+            canvas.drawArc(donutArc, -90f, focusFrac * 360f, false, focusHalo)
             val focusArcPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 style = Paint.Style.STROKE
                 strokeWidth = stroke
                 strokeCap = Paint.Cap.BUTT
-                color = focus
+                color = gold
             }
             canvas.drawArc(donutArc, -90f, focusFrac * 360f, false, focusArcPaint)
         }
         val breakArcPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = stroke
-            color = amber
+            color = breakCol
             strokeCap = Paint.Cap.BUTT
         }
         if (focusFrac < 1f) canvas.drawArc(donutArc, -90f + focusFrac * 360f, (1f - focusFrac) * 360f, false, breakArcPaint)
@@ -360,14 +390,18 @@ class WeeklyCardView @JvmOverloads constructor(
             donutPaint.textSize = donutSize
         }
         canvas.drawText(donutText, rightCx - donutPaint.measureText(donutText) / 2f, cy - (ringFm.ascent + ringFm.descent) / 2f, donutPaint)
-        val donutLabel = "Focus vs Break"
-        val donutLabelPaint = textPaint(18f * sz, white60, Typeface.create("sans-serif-medium", Typeface.BOLD), 0.1f)
-        val playW = 13f * sz
-        val playH = 15f * sz
-        val donutLabelW = donutLabelPaint.measureText(donutLabel)
-        val donutStartX = rightCx - (playW + labelGap + donutLabelW) / 2f
-        drawPlay(canvas, donutStartX, y + ringH - 4f * sz - playH, playW, playH, amber)
-        canvas.drawText(donutLabel, donutStartX + playW + labelGap, y + ringH - 4f * sz, donutLabelPaint)
+        // colour-coded legend: gold = Focus, violet = Break
+        val legendPaintF = textPaint(18f * sz, gold, Typeface.create("sans-serif-medium", Typeface.BOLD), 0.1f)
+        val legendPaintB = textPaint(18f * sz, breakCol, Typeface.create("sans-serif-medium", Typeface.BOLD), 0.1f)
+        val focusTxt = "Focus"
+        val breakTxt = "Break"
+        val gapTxt = 26f * sz
+        val focusW = legendPaintF.measureText(focusTxt)
+        val breakW = legendPaintB.measureText(breakTxt)
+        val legendX = rightCx - (focusW + gapTxt + breakW) / 2f
+        val legendY = y + ringH - 4f * sz
+        canvas.drawText(focusTxt, legendX, legendY, legendPaintF)
+        canvas.drawText(breakTxt, legendX + focusW + gapTxt, legendY, legendPaintB)
 
         y += ringH + gap
 
@@ -428,29 +462,13 @@ class WeeklyCardView @JvmOverloads constructor(
         val valueBaseline = valueCenterY - (valueFm.ascent + valueFm.descent) / 2f
         var valueX = x + pad
         if (tile.flame) {
-            val fw = 24f * sz
-            val fh = 28f * sz
-            drawFlame(canvas, valueX, valueBaseline - fh, fw, fh)
-            valueX += fw + 8f * sz
+            val flameText = "\uD83D\uDD25"
+            val flamePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 24f * sz }
+            canvas.drawText(flameText, valueX, valueBaseline - 2f * sz, flamePaint)
+            valueX += flamePaint.measureText(flameText) + 8f * sz
         }
         canvas.drawText(tile.value, valueX, valueBaseline, valuePaint)
         canvas.drawText(tile.sub, x + pad, subBaseline, subPaint)
-    }
-
-    private fun drawCrown(canvas: Canvas, cx: Float, top: Float, cw: Float, ch: Float, clr: Int) {
-        val p = Path()
-        val w2 = cw / 2f
-        val b = top + ch
-        p.moveTo(cx - w2, b)
-        p.quadTo(cx - w2, b - ch * 0.25f, cx - w2 + cw * 0.18f, b - ch * 0.40f)
-        p.quadTo(cx - w2 + cw * 0.28f, b - ch * 0.60f, cx - w2 + cw * 0.30f, b - ch * 0.92f)
-        p.quadTo(cx - w2 + cw * 0.44f, b - ch * 0.52f, cx, b - ch * 0.46f)
-        p.quadTo(cx + w2 - cw * 0.44f, b - ch * 0.52f, cx + w2 - cw * 0.30f, b - ch * 0.92f)
-        p.quadTo(cx + w2 - cw * 0.28f, b - ch * 0.60f, cx + w2 - cw * 0.18f, b - ch * 0.40f)
-        p.quadTo(cx + w2, b - ch * 0.25f, cx + w2, b)
-        p.quadTo(cx, b + ch * 0.10f, cx - w2, b)
-        p.close()
-        canvas.drawPath(p, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = clr })
     }
 
     private fun drawFlag(canvas: Canvas, x: Float, top: Float, w: Float, h: Float, clr: Int, fs: Float) {
@@ -462,36 +480,6 @@ class WeeklyCardView @JvmOverloads constructor(
         flag.lineTo(x + w * 0.28f, top + h * 0.78f)
         flag.close()
         canvas.drawPath(flag, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = clr })
-    }
-
-    private fun drawPlay(canvas: Canvas, x: Float, top: Float, w: Float, h: Float, clr: Int) {
-        val p = Path()
-        p.moveTo(x, top)
-        p.lineTo(x + w, top + h / 2f)
-        p.lineTo(x, top + h)
-        p.close()
-        canvas.drawPath(p, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = clr })
-    }
-
-    private fun drawFlame(canvas: Canvas, x: Float, top: Float, w: Float, h: Float) {
-        val cx = x + w / 2f
-        val b = top + h
-        val o = Path()
-        o.moveTo(cx, top)
-        o.quadTo(cx + w * 0.42f, top + h * 0.38f, cx + w * 0.40f, b - h * 0.06f)
-        o.quadTo(cx + w * 0.30f, b + h * 0.12f, cx, b)
-        o.quadTo(cx - w * 0.30f, b + h * 0.12f, cx - w * 0.40f, b - h * 0.06f)
-        o.quadTo(cx - w * 0.42f, top + h * 0.38f, cx, top)
-        o.close()
-        canvas.drawPath(o, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PAL_AMBER })
-        val inner = Path()
-        inner.moveTo(cx, top + h * 0.34f)
-        inner.quadTo(cx + w * 0.16f, top + h * 0.55f, cx + w * 0.15f, b - h * 0.20f)
-        inner.quadTo(cx + w * 0.11f, b - h * 0.04f, cx, b - h * 0.07f)
-        inner.quadTo(cx - w * 0.11f, b - h * 0.04f, cx - w * 0.15f, b - h * 0.20f)
-        inner.quadTo(cx - w * 0.16f, top + h * 0.55f, cx, top + h * 0.34f)
-        inner.close()
-        canvas.drawPath(inner, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PAL_FLAME_LIGHT })
     }
 
     private fun drawFooter(canvas: Canvas, w: Float, h: Float, p: Float, sz: Float) {
@@ -514,8 +502,6 @@ class WeeklyCardView @JvmOverloads constructor(
         private val PAL_WHITE40: Int = 0x66FFFFFF
         private val PAL_WHITE60: Int = 0x99FFFFFF.toInt()
         private val PAL_WHITE80: Int = 0xCCFFFFFF.toInt()
-        private val PAL_AMBER: Int = 0xFFFBBF24.toInt()
-        private val PAL_FLAME_LIGHT: Int = 0xFFFDE68A.toInt()
 
         fun formatTime(secs: Long): String {
             if (secs <= 0L) return "0m"

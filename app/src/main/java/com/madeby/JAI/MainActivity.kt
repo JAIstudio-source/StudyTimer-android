@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.Manifest
 import android.content.pm.PackageManager
 import android.content.pm.ActivityInfo
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -156,6 +157,23 @@ class MainActivity : AppCompatActivity() {
     private var currentTimerState = TimerState.IDLE
     private var currentStatsTab = AppStatsTab.OVERVIEW
     private var currentSettingsTab = AppSettingsTab.SIMPLE
+    private var tabDragSlop = 12
+    private var tabDragArmed = false
+    private var tabDragActive = false
+    private var tabDragSide = 1
+    private var tabDragOverlay: FrameLayout? = null
+    private var tabDragDownX = 0f
+    private var tabDragDownY = 0f
+    private var tabDragLastX = 0f
+    private var tabDragLastT = 0L
+    private var tabDragVelocityX = 0f
+    private var tabDragSettling = false
+    private var tabDragSettleIsCommit = false
+    private var tabDragSettleToken = 0
+    private var tabDragCommitStatsTab = AppStatsTab.OVERVIEW
+    private var tabDragCommitSettingsTab = AppSettingsTab.SIMPLE
+    private class CachedTabPage(val view: View, val statsGen: Int, val themeSig: String)
+    private val tabPageCache = HashMap<String, CachedTabPage>()
     private var selectedDaysFilter = 7
 
     private var accumulatedStudy: Long = 0
@@ -183,6 +201,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingSettingsScrollY = 0
 
     private var statsSnapshotCache: StatsSnapshot? = null
+    private var statsSnapshotGen = 0
     private var statsDirty = true
     private var statsInternalRefresh = false
     private var lastStyleKey = ""
@@ -204,6 +223,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pauseBtn: Button
     private lateinit var stopBtn: HoldRingButton
     private lateinit var controlActionContainer: LinearLayout
+    private lateinit var panelHost: FrameLayout
     private lateinit var navHeader: LinearLayout
     private lateinit var statusBadgeContainer: LinearLayout
     private var isZenModeActive = false
@@ -215,25 +235,80 @@ class MainActivity : AppCompatActivity() {
 
     private val importLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
-            result.data?.data?.let { uri ->
-                val confirm = android.app.AlertDialog.Builder(this)
-                    .setTitle("Restore backup?")
-                    .setMessage("Importing replaces ALL current study data with the backup file. This cannot be undone.")
-                    .setPositiveButton("Restore") { _, _ ->
-                        val success = backupManager.importDataFromJSON(uri)
-                        if (success) {
-                            Toast.makeText(this, "Logs restored successfully!", Toast.LENGTH_SHORT).show()
-                            themeCoordinator.applyThemeCoordinates()
-                            navigateToPanel(AppPanel.SETTINGS)
-                        } else {
-                            Toast.makeText(this, "Failed to parse backup file structure.", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                    .setNegativeButton("Cancel", null)
-                    .create()
-                confirm.show()
-            }
+            result.data?.data?.let { uri -> showRestoreConfirmDialog(uri) }
         }
+    }
+
+    private fun showRestoreConfirmDialog(uri: Uri) {
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(28f)
+            setPadding(dp(22), dp(22), dp(22), dp(18))
+        }
+        content.addView(TextView(this).apply {
+            text = "\u267B\uFE0F RESTORE BACKUP"
+            setTextColor(themeCoordinator.primaryColor)
+            textSize = 11f
+            letterSpacing = 0.18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+        content.addView(TextView(this).apply {
+            text = "Restore backup?"
+            setTextColor(themeCoordinator.textColor)
+            textSize = 18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(0, dp(8), 0, 0)
+        })
+        content.addView(TextView(this).apply {
+            text = "Importing replaces ALL current study data with the backup file. This cannot be undone."
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.6f
+            textSize = 13f
+            setPadding(0, dp(8), 0, 0)
+        })
+
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(18), 0, 0)
+        }
+        val cancelBtn = Button(this).apply {
+            text = "CANCEL"
+            setTextColor(themeCoordinator.textColor)
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 50f)
+            setOnClickListener { dialog.dismiss() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply { setMargins(0, 0, dp(8), 0) }
+        }
+        val restoreBtn = Button(this).apply {
+            text = "RESTORE"
+            setTextColor(themeCoordinator.bgColor)
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = rippleBackground(themeCoordinator.primaryColor)
+            setOnClickListener {
+                dialog.dismiss()
+                val success = backupManager.importDataFromJSON(uri)
+                if (success) {
+                    Toast.makeText(this@MainActivity, "Logs restored successfully!", Toast.LENGTH_SHORT).show()
+                    themeCoordinator.applyThemeCoordinates()
+                    navigateToPanel(AppPanel.SETTINGS)
+                } else {
+                    Toast.makeText(this@MainActivity, "Failed to parse backup file structure.", Toast.LENGTH_SHORT).show()
+                }
+            }
+            layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply { setMargins(dp(8), 0, 0, 0) }
+        }
+        buttonRow.addView(cancelBtn)
+        buttonRow.addView(restoreBtn)
+        content.addView(buttonRow)
+
+        dialog.setContentView(content)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.88f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.show()
     }
 
     private val exportLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -356,7 +431,7 @@ class MainActivity : AppCompatActivity() {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { cornerRadius = 28f; setColor(themeCoordinator.boxColor) }
+            background = themeCoordinator.createDialogBackground(28f)
             setPadding(dp(22), dp(22), dp(22), dp(18))
         }
         content.addView(TextView(this).apply {
@@ -498,7 +573,7 @@ class MainActivity : AppCompatActivity() {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { cornerRadius = 28f; setColor(themeCoordinator.boxColor) }
+            background = themeCoordinator.createDialogBackground(28f)
             setPadding(dp(22), dp(22), dp(22), dp(18))
         }
         content.addView(TextView(this).apply {
@@ -606,7 +681,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun rippleBackground(color: Int): android.graphics.drawable.RippleDrawable {
-        val shape = GradientDrawable().apply { cornerRadius = 80f; setColor(color) }
+        val shape = themeCoordinator.createGlowGradient(color, 80f)
         return android.graphics.drawable.RippleDrawable(
             android.content.res.ColorStateList.valueOf(Color.argb(90, 255, 255, 255)),
             shape,
@@ -617,7 +692,7 @@ class MainActivity : AppCompatActivity() {
     private fun outlinedButtonBackground(): android.graphics.drawable.RippleDrawable {
         return android.graphics.drawable.RippleDrawable(
             android.content.res.ColorStateList.valueOf(Color.argb(70, 255, 255, 255)),
-            GradientDrawable().apply { cornerRadius = 80f; setColor(0x00000000); setStroke(3, themeCoordinator.boxColor) },
+            GradientDrawable().apply { cornerRadius = 80f; setColor(0x00000000); setStroke(3, if (themeCoordinator.isGlassStyle()) tintedColor(themeCoordinator.primaryColor, 120) else themeCoordinator.boxColor) },
             null
         )
     }
@@ -705,7 +780,7 @@ class MainActivity : AppCompatActivity() {
 
         rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(themeCoordinator.bgColor)
+            background = themeCoordinator.createBackgroundDrawable()
             setPadding(dp(16), dp(16), dp(16), dp(16))
             gravity = Gravity.CENTER_HORIZONTAL
         }
@@ -713,11 +788,17 @@ class MainActivity : AppCompatActivity() {
         panelContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
 
-        rootLayout.addView(panelContainer)
+        panelHost = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        }
+        panelHost.addView(panelContainer)
+        rootLayout.addView(panelHost)
         setContentView(rootLayout)
+
+        tabDragSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
 
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         currentTimerState = TimerState.valueOf(sharedPrefs.getString("timerState", "IDLE") ?: "IDLE")
@@ -861,6 +942,11 @@ class MainActivity : AppCompatActivity() {
         applyImmersiveModeForLandscape()
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (ev != null && handleTabDragTouch(ev)) return true
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -870,15 +956,346 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private fun handleTabDragTouch(ev: MotionEvent): Boolean {
+        if (currentPanel != AppPanel.STATS && currentPanel != AppPanel.SETTINGS) {
+            tabDragArmed = false
+            tabDragActive = false
+            return false
+        }
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                if (tabDragSettling) finalizeSettle(tabDragSettleIsCommit)
+                if (panelHost.childCount > 1) return false
+                if (swipeStartedOnHorizontalScroll(ev.rawX, ev.rawY)) return false
+                tabDragArmed = true
+                tabDragActive = false
+                tabDragDownX = ev.x
+                tabDragDownY = ev.y
+                tabDragLastX = ev.x
+                tabDragLastT = SystemClock.uptimeMillis()
+                tabDragVelocityX = 0f
+                return false
+            }
+            MotionEvent.ACTION_MOVE -> {
+                if (tabDragSettling) return true
+                if (!tabDragArmed) return false
+                val now = SystemClock.uptimeMillis()
+                if (now - tabDragLastT > 0) {
+                    tabDragVelocityX = (ev.x - tabDragLastX) / (now - tabDragLastT) * 1000f
+                }
+                tabDragLastX = ev.x
+                tabDragLastT = now
+                if (!tabDragActive) {
+                    val dx = ev.x - tabDragDownX
+                    val dy = ev.y - tabDragDownY
+                    if (Math.abs(dy) > tabDragSlop && Math.abs(dy) >= Math.abs(dx) * 1.1f) {
+                        tabDragArmed = false
+                        return false
+                    }
+                    if (Math.abs(dx) > tabDragSlop && Math.abs(dx) > Math.abs(dy) * 1.1f) {
+                        val side = if (dx < 0) 1 else -1
+                        if (tabDragNeighborExists(side) && beginTabDrag(side)) {
+                            tabDragActive = true
+                            panelContainer.cancelPendingInputEvents()
+                        } else {
+                            tabDragArmed = false
+                            return false
+                        }
+                    } else {
+                        return false
+                    }
+                }
+                val width = panelContainer.width.takeIf { it > 0 } ?: dp(160)
+                val delta = Math.max(-width.toFloat(), Math.min(width.toFloat(), ev.x - tabDragDownX))
+                panelContainer.translationX = delta
+                tabDragOverlay?.translationX = (tabDragSide * width) + delta
+                return true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (tabDragSettling) return true
+                if (!tabDragActive) {
+                    tabDragArmed = false
+                    return false
+                }
+                val width = panelContainer.width.takeIf { it > 0 } ?: dp(160)
+                val delta = panelContainer.translationX
+                val commit = when {
+                    tabDragSide == 1 -> delta < -width * 0.22f || tabDragVelocityX < -550f
+                    else -> delta > width * 0.22f || tabDragVelocityX > 550f
+                }
+                tabDragArmed = false
+                tabDragActive = false
+                if (commit) finishTabDrag() else cancelTabDrag()
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                if (tabDragSettling) return true
+                if (!tabDragActive) {
+                    tabDragArmed = false
+                    return false
+                }
+                tabDragArmed = false
+                tabDragActive = false
+                cancelTabDrag()
+                return true
+            }
+            MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_POINTER_UP -> {
+                if (tabDragActive || tabDragSettling) return true
+                return false
+            }
+        }
+        return false
+    }
+
+    private fun tabDragNeighborExists(side: Int): Boolean {
+        return when (currentPanel) {
+            AppPanel.STATS -> if (side == 1) currentStatsTab != AppStatsTab.TIMELINE else currentStatsTab != AppStatsTab.OVERVIEW
+            AppPanel.SETTINGS -> if (side == 1) currentSettingsTab != AppSettingsTab.THEME else currentSettingsTab != AppSettingsTab.SIMPLE
+            else -> false
+        }
+    }
+
+    private fun applyCardStyle(v: View) {
+        val r = dp(22)
+        val bg = android.graphics.drawable.GradientDrawable().apply {
+            setColor(themeCoordinator.bgColor)
+            cornerRadius = r.toFloat()
+        }
+        v.background = bg
+        v.clipToOutline = true
+        v.outlineProvider = android.view.ViewOutlineProvider.BACKGROUND
+        v.elevation = dp(14).toFloat()
+    }
+
+    private fun clearCardStyle(v: View) {
+        v.background = null
+        v.clipToOutline = false
+        v.elevation = 0f
+    }
+
+    private fun beginTabDrag(side: Int): Boolean {
+        val width = panelContainer.width.takeIf { it > 0 } ?: dp(160)
+        val height = panelContainer.height.takeIf { it > 0 } ?: dp(240)
+        tabDragSide = side
+        val key = when (currentPanel) {
+            AppPanel.STATS -> {
+                tabDragCommitStatsTab = if (side == 1) AppStatsTab.TIMELINE else AppStatsTab.OVERVIEW
+                statsTabKey(tabDragCommitStatsTab)
+            }
+            AppPanel.SETTINGS -> {
+                tabDragCommitSettingsTab = if (side == 1) AppSettingsTab.THEME else AppSettingsTab.SIMPLE
+                settingsTabKey(tabDragCommitSettingsTab)
+            }
+            else -> return false
+        }
+        val overlay = FrameLayout(this).apply {
+            layoutParams = FrameLayout.LayoutParams(width, height)
+        }
+        applyCardStyle(panelContainer)
+        overlay.addView(getOrBuildTabPage(key))
+        applyCardStyle(overlay)
+        overlay.translationX = (side * width).toFloat()
+        panelHost.addView(overlay)
+        tabDragOverlay = overlay
+        return true
+    }
+
+    private fun settleAnimDuration(remaining: Float): Long {
+        val dist = Math.abs(remaining)
+        val vel = Math.abs(tabDragVelocityX)
+        val base = if (vel > 120f) (dist / vel * 1000f).toLong() else 340L
+        return Math.max(150L, Math.min(340L, base))
+    }
+
+    private fun settleInterpolator() = android.view.animation.PathInterpolator(0.25f, 0.9f, 0.25f, 1f)
+
+    private fun finishTabDrag() {
+        val width = panelContainer.width.takeIf { it > 0 } ?: dp(160)
+        val overlay = tabDragOverlay
+        val token = ++tabDragSettleToken
+        tabDragSettling = true
+        tabDragSettleIsCommit = true
+        val targetX = (-tabDragSide * width).toFloat()
+        val remaining = targetX - panelContainer.translationX
+        val dur = settleAnimDuration(remaining)
+        val interp = settleInterpolator()
+        panelContainer.animate().translationX(targetX)
+            .setDuration(dur)
+            .setInterpolator(interp)
+            .withLayer().start()
+        overlay?.animate()?.translationX(0f)
+            ?.setDuration(dur)
+            ?.setInterpolator(interp)
+            ?.withLayer()?.start()
+        handler.postDelayed({ if (token == tabDragSettleToken) finalizeSettle(true) }, dur + 80L)
+    }
+
+    private fun cancelTabDrag() {
+        val width = panelContainer.width.takeIf { it > 0 } ?: dp(160)
+        val overlay = tabDragOverlay
+        val token = ++tabDragSettleToken
+        tabDragSettling = true
+        tabDragSettleIsCommit = false
+        val remaining = 0f - panelContainer.translationX
+        val dur = settleAnimDuration(remaining)
+        val interp = settleInterpolator()
+        panelContainer.animate().translationX(0f)
+            .setDuration(dur)
+            .setInterpolator(interp)
+            .withLayer().start()
+        overlay?.animate()?.translationX((tabDragSide * width).toFloat())
+            ?.setDuration(dur)
+            ?.setInterpolator(interp)
+            ?.withLayer()?.start()
+        handler.postDelayed({ if (token == tabDragSettleToken) finalizeSettle(false) }, dur + 80L)
+    }
+
+    private fun finalizeSettle(commit: Boolean) {
+        if (!tabDragSettling) return
+        tabDragSettling = false
+        tabDragSettleToken++
+        val overlay = tabDragOverlay
+        panelContainer.animate().cancel()
+        panelContainer.translationX = 0f
+        overlay?.animate()?.cancel()
+        clearCardStyle(panelContainer)
+        var incomingPage: View? = null
+        if (overlay != null) {
+            if (overlay.parent != null) panelHost.removeView(overlay)
+            if (overlay.childCount > 0) {
+                incomingPage = overlay.getChildAt(0)
+                overlay.removeView(incomingPage)
+            }
+        }
+        tabDragOverlay = null
+        if (commit) {
+            when (currentPanel) {
+                AppPanel.STATS -> {
+                    currentStatsTab = tabDragCommitStatsTab
+                    if (currentStatsTab == AppStatsTab.TIMELINE) currentTimelineLimit = 15
+                }
+                AppPanel.SETTINGS -> currentSettingsTab = tabDragCommitSettingsTab
+                else -> {}
+            }
+            if (incomingPage != null) {
+                swapPanelContent(incomingPage)
+            } else {
+                navigateToPanel(currentPanel)
+            }
+        }
+        prewarmTabPages()
+    }
+
+    private fun swapPanelContent(page: View) {
+        panelContainer.removeAllViews()
+        panelContainer.addView(page)
+        if (currentPanel == AppPanel.SETTINGS) {
+            settingsScrollViewRef = findScrollViewDescendant(page)
+        }
+    }
+
+    private fun findScrollViewDescendant(root: View): ScrollView? {
+        if (root is ScrollView) return root
+        if (root is android.view.ViewGroup) {
+            for (i in 0 until root.childCount) {
+                findScrollViewDescendant(root.getChildAt(i))?.let { return it }
+            }
+        }
+        return null
+    }
+
+    private fun statsTabKey(t: AppStatsTab): String = "S:${t.ordinal}"
+    private fun settingsTabKey(t: AppSettingsTab): String = "ST:${t.ordinal}"
+
+    private fun tabThemeSig(): String =
+        "${themeCoordinator.primaryColor}|${themeCoordinator.secondaryColor}|${themeCoordinator.bgColor}|${themeCoordinator.uiStyle}|${themeCoordinator.activeBgMode}"
+
+    private fun getOrBuildTabPage(key: String): View {
+        val cached = tabPageCache[key]
+        if (cached != null) {
+            val valid = when {
+                key.startsWith("ST:") -> cached.themeSig == tabThemeSig()
+                else -> cached.statsGen == statsSnapshotGen
+            }
+            if (valid && cached.view.parent == null) return cached.view
+        }
+        val scratch = FrameLayout(this)
+        val page = when {
+            key.startsWith("ST:") -> {
+                val prev = currentSettingsTab
+                currentSettingsTab = if (key == settingsTabKey(AppSettingsTab.THEME)) AppSettingsTab.THEME else AppSettingsTab.SIMPLE
+                buildSettingsPanel(scratch, captureScrollRef = false)
+                currentSettingsTab = prev
+                scratch.getChildAt(0)
+            }
+            else -> {
+                val prev = currentStatsTab
+                currentStatsTab = if (key == statsTabKey(AppStatsTab.TIMELINE)) AppStatsTab.TIMELINE else AppStatsTab.OVERVIEW
+                if (currentStatsTab == AppStatsTab.TIMELINE) currentTimelineLimit = 15
+                buildStatsPanel(scratch)
+                currentStatsTab = prev
+                scratch.getChildAt(0)
+            }
+        }
+        scratch.removeView(page)
+        tabPageCache[key] = if (key.startsWith("ST:")) CachedTabPage(page, 0, tabThemeSig()) else CachedTabPage(page, statsSnapshotGen, "")
+        return page
+    }
+
+    private fun prewarmTabPages() {
+        if (panelHost.childCount > 1 || tabDragSettling) return
+        when (currentPanel) {
+            AppPanel.STATS -> {
+                if (statsSnapshotCache == null) return
+                getOrBuildTabPage(statsTabKey(AppStatsTab.OVERVIEW))
+                getOrBuildTabPage(statsTabKey(AppStatsTab.TIMELINE))
+            }
+            AppPanel.SETTINGS -> {
+                getOrBuildTabPage(settingsTabKey(AppSettingsTab.SIMPLE))
+                getOrBuildTabPage(settingsTabKey(AppSettingsTab.THEME))
+            }
+            else -> {}
+        }
+    }
+
+    private fun swipeStartedOnHorizontalScroll(rawX: Float, rawY: Float): Boolean {
+        val loc = IntArray(2)
+        panelContainer.getLocationOnScreen(loc)
+        val x = rawX - loc[0]
+        val y = rawY - loc[1]
+        if (x < 0 || y < 0 || x > panelContainer.width || y > panelContainer.height) return false
+        val hit = findViewAt(panelContainer, x, y) ?: return false
+        var v: View? = hit
+        while (v != null) {
+            if (v is HorizontalScrollView) return true
+            v = v.parent as? View
+        }
+        return false
+    }
+
+    private fun findViewAt(parent: View, x: Float, y: Float): View? {
+        if (parent is android.view.ViewGroup) {
+            for (i in parent.childCount - 1 downTo 0) {
+                val child = parent.getChildAt(i)
+                if (child.visibility != View.VISIBLE) continue
+                if (x >= child.left && x <= child.right && y >= child.top && y <= child.bottom) {
+                    return findViewAt(child, x - child.left, y - child.top) ?: child
+                }
+            }
+        }
+        return parent
+    }
+
     private fun buildCurrentPanel() {
         panelContainer.removeAllViews()
-        rootLayout.setBackgroundColor(themeCoordinator.bgColor)
+        rootLayout.background = themeCoordinator.createBackgroundDrawable()
         when (currentPanel) {
             AppPanel.FOCUS -> buildFocusPanel()
             AppPanel.STATS -> buildStatsPanel()
             AppPanel.SETTINGS -> buildSettingsPanel()
             AppPanel.HEATMAP -> buildHeatmapFullscreenPanel()
         }
+        prewarmTabPages()
     }
 
     private fun navigateToPanel(targetPanel: AppPanel) {
@@ -923,41 +1340,45 @@ class MainActivity : AppCompatActivity() {
             prevPanel == AppPanel.STATS && targetPanel == AppPanel.FOCUS -> true
             else -> prevPanel.ordinal < targetPanel.ordinal
         }
-        val offset = if (slideRight) dp(60) else -dp(60)
 
-        val oldChildren = ArrayList<View>()
-        for (i in 0 until panelContainer.childCount) {
-            oldChildren.add(panelContainer.getChildAt(i))
+        performSlidingTransition(if (slideRight) 1 else -1) {
+            buildCurrentPanel()
         }
+    }
 
-        buildCurrentPanel()
+    private fun performSlidingTransition(exitDir: Int, rebuild: () -> Unit) {
+        val width = panelContainer.width.takeIf { it > 0 } ?: dp(160)
+        val height = panelContainer.height.takeIf { it > 0 } ?: dp(240)
+        val snapshot = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        panelContainer.draw(Canvas(snapshot))
 
-        val outDuration = 180L
-        val inDuration = 220L
-        for (child in oldChildren) {
-            child.animate().alpha(0f).translationX(offset.toFloat())
-                .setDuration(outDuration)
-                .setInterpolator(android.view.animation.AccelerateInterpolator())
-                .withLayer().start()
-        }
+        rebuild()
 
         for (j in 0 until panelContainer.childCount) {
-            val child = panelContainer.getChildAt(j)
-            child.alpha = 0f
-            child.translationX = (-offset).toFloat()
-            child.scaleX = 0.985f
-            child.scaleY = 0.985f
-            child.animate().alpha(1f).translationX(0f).scaleX(1f).scaleY(1f)
-                .setDuration(inDuration)
+            panelContainer.getChildAt(j).translationX = (-exitDir * width).toFloat()
+        }
+
+        val overlay = ImageView(this).apply {
+            setImageBitmap(snapshot)
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            layoutParams = FrameLayout.LayoutParams(width, height)
+        }
+        panelHost.addView(overlay)
+
+        overlay.animate().translationX((exitDir * width).toFloat())
+            .setDuration(280L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator())
+            .withLayer().start()
+        for (j in 0 until panelContainer.childCount) {
+            panelContainer.getChildAt(j).animate().translationX(0f)
+                .setDuration(280L)
                 .setInterpolator(android.view.animation.DecelerateInterpolator())
                 .withLayer().start()
         }
 
         handler.postDelayed({
-            for (child in oldChildren) {
-                if (child.parent != null) panelContainer.removeView(child)
-            }
-        }, outDuration + 30)
+            if (overlay.parent != null) panelHost.removeView(overlay)
+        }, 340L)
     }
 
     private fun buildFocusPanel() {
@@ -974,7 +1395,8 @@ class MainActivity : AppCompatActivity() {
         val settingsIconView = ImageView(this).apply {
             setImageResource(R.drawable.ic_settings) 
             setColorFilter(themeCoordinator.primaryColor)
-            setPadding(20, 20, 20, 20)
+            setPadding(16, 16, 16, 16)
+            background = if (themeCoordinator.isGlassStyle()) themeCoordinator.createGlassIconBackground(tintedColor(themeCoordinator.primaryColor, 70)) else null
             contentDescription = "Open settings"
             setOnClickListener { navigateToPanel(AppPanel.SETTINGS) }
         }
@@ -990,6 +1412,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         val savedTimerMode = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("timer_mode", "STOPWATCH") ?: "STOPWATCH"
+        if (themeCoordinator.isGlassStyle() && !pureWhiteTimerEnabled()) {
+            val glowAlpha = when {
+                themeCoordinator.activeBgMode == "OLED" -> 0.22f
+                themeCoordinator.activeBgMode == "LIGHT" -> 0.3f
+                else -> 0.38f
+            }
+            val timerGlow = ImageView(this).apply {
+                setImageDrawable(themeCoordinator.createGlowBlob(themeCoordinator.primaryColor))
+                alpha = glowAlpha
+                layoutParams = FrameLayout.LayoutParams(dp(360), dp(360), Gravity.CENTER)
+            }
+            centerClocksWrapper.addView(timerGlow)
+        }
+
         timerRing = TimerRingView(this).apply {
             visibility = if (!isLandscape && savedTimerMode == "COUNTDOWN") View.VISIBLE else View.GONE
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER)
@@ -1000,10 +1436,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(35, 12, 35, 12)
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                cornerRadius = 30f
-                setColor(themeCoordinator.boxColor)
-            }
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110))
         }
 
         statusBadgeContainer = LinearLayout(this).apply {
@@ -1021,6 +1454,7 @@ class MainActivity : AppCompatActivity() {
             typeface = Typeface.MONOSPACE
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 5)
+            if (themeCoordinator.isGlassStyle() && !pureWhiteTimerEnabled()) setShadowLayer(14f, 0f, 0f, tintedColor(themeCoordinator.primaryColor, 90))
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
         }
 
@@ -1107,13 +1541,14 @@ class MainActivity : AppCompatActivity() {
         controlActionContainer.addView(stopBtn)
 
         val statsFloatingIcon = ImageView(this).apply {
-            setImageResource(R.drawable.ic_insights) 
+            setImageResource(R.drawable.ic_insights)
+            scaleType = ImageView.ScaleType.FIT_CENTER
             setColorFilter(themeCoordinator.primaryColor)
-            setPadding(28, 28, 28, 28)
-            background = GradientDrawable().apply { cornerRadius = 45f; setColor(themeCoordinator.boxColor) }
+            setPadding(14, 14, 14, 14)
+            background = if (themeCoordinator.isGlassStyle()) themeCoordinator.createGlassIconBackground(tintedColor(themeCoordinator.primaryColor, 70)) else null
             contentDescription = "Open insights"
             setOnClickListener { navigateToPanel(AppPanel.STATS) }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(52), dp(52)).apply {
                 gravity = Gravity.END
                 setMargins(0, 0, 10, if (isLandscape) 5 else 20)
             }
@@ -1422,15 +1857,16 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun buildStatsPanel() {
+    private fun buildStatsPanel(target: android.view.ViewGroup = panelContainer) {
+        val renderTab = currentStatsTab
         val statsRoot = FrameLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
         }
 
         val cached = statsSnapshotCache
         if (cached != null && (statsInternalRefresh || !statsDirty)) {
-            renderStatsContent(statsRoot, cached)
-            panelContainer.addView(statsRoot)
+            renderStatsContent(statsRoot, cached, renderTab)
+            target.addView(statsRoot)
             return
         }
 
@@ -1449,16 +1885,17 @@ class MainActivity : AppCompatActivity() {
         })
         statsRoot.addView(loading, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
 
-        panelContainer.addView(statsRoot)
+        target.addView(statsRoot)
 
         Thread {
             val snap = computeStatsSnapshot()
             handler.post {
                 if (isDestroyed || isFinishing) return@post
                 statsSnapshotCache = snap
+                statsSnapshotGen++
                 statsDirty = false
                 statsRoot.removeView(loading)
-                renderStatsContent(statsRoot, snap)
+                renderStatsContent(statsRoot, snap, renderTab)
             }
         }.start()
     }
@@ -1518,7 +1955,8 @@ class MainActivity : AppCompatActivity() {
             setTextColor(themeCoordinator.primaryColor)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(10), dp(6), dp(10), dp(6))
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 30f)
             setOnClickListener { navigateToPanel(AppPanel.STATS) }
         })
         root.addView(headerRow)
@@ -1545,7 +1983,7 @@ class MainActivity : AppCompatActivity() {
         panelContainer.addView(root)
     }
 
-    private fun renderStatsContent(statsRoot: FrameLayout, snap: StatsSnapshot) {
+    private fun renderStatsContent(statsRoot: FrameLayout, snap: StatsSnapshot, tab: AppStatsTab = currentStatsTab) {
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val todayStr = sdf.format(Date())
@@ -1605,7 +2043,7 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(18), dp(10), dp(18), dp(10))
                 typeface = Typeface.create("sans-serif-medium", if (currentStatsTab == tab) Typeface.BOLD else Typeface.NORMAL)
                 setTextColor(if (currentStatsTab == tab) themeCoordinator.primaryColor else themeCoordinator.textColor)
-                background = if (currentStatsTab == tab) GradientDrawable().apply { cornerRadius = 16f; setColor(themeCoordinator.boxColor) } else null
+                background = if (currentStatsTab == tab) themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 16f) else null
                 setOnClickListener {
                     currentStatsTab = tab
                     if (tab == AppStatsTab.TIMELINE) currentTimelineLimit = 15
@@ -1810,7 +2248,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(if (isActive) themeCoordinator.primaryColor else themeCoordinator.textColor)
                 alpha = if (isActive) 1f else 0.5f
                 typeface = Typeface.create("sans-serif-medium", if (isActive) Typeface.BOLD else Typeface.NORMAL)
-                background = if (isActive) GradientDrawable().apply { cornerRadius = 20f; setColor(themeCoordinator.boxColor) } else null
+                background = if (isActive) themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 20f) else null
                 setOnClickListener {
                     selectedDaysFilter = filterValues[idx]
                     sharedPrefs.edit().putInt("selected_days_filter", selectedDaysFilter).apply()
@@ -2087,7 +2525,7 @@ class MainActivity : AppCompatActivity() {
             insightCount++
         }
 
-        if (currentStatsTab == AppStatsTab.OVERVIEW) {
+        if (tab == AppStatsTab.OVERVIEW) {
             val hasAnySessions = snap.hasAnySessions
             if (!hasAnySessions) {
                 content.addView(LinearLayout(this).apply {
@@ -2282,7 +2720,7 @@ class MainActivity : AppCompatActivity() {
                 dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
                 val dialogContent = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    background = GradientDrawable().apply { cornerRadius = 28f; setColor(themeCoordinator.boxColor) }
+                    background = themeCoordinator.createDialogBackground(28f)
                     setPadding(dp(20), dp(20), dp(20), dp(18))
                 }
                 dialogContent.addView(TextView(this).apply {
@@ -2381,6 +2819,11 @@ class MainActivity : AppCompatActivity() {
                     val bestLabel = blockLabels[bestBlock].replace("-", " \u2013 ")
                     footerText.text = "Most focused ${bestLabel} \u00B7 ${formatDuration(total)} total"
                     footerText.setAlpha(0.6f)
+                    cellsScroll.post {
+                        val colW = dp(42)
+                        val target = (bestBlock * colW - (cellsScroll.width - colW) / 2).coerceAtLeast(0)
+                        cellsScroll.smoothScrollTo(target, 0)
+                    }
                 } else {
                     footerText.text = "No focus logged in the last ${if (using7) "7" else "30"} days"
                     footerText.setAlpha(0.5f)
@@ -2415,7 +2858,7 @@ class MainActivity : AppCompatActivity() {
                 setTextColor(themeCoordinator.primaryColor)
                 textSize = 14f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                background = GradientDrawable().apply { cornerRadius = 30f; setColor(themeCoordinator.boxColor) }
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 30f)
                 setPadding(dp(16), dp(12), dp(16), dp(12))
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(12)) }
@@ -2534,24 +2977,21 @@ class MainActivity : AppCompatActivity() {
                                 detailContainer, sessions, breaksList,
                                 onDelete = { block, blockIsBreak ->
                                     val kind = if (blockIsBreak) "break" else "focus"
-                                    val confirm = android.app.AlertDialog.Builder(this@MainActivity)
-                                        .setTitle("Delete this ${kind} block?")
-                                        .setMessage("Removes ${formatBlockRow(block.startMs, block.endMs, block.secs)} from this day's log.")
-                                        .setPositiveButton("Delete") { _, _ ->
-                                            val timelineTs = TimelineLogger.load(this@MainActivity).map { it.timestamp }.toHashSet()
-                                            val startTs = block.startMs
-                                            val endBoundary = if (timelineTs.contains(block.endMs)) block.endMs else timelineTs.filter { it > startTs }.minOrNull()
-                                            TimelineLogger.deleteEntry(this@MainActivity, startTs)
-                                            if (endBoundary != null) TimelineLogger.deleteEntry(this@MainActivity, endBoundary)
-                                            reconcileDayTotals(dateStr)
-                                            Toast.makeText(this@MainActivity, "${kind} block deleted", Toast.LENGTH_SHORT).show()
-                                            statsDirty = true
-                                            recalculateStreak()
-                                            navigateToPanel(AppPanel.STATS)
-                                        }
-                                        .setNegativeButton("Cancel", null)
-                                        .create()
-                                    confirm.show()
+                                    showConfirmDialog(
+                                        "Delete this ${kind} block?",
+                                        "Removes ${formatBlockRow(block.startMs, block.endMs, block.secs)} from this day's log."
+                                    ) {
+                                        val timelineTs = TimelineLogger.load(this@MainActivity).map { it.timestamp }.toHashSet()
+                                        val startTs = block.startMs
+                                        val endBoundary = if (timelineTs.contains(block.endMs)) block.endMs else timelineTs.filter { it > startTs }.minOrNull()
+                                        TimelineLogger.deleteEntry(this@MainActivity, startTs)
+                                        if (endBoundary != null) TimelineLogger.deleteEntry(this@MainActivity, endBoundary)
+                                        reconcileDayTotals(dateStr)
+                                        Toast.makeText(this@MainActivity, "${kind} block deleted", Toast.LENGTH_SHORT).show()
+                                        statsDirty = true
+                                        recalculateStreak()
+                                        navigateToPanel(AppPanel.STATS)
+                                    }
                                 }
                             )
                         }
@@ -2563,24 +3003,21 @@ class MainActivity : AppCompatActivity() {
 
                 if (dateStr != todayStr) {
                     card.setOnLongClickListener {
-                        val confirm = android.app.AlertDialog.Builder(this)
-                            .setTitle("Delete ${fullDateSdf.format(parsedDate)}?")
-                            .setMessage("Removes the day's focus/break totals and its session timeline.")
-                            .setPositiveButton("Delete") { _, _ ->
-                                getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().apply {
-                                    remove("${dateStr}_focus_total")
-                                    remove("${dateStr}_break_total")
-                                    remove("${dateStr}_focus_manual")
-                                    remove("${dateStr}_break_manual")
-                                }.apply()
-                                TimelineLogger.deleteDay(this@MainActivity, dateStr)
-                                Toast.makeText(this@MainActivity, "Day deleted", Toast.LENGTH_SHORT).show()
-                                recalculateStreak()
-                                navigateToPanel(AppPanel.STATS)
-                            }
-                            .setNegativeButton("Cancel", null)
-                            .create()
-                        confirm.show()
+                        showConfirmDialog(
+                            "Delete ${fullDateSdf.format(parsedDate)}?",
+                            "Removes the day's focus/break totals and its session timeline."
+                        ) {
+                            getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().apply {
+                                remove("${dateStr}_focus_total")
+                                remove("${dateStr}_break_total")
+                                remove("${dateStr}_focus_manual")
+                                remove("${dateStr}_break_manual")
+                            }.apply()
+                            TimelineLogger.deleteDay(this@MainActivity, dateStr)
+                            Toast.makeText(this@MainActivity, "Day deleted", Toast.LENGTH_SHORT).show()
+                            recalculateStreak()
+                            navigateToPanel(AppPanel.STATS)
+                        }
                         true
                     }
                 }
@@ -2604,7 +3041,7 @@ class MainActivity : AppCompatActivity() {
                     setTextColor(themeCoordinator.primaryColor)
                     textSize = 14f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    background = GradientDrawable().apply { cornerRadius = 16f; setColor(themeCoordinator.boxColor) }
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 16f)
                     setPadding(dp(16), dp(12), dp(16), dp(12))
                     gravity = Gravity.CENTER
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(16)) }
@@ -2652,6 +3089,56 @@ class MainActivity : AppCompatActivity() {
             layoutParams = FrameLayout.LayoutParams(dp(56), dp(56), Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(20), dp(20)) }
         }
         statsRoot.addView(backFab)
+    }
+
+    private fun showConfirmDialog(title: String, message: String, onConfirm: () -> Unit) {
+        val dialog = android.app.Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(28f)
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+        }
+        content.addView(TextView(this).apply {
+            text = title
+            setTextColor(themeCoordinator.textColor)
+            textSize = 17f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+        content.addView(TextView(this).apply {
+            text = message
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.75f
+            textSize = 13f
+            setPadding(0, dp(8), 0, 0)
+        })
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(18), 0, 0) }
+        }
+        buttonRow.addView(Button(this).apply {
+            text = "Cancel"
+            setTextColor(themeCoordinator.textColor)
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 50f)
+            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { setMargins(0, 0, dp(8), 0) }
+            setOnClickListener { dialog.dismiss() }
+        })
+        buttonRow.addView(Button(this).apply {
+            text = "Delete"
+            setTextColor(0xFFFFF7ED.toInt())
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = GradientDrawable().apply { cornerRadius = 50f; setColor(0xFFEF4444.toInt()) }
+            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
+            setOnClickListener { dialog.dismiss(); onConfirm() }
+        })
+        content.addView(buttonRow)
+        dialog.setContentView(content)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.85f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.show()
     }
 
     private fun createSectionLabel(title: String): TextView {
@@ -3037,7 +3524,7 @@ class MainActivity : AppCompatActivity() {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { cornerRadius = 28f; setColor(themeCoordinator.boxColor) }
+            background = themeCoordinator.createDialogBackground(28f)
             setPadding(dp(20), dp(20), dp(20), dp(18))
         }
         content.addView(TextView(this).apply {
@@ -3390,7 +3877,7 @@ class MainActivity : AppCompatActivity() {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { cornerRadius = 28f; setColor(themeCoordinator.boxColor) }
+            background = themeCoordinator.createDialogBackground(28f)
             setPadding(dp(20), dp(20), dp(20), dp(18))
         }
         content.addView(TextView(this).apply {
@@ -3448,7 +3935,7 @@ class MainActivity : AppCompatActivity() {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { cornerRadius = 28f; setColor(themeCoordinator.boxColor) }
+            background = themeCoordinator.createDialogBackground(28f)
             setPadding(dp(20), dp(20), dp(20), dp(18))
         }
         content.addView(TextView(this).apply {
@@ -3709,10 +4196,7 @@ class MainActivity : AppCompatActivity() {
             text = "\u25C0"
             setTextColor(themeCoordinator.textColor)
             textSize = 16f
-            background = GradientDrawable().apply {
-                cornerRadius = 50f
-                setColor(themeCoordinator.boxColor)
-            }
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 50f)
             setPadding(dp(14), dp(10), dp(14), dp(10))
         }
 
@@ -3720,10 +4204,7 @@ class MainActivity : AppCompatActivity() {
             text = "\u25B6"
             setTextColor(themeCoordinator.textColor)
             textSize = 16f
-            background = GradientDrawable().apply {
-                cornerRadius = 50f
-                setColor(themeCoordinator.boxColor)
-            }
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 50f)
             setPadding(dp(14), dp(10), dp(14), dp(10))
         }
 
@@ -3794,10 +4275,7 @@ class MainActivity : AppCompatActivity() {
         val closeBtn = Button(this).apply {
             text = "Close"
             setTextColor(themeCoordinator.textColor)
-            background = GradientDrawable().apply {
-                cornerRadius = 50f
-                setColor(themeCoordinator.boxColor)
-            }
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 50f)
             setOnClickListener { dialog.dismiss() }
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                 setMargins(0, 0, dp(8), 0)
@@ -3807,10 +4285,7 @@ class MainActivity : AppCompatActivity() {
         val saveBtn = Button(this).apply {
             text = "\uD83D\uDCBE Save"
             setTextColor(themeCoordinator.bgColor)
-            background = GradientDrawable().apply {
-                cornerRadius = 50f
-                setColor(themeCoordinator.primaryColor)
-            }
+            background = themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
             setOnClickListener {
                 val bmp = getSafeBitmap()
                 loadingOverlay.visibility = View.VISIBLE
@@ -4029,7 +4504,10 @@ class MainActivity : AppCompatActivity() {
         refreshSettingsPanelPreservingScroll()
     }
 
-    private fun buildSettingsPanel() {
+    private fun buildSettingsPanel(target: android.view.ViewGroup = panelContainer, captureScrollRef: Boolean = true) {
+        if (captureScrollRef) {
+            tabPageCache.keys.removeIf { it.startsWith("ST:") }
+        }
         val settingsRootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
@@ -4072,10 +4550,10 @@ class MainActivity : AppCompatActivity() {
                 setPadding(dp(20), dp(12), dp(20), dp(12))
                 typeface = Typeface.create("sans-serif-medium", if (currentSettingsTab == targetTab) Typeface.BOLD else Typeface.NORMAL)
                 setTextColor(if (currentSettingsTab == targetTab) themeCoordinator.bgColor else themeCoordinator.textColor)
-                background = GradientDrawable().apply {
-                    cornerRadius = 50f
-                    setColor(if (currentSettingsTab == targetTab) themeCoordinator.primaryColor else themeCoordinator.boxColor)
-                }
+                background = if (currentSettingsTab == targetTab)
+                    themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
+                else
+                    themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 80), 50f)
                 setOnClickListener {
                     currentSettingsTab = targetTab
                     navigateToPanel(AppPanel.SETTINGS)
@@ -4087,7 +4565,7 @@ class MainActivity : AppCompatActivity() {
         tabContainer.addView(createSettingsTabButton("Appearance", AppSettingsTab.THEME))
         settingsRootLayout.addView(tabContainer)
 
-        val existingScrollView = settingsScrollViewRef
+        val existingScrollView = if (captureScrollRef) settingsScrollViewRef else null
         val settingsScrollView: ScrollView
         if (existingScrollView != null) {
             (existingScrollView.parent as? android.view.ViewGroup)?.removeView(existingScrollView)
@@ -4098,7 +4576,7 @@ class MainActivity : AppCompatActivity() {
                 isFillViewport = true
             }
         }
-        settingsScrollViewRef = settingsScrollView
+        if (captureScrollRef) settingsScrollViewRef = settingsScrollView
         settingsScrollView.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         settingsScrollView.removeAllViews()
         val layout = LinearLayout(this).apply {
@@ -4612,6 +5090,39 @@ class MainActivity : AppCompatActivity() {
             modeCard.addView(oledRow)
             layout.addView(modeCard)
 
+            layout.addView(createSectionLabel("THEME STYLE"))
+
+            val styleCard = createSettingsCard()
+            val isGlass = themeCoordinator.isGlassStyle()
+
+            fun styleRadio(selected: Boolean): View {
+                return View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(26, 26)
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(if (selected) themeCoordinator.primaryColor else Color.TRANSPARENT)
+                        setStroke(3, if (selected) themeCoordinator.primaryColor else themeCoordinator.textColor)
+                    }
+                }
+            }
+
+            val glassRow = createSettingsRow("\u2728", "Glass", "Translucent cards, glow & gradients", styleRadio(isGlass))
+            glassRow.setOnClickListener {
+                sharedPrefs.edit().putString("ui_style", "GLASS").apply()
+                themeCoordinator.applyThemeCoordinates()
+                navigateToPanel(AppPanel.SETTINGS)
+            }
+            styleCard.addView(glassRow)
+            styleCard.addView(createDivider())
+            val classicRow = createSettingsRow("\u25A6", "Classic", "Solid flat panels, true black stays true", styleRadio(!isGlass))
+            classicRow.setOnClickListener {
+                sharedPrefs.edit().putString("ui_style", "CLASSIC").apply()
+                themeCoordinator.applyThemeCoordinates()
+                navigateToPanel(AppPanel.SETTINGS)
+            }
+            styleCard.addView(classicRow)
+            layout.addView(styleCard)
+
             layout.addView(createSectionLabel("ACCENT COLORS"))
 
             val randomAccentCard = createSettingsCard()
@@ -4877,7 +5388,7 @@ class MainActivity : AppCompatActivity() {
         }
         settingsRoot.addView(settingsBackFab)
 
-        panelContainer.addView(settingsRoot)
+        target.addView(settingsRoot)
     }
 
     private fun formatTime(totalSeconds: Long): String {
@@ -5153,7 +5664,7 @@ class MainActivity : AppCompatActivity() {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { cornerRadius = 28f; setColor(themeCoordinator.boxColor) }
+            background = themeCoordinator.createDialogBackground(28f)
             setPadding(dp(22), dp(22), dp(22), dp(18))
         }
         content.addView(TextView(this).apply {
