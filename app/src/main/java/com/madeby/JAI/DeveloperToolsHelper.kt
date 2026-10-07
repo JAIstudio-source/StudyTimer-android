@@ -1710,7 +1710,7 @@ object DeveloperToolsHelper {
         defaultSyncLeaderboard: Boolean = false
     ) {
         val sharedPrefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val timerState = sharedPrefs.getString("timerState", "IDLE") ?: "IDLE"
+        val timerState = sharedPrefs.safeString("timerState", "IDLE") ?: "IDLE"
         val isTimerActive = activity.currentTimerState != TimerState.IDLE ||
                 timerState != "IDLE" ||
                 activity.accumulatedStudy > 0L ||
