@@ -2068,13 +2068,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             } catch (_: Exception) { true }
 
             val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val currentTimerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
+            val currentTimerState = prefs.safeString("timerState", "IDLE") ?: "IDLE"
             val selectedSub = try { SubjectTagManager.getSelectedSubject(host).name } catch (_: Exception) { "General" }
             val dm = host.resources.displayMetrics
             val freeRamMb = Runtime.getRuntime().freeMemory() / (1024 * 1024)
             val maxRamMb = Runtime.getRuntime().maxMemory() / (1024 * 1024)
             val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            val todayFocusSecs = prefs.getLong("${todayStr}_focus_total", 0L)
+            val todayFocusSecs = prefs.safeLong("${todayStr}_focus_total", 0L)
 
             // Build Comprehensive Privacy-Safe Diagnostic Object
             val diagJson = org.json.JSONObject().apply {

@@ -371,14 +371,25 @@ object CloudSyncManager {
                     "customBg", "customPrimary", "customHue", "customSecondary", "customSecondaryHue",
                     "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute"
                 )
+                val stringPrefKeys = setOf(
+                    "timerState", "pre_pause_state", "prePauseState", "timer_mode", "timerMode", "selected_theme_key",
+                    "time_format_pref", "custom_display_name", "auth_user_name", "auth_profile_image_uri",
+                    "profile_bio", "profile_study_target_grade", "profile_field_of_study", "profile_avatar_url"
+                )
                 while (keys.hasNext()) {
                     val k = keys.next()
-                    if (k.endsWith("_focus_total") || k.endsWith("_break_total")) {
-                        val localVal = sharedPrefs.getLong(k, 0L)
+                    if (k == "timerState") {
+                        editor.putString(k, "IDLE")
+                    } else if (k == "pre_pause_state" || k == "prePauseState") {
+                        editor.putString("pre_pause_state", "STUDYING")
+                    } else if (k in listOf("accumulatedStudy", "currentBreakSeconds", "lastTimestamp", "focus_remaining_secs")) {
+                        // Keep current local in-flight session values, don't overwrite with old numbers
+                    } else if (k.endsWith("_focus_total") || k.endsWith("_break_total")) {
+                        val localVal = sharedPrefs.safeLong(k, 0L)
                         val cloudVal = cloudPrefs.optLong(k, 0L)
                         editor.putLong(k, maxOf(localVal, cloudVal))
                     } else if (k == "session_goals_json") {
-                        val localGoals = sharedPrefs.getString("session_goals_json", "[]") ?: "[]"
+                        val localGoals = sharedPrefs.safeString("session_goals_json", "[]") ?: "[]"
                         val cloudGoals = cloudPrefs.optString("session_goals_json", "[]")
                         if ((localGoals == "[]" || localGoals.isBlank()) && cloudGoals != "[]" && cloudGoals.isNotBlank()) {
                             editor.putString("session_goals_json", cloudGoals)
@@ -406,11 +417,11 @@ object CloudSyncManager {
                             } catch (_: Exception) {}
                         }
                     } else if (k.endsWith("_planner_snapshot")) {
-                        if (!sharedPrefs.contains(k) || sharedPrefs.getString(k, "[]") == "[]") {
+                        if (!sharedPrefs.contains(k) || sharedPrefs.safeString(k, "[]") == "[]") {
                             editor.putString(k, cloudPrefs.optString(k, "[]"))
                         }
                     } else if (k == "daily_goal_history_json") {
-                        val localHist = sharedPrefs.getString("daily_goal_history_json", "[]") ?: "[]"
+                        val localHist = sharedPrefs.safeString("daily_goal_history_json", "[]") ?: "[]"
                         val cloudHist = cloudPrefs.optString("daily_goal_history_json", "[]")
                         if (cloudHist.isNotBlank() && cloudHist != "[]") {
                             val merged = GoalHistoryManager.mergeCloudHistory(localHist, cloudHist)
@@ -420,7 +431,11 @@ object CloudSyncManager {
                         val v = cloudPrefs.get(k)
                         when (v) {
                             is Boolean -> editor.putBoolean(k, v)
-                            is Number -> if (k in intPrefKeys) editor.putInt(k, v.toInt()) else editor.putLong(k, v.toLong())
+                            is Number -> {
+                                if (k in intPrefKeys) editor.putInt(k, v.toInt())
+                                else if (k in stringPrefKeys) editor.putString(k, v.toString())
+                                else editor.putLong(k, v.toLong())
+                            }
                             is String -> editor.putString(k, v)
                             is JSONArray -> editor.putString(k, v.toString())
                             is JSONObject -> editor.putString(k, v.toString())
@@ -699,11 +714,17 @@ object CloudSyncManager {
                         "customBg", "customPrimary", "customHue", "customSecondary", "customSecondaryHue",
                         "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute"
                     )
+                    val stringPrefKeys = setOf(
+                        "timerState", "pre_pause_state", "prePauseState", "timer_mode", "timerMode", "selected_theme_key",
+                        "time_format_pref", "custom_display_name", "auth_user_name", "auth_profile_image_uri",
+                        "profile_bio", "profile_study_target_grade", "profile_field_of_study", "profile_avatar_url"
+                    )
                     while (keys.hasNext()) {
                         val k = keys.next()
                         when (k) {
                             "timerState" -> editor.putString(k, "IDLE")
-                            "accumulatedStudy", "currentBreakSeconds", "lastTimestamp", "focus_remaining_secs", "pre_pause_state" -> {
+                            "pre_pause_state", "prePauseState" -> editor.putString("pre_pause_state", "STUDYING")
+                            "accumulatedStudy", "currentBreakSeconds", "lastTimestamp", "focus_remaining_secs" -> {
                                 editor.putLong(k, 0L)
                             }
                             else -> {
@@ -713,6 +734,8 @@ object CloudSyncManager {
                                     is Number -> {
                                         if (k in intPrefKeys) {
                                             editor.putInt(k, v.toInt())
+                                        } else if (k in stringPrefKeys) {
+                                            editor.putString(k, v.toString())
                                         } else {
                                             editor.putLong(k, v.toLong())
                                         }
@@ -725,6 +748,7 @@ object CloudSyncManager {
                         }
                     }
                     editor.putString("timerState", "IDLE")
+                    editor.putString("pre_pause_state", "STUDYING")
                     editor.putLong("accumulatedStudy", 0L)
                     editor.putLong("currentBreakSeconds", 0L)
                     editor.putLong("lastTimestamp", 0L)

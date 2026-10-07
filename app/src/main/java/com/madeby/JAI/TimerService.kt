@@ -1163,12 +1163,12 @@ class TimerService : Service() {
 
     private fun loadSavedState() {
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        currentTimerState = runCatching { TimerState.valueOf(sharedPrefs.getString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
-        lastTimestamp = sharedPrefs.getLong("lastTimestamp", 0L)
-        accumulatedStudy = sharedPrefs.getLong("accumulatedStudy", 0L)
-        currentBreakSeconds = sharedPrefs.getLong("currentBreakSeconds", 0L)
-        activeSessionDateStr = sharedPrefs.getString("active_session_date_str", SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
-        timerMode = sharedPrefs.getString("timer_mode", "STOPWATCH") ?: "STOPWATCH"
+        currentTimerState = runCatching { TimerState.valueOf(sharedPrefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
+        lastTimestamp = sharedPrefs.safeLong("lastTimestamp", 0L)
+        accumulatedStudy = sharedPrefs.safeLong("accumulatedStudy", 0L)
+        currentBreakSeconds = sharedPrefs.safeLong("currentBreakSeconds", 0L)
+        activeSessionDateStr = sharedPrefs.safeString("active_session_date_str", SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
+        timerMode = sharedPrefs.safeString("timer_mode", sharedPrefs.safeString("timerMode", "STOPWATCH")) ?: "STOPWATCH"
 
         val nowSecs = System.currentTimeMillis() / 1000L
         val currentDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
@@ -1217,22 +1217,22 @@ class TimerService : Service() {
 
         val pomodoroConfiguredSecs = sharedPrefs.safeLong("study_interval_minutes", 25L) * 60L
         focusCountdownSecs = if (timerMode == "LECTURE") {
-            sharedPrefs.getLong("focus_countdown_secs", pomodoroConfiguredSecs)
+            sharedPrefs.safeLong("focus_countdown_secs", pomodoroConfiguredSecs)
         } else {
             pomodoroConfiguredSecs
         }
-        focusRemainingSecs = sharedPrefs.getLong("focus_remaining_secs", 0L)
-        breakCountdownSecs = sharedPrefs.getLong("break_countdown_secs", 300L)
-        breakRemainingSecs = sharedPrefs.getLong("break_remaining_secs", 0L)
-        lectureModeEnabled = sharedPrefs.getBoolean("lecture_mode_enabled", false)
-        lecturePromptTimestamp = sharedPrefs.getLong("lecture_prompt_timestamp", 0L)
-        val rawPrePause = sharedPrefs.getString("pre_pause_state", "STUDYING") ?: "STUDYING"
+        focusRemainingSecs = sharedPrefs.safeLong("focus_remaining_secs", 0L)
+        breakCountdownSecs = sharedPrefs.safeLong("break_countdown_secs", 300L)
+        breakRemainingSecs = sharedPrefs.safeLong("break_remaining_secs", 0L)
+        lectureModeEnabled = sharedPrefs.safeBoolean("lecture_mode_enabled", false)
+        lecturePromptTimestamp = sharedPrefs.safeLong("lecture_prompt_timestamp", 0L)
+        val rawPrePause = sharedPrefs.safeString("pre_pause_state", sharedPrefs.safeString("prePauseState", "STUDYING")) ?: "STUDYING"
         prePauseState = runCatching { TimerState.valueOf(rawPrePause) }.getOrDefault(TimerState.STUDYING)
         if (prePauseState != TimerState.STUDYING && prePauseState != TimerState.BREAK) {
             prePauseState = TimerState.STUDYING
         }
-        continuousStudySecs = sharedPrefs.getLong("continuous_study_secs", 0L)
-        isPendingActivityConfirmation = sharedPrefs.getBoolean("is_pending_activity_confirmation", false)
+        continuousStudySecs = sharedPrefs.safeLong("continuous_study_secs", 0L)
+        isPendingActivityConfirmation = sharedPrefs.safeBoolean("is_pending_activity_confirmation", false)
         activityConfirmationPromptTime = sharedPrefs.getLong("activity_confirmation_prompt_time", 0L)
 
         // Clean up any stale lecture state so the service always starts from a known-good state.

@@ -1594,9 +1594,9 @@ class MainActivity : AppCompatActivity() {
 
         tabDragSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
 
-        currentTimerState = TimerState.valueOf(sharedPrefs.getString("timerState", "IDLE") ?: "IDLE")
-        accumulatedStudy = sharedPrefs.getLong("accumulatedStudy", 0L)
-        currentBreakSeconds = sharedPrefs.getLong("currentBreakSeconds", 0L)
+        currentTimerState = runCatching { TimerState.valueOf(sharedPrefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
+        accumulatedStudy = sharedPrefs.safeLong("accumulatedStudy", 0L)
+        currentBreakSeconds = sharedPrefs.safeLong("currentBreakSeconds", 0L)
         selectedDaysFilter = sharedPrefs.safeInt("selected_days_filter", 7)
 
         // Self-heal corrupted 0-second PAUSED session to clean IDLE
@@ -2793,9 +2793,9 @@ class MainActivity : AppCompatActivity() {
     private fun setupTimerLoop() {
         updateRunnable = Runnable {
             val sharedPrefs = appPrefs
-            accumulatedStudy = sharedPrefs.getLong("accumulatedStudy", 0L)
-            currentBreakSeconds = sharedPrefs.getLong("currentBreakSeconds", 0L)
-            currentTimerState = TimerState.valueOf(sharedPrefs.getString("timerState", "IDLE") ?: "IDLE")
+            accumulatedStudy = sharedPrefs.safeLong("accumulatedStudy", 0L)
+            currentBreakSeconds = sharedPrefs.safeLong("currentBreakSeconds", 0L)
+            currentTimerState = runCatching { TimerState.valueOf(sharedPrefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
 
             // Self-heal corrupted 0-second PAUSED session to clean IDLE
             if (currentTimerState == TimerState.PAUSED && accumulatedStudy == 0L && currentBreakSeconds == 0L) {
@@ -2805,15 +2805,15 @@ class MainActivity : AppCompatActivity() {
                     .putLong("lastTimestamp", 0L)
                     .apply()
             }
-            timerMode = sharedPrefs.getString("timer_mode", "STOPWATCH") ?: "STOPWATCH"
+            timerMode = sharedPrefs.safeString("timer_mode", sharedPrefs.safeString("timerMode", "STOPWATCH")) ?: "STOPWATCH"
             val pomodoroConfiguredSecs = sharedPrefs.safeLong("study_interval_minutes", 25L) * 60L
             focusCountdownSecs = if (timerMode == "LECTURE") {
-                sharedPrefs.getLong("focus_countdown_secs", pomodoroConfiguredSecs)
+                sharedPrefs.safeLong("focus_countdown_secs", pomodoroConfiguredSecs)
             } else {
                 pomodoroConfiguredSecs
             }
-            focusRemainingSecs = sharedPrefs.getLong("focus_remaining_secs", 0L)
-            prePauseState = runCatching { TimerState.valueOf(sharedPrefs.getString("pre_pause_state", "STUDYING") ?: "STUDYING") }.getOrDefault(TimerState.STUDYING)
+            focusRemainingSecs = sharedPrefs.safeLong("focus_remaining_secs", 0L)
+            prePauseState = runCatching { TimerState.valueOf(sharedPrefs.safeString("pre_pause_state", sharedPrefs.safeString("prePauseState", "STUDYING")) ?: "STUDYING") }.getOrDefault(TimerState.STUDYING)
 
             updateKeepScreenOn()
 

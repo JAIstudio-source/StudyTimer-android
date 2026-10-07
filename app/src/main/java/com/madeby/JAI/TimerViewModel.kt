@@ -32,19 +32,19 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     private val preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
         when (key) {
             "accumulatedStudy" -> {
-                _uiState.value = _uiState.value.copy(accumulatedStudy = sharedPreferences.getLong(key, 0L))
+                _uiState.value = _uiState.value.copy(accumulatedStudy = sharedPreferences.safeLong(key, 0L))
                 StudyWidgetProvider.refresh(getApplication())
             }
-            "currentBreakSeconds" -> _uiState.value = _uiState.value.copy(currentBreakSeconds = sharedPreferences.getLong(key, 0L))
-            "timerMode", "timer_mode" -> _uiState.value = _uiState.value.copy(mode = sharedPreferences.getString("timer_mode", sharedPreferences.getString("timerMode", "STOPWATCH")) ?: "STOPWATCH")
-            "focusCountdownSecs", "focus_countdown_secs" -> _uiState.value = _uiState.value.copy(focusCountdownSecs = if (sharedPreferences.contains("focus_countdown_secs")) sharedPreferences.getLong("focus_countdown_secs", 1500L) else sharedPreferences.getLong("focusCountdownSecs", 1500L))
+            "currentBreakSeconds" -> _uiState.value = _uiState.value.copy(currentBreakSeconds = sharedPreferences.safeLong(key, 0L))
+            "timerMode", "timer_mode" -> _uiState.value = _uiState.value.copy(mode = sharedPreferences.safeString("timer_mode", sharedPreferences.safeString("timerMode", "STOPWATCH")) ?: "STOPWATCH")
+            "focusCountdownSecs", "focus_countdown_secs" -> _uiState.value = _uiState.value.copy(focusCountdownSecs = if (sharedPreferences.contains("focus_countdown_secs")) sharedPreferences.safeLong("focus_countdown_secs", 1500L) else sharedPreferences.safeLong("focusCountdownSecs", 1500L))
             "timerState" -> {
-                val stateStr = sharedPreferences.getString(key, "IDLE") ?: "IDLE"
+                val stateStr = sharedPreferences.safeString(key, "IDLE") ?: "IDLE"
                 _uiState.value = _uiState.value.copy(state = runCatching { TimerState.valueOf(stateStr) }.getOrDefault(TimerState.IDLE))
                 StudyWidgetProvider.refresh(getApplication())
             }
             "pre_pause_state", "prePauseState" -> {
-                val stateStr = sharedPreferences.getString("pre_pause_state", "STUDYING") ?: "STUDYING"
+                val stateStr = sharedPreferences.safeString("pre_pause_state", sharedPreferences.safeString("prePauseState", "STUDYING")) ?: "STUDYING"
                 val stateEnum = runCatching { TimerState.valueOf(stateStr) }.getOrDefault(TimerState.STUDYING)
                 _uiState.value = _uiState.value.copy(prePauseState = stateEnum)
             }
@@ -52,16 +52,16 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        // Load initial state from SharedPreferences
-        val initialStateStr = prefs.getString("timerState", "IDLE") ?: "IDLE"
-        val initialPrePauseStr = prefs.getString("pre_pause_state", "STUDYING") ?: "STUDYING"
+        // Load initial state from SharedPreferences safely
+        val initialStateStr = prefs.safeString("timerState", "IDLE") ?: "IDLE"
+        val initialPrePauseStr = prefs.safeString("pre_pause_state", prefs.safeString("prePauseState", "STUDYING")) ?: "STUDYING"
         _uiState.value = _uiState.value.copy(
             state = runCatching { TimerState.valueOf(initialStateStr) }.getOrDefault(TimerState.IDLE),
             prePauseState = runCatching { TimerState.valueOf(initialPrePauseStr) }.getOrDefault(TimerState.STUDYING),
-            accumulatedStudy = prefs.getLong("accumulatedStudy", 0L),
-            currentBreakSeconds = prefs.getLong("currentBreakSeconds", 0L),
-            mode = prefs.getString("timer_mode", prefs.getString("timerMode", "STOPWATCH")) ?: "STOPWATCH",
-            focusCountdownSecs = if (prefs.contains("focus_countdown_secs")) prefs.getLong("focus_countdown_secs", 1500L) else prefs.getLong("focusCountdownSecs", 1500L)
+            accumulatedStudy = prefs.safeLong("accumulatedStudy", 0L),
+            currentBreakSeconds = prefs.safeLong("currentBreakSeconds", 0L),
+            mode = prefs.safeString("timer_mode", prefs.safeString("timerMode", "STOPWATCH")) ?: "STOPWATCH",
+            focusCountdownSecs = if (prefs.contains("focus_countdown_secs")) prefs.safeLong("focus_countdown_secs", 1500L) else prefs.safeLong("focusCountdownSecs", 1500L)
         )
         prefs.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
     }

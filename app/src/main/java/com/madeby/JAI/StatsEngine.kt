@@ -75,7 +75,7 @@ class StatsEngine(private val context: Context) {
 
         val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         val isToday = dateStr == dateSdf.format(Date())
-        val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
+        val timerState = prefs.safeString("timerState", "IDLE") ?: "IDLE"
         val timerRunning = timerState == "STUDYING" || timerState == "BREAK"
 
         if (parsed.openFocusStart != null) {
@@ -170,7 +170,7 @@ class StatsEngine(private val context: Context) {
 
         if (parsed.openFocusStart != null || parsed.openBreakStart != null) {
             val isToday = dateStr == sdf.format(Date())
-            val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
+            val timerState = prefs.safeString("timerState", "IDLE") ?: "IDLE"
             val timerRunning = timerState == "STUDYING" || timerState == "BREAK"
             val endTs = if (isToday && timerRunning) {
                 System.currentTimeMillis()
@@ -205,8 +205,8 @@ class StatsEngine(private val context: Context) {
                 }
             }
         }
-        val focusManual = prefs.getLong("${dateStr}_focus_manual", 0L)
-        val breakManual = prefs.getLong("${dateStr}_break_manual", 0L)
+        val focusManual = prefs.safeLong("${dateStr}_focus_manual", 0L)
+        val breakManual = prefs.safeLong("${dateStr}_break_manual", 0L)
         val hasRawManualFocus = entries.any { it.state == "MANUAL_FOCUS" && it.timestamp in startMs until endMs }
         val hasRawManualBreak = entries.any { it.state == "MANUAL_BREAK" && it.timestamp in startMs until endMs }
 
@@ -247,7 +247,7 @@ class StatsEngine(private val context: Context) {
         var modified = false
 
         for (dateStr in allDates) {
-            val isTimerActive = prefs.getString("timerState", "IDLE") != "IDLE"
+            val isTimerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE"
             if (dateStr == todayStr && isTimerActive) continue
 
             val (sessions, breaks) = dayBlocks(dateStr, entries)
@@ -255,8 +255,8 @@ class StatsEngine(private val context: Context) {
             val trueBreakSum = breaks.filter { !it.running }.sumOf { it.secs }
             val key = "${dateStr}_focus_total"
             val breakKey = "${dateStr}_break_total"
-            val storedFocus = prefs.getLong(key, 0L)
-            val storedBreak = prefs.getLong(breakKey, 0L)
+            val storedFocus = prefs.safeLong(key, 0L)
+            val storedBreak = prefs.safeLong(breakKey, 0L)
 
             // Never destroy stored focus or break time if timeline was incomplete! Backfill missing timeline blocks.
             if (storedFocus > trueFocusSum) {
@@ -289,14 +289,14 @@ class StatsEngine(private val context: Context) {
     }
 
     fun reconcileDayTotals(dateStr: String) {
-        val timerActive = prefs.getString("timerState", "IDLE") != "IDLE"
+        val timerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE"
         if (timerActive && dateStr == SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())) return
         val (sessions, breaks) = dayBlocks(dateStr)
         val focusSum = sessions.filter { !it.running }.sumOf { it.secs }
         val breakSum = breaks.filter { !it.running }.sumOf { it.secs }
         val focusKey = "${dateStr}_focus_total"
         val breakKey = "${dateStr}_break_total"
-        if (prefs.getLong(focusKey, 0L) != focusSum || prefs.getLong(breakKey, 0L) != breakSum) {
+        if (prefs.safeLong(focusKey, 0L) != focusSum || prefs.safeLong(breakKey, 0L) != breakSum) {
             prefs.edit()
                 .putLong(focusKey, focusSum)
                 .putLong(breakKey, breakSum)
@@ -311,10 +311,10 @@ class StatsEngine(private val context: Context) {
         val breakSum = breaks.filter { !it.running }.sumOf { it.secs }
         val focusKey = "${dateStr}_focus_total"
         val breakKey = "${dateStr}_break_total"
-        val isTimerActive = prefs.getString("timerState", "IDLE") != "IDLE" || prefs.getLong("accumulatedStudy", 0L) > 0L
+        val isTimerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE" || prefs.safeLong("accumulatedStudy", 0L) > 0L
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val effectiveFocus = if (isTimerActive && dateStr == todayStr) maxOf(prefs.getLong(focusKey, 0L), focusSum) else focusSum
-        val effectiveBreak = if (isTimerActive && dateStr == todayStr) maxOf(prefs.getLong(breakKey, 0L), breakSum) else breakSum
+        val effectiveFocus = if (isTimerActive && dateStr == todayStr) maxOf(prefs.safeLong(focusKey, 0L), focusSum) else focusSum
+        val effectiveBreak = if (isTimerActive && dateStr == todayStr) maxOf(prefs.safeLong(breakKey, 0L), breakSum) else breakSum
 
         prefs.edit()
             .putLong(focusKey, effectiveFocus)

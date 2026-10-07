@@ -389,6 +389,11 @@ class BackupManager(private val context: Context) {
         "customBg", "customPrimary", "customHue", "customSecondary", "customSecondaryHue",
         "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute"
     )
+    private val stringPrefKeys = setOf(
+        "timerState", "pre_pause_state", "prePauseState", "timer_mode", "timerMode", "selected_theme_key",
+        "time_format_pref", "custom_display_name", "auth_user_name", "auth_profile_image_uri",
+        "profile_bio", "profile_study_target_grade", "profile_field_of_study", "profile_avatar_url"
+    )
 
     fun exportDataToCSV(uri: Uri): Boolean {
         try {
@@ -425,16 +430,19 @@ class BackupManager(private val context: Context) {
             val key = keys.next()
             when (key) {
                 "timerState" -> editor.putString(key, "IDLE")
+                "pre_pause_state", "prePauseState" -> editor.putString("pre_pause_state", "STUDYING")
                 "focus_timeline", "subject_tags_data", "__subject_tags_data__", "exam_countdowns_json", "__exam_countdowns_data__" -> {
                     // Restored via separate stores (TimelineLogger, SubjectTagManager, ExamCountdownManager), not StudyTimerPrefs.
                 }
-                "accumulatedStudy", "currentBreakSeconds", "lastTimestamp", "focus_remaining_secs", "pre_pause_state", "streak_last_calculated" -> {
+                "accumulatedStudy", "currentBreakSeconds", "lastTimestamp", "focus_remaining_secs", "streak_last_calculated" -> {
                     // Never resurrect an in-flight session from a backup; streak is recomputed on next stats open.
                 }
                 else -> when (val value = sourceJson.get(key)) {
                     is Number -> {
                         if (key in intPrefKeys) {
                             editor.putInt(key, value.toInt())
+                        } else if (key in stringPrefKeys) {
+                            editor.putString(key, value.toString())
                         } else {
                             editor.putLong(key, value.toLong())
                         }
@@ -446,6 +454,12 @@ class BackupManager(private val context: Context) {
                 }
             }
         }
+        editor.putString("timerState", "IDLE")
+        editor.putString("pre_pause_state", "STUDYING")
+        editor.putLong("accumulatedStudy", 0L)
+        editor.putLong("currentBreakSeconds", 0L)
+        editor.putLong("lastTimestamp", 0L)
+        editor.putLong("focus_remaining_secs", 0L)
     }
 
     enum class AppInstallState {
@@ -467,7 +481,7 @@ class BackupManager(private val context: Context) {
             1L
         }
 
-        val lastRunVersion = prefs.getLong("last_run_version_code", -1L)
+        val lastRunVersion = prefs.safeLong("last_run_version_code", -1L)
 
         val installState = when {
             lastRunVersion == -1L -> AppInstallState.FIRST_INSTALL
@@ -477,7 +491,7 @@ class BackupManager(private val context: Context) {
 
         if (installState == AppInstallState.APP_UPDATE) {
             // Perform non-destructive migration & reconciliation on update only when timer is IDLE
-            val isTimerActive = prefs.getString("timerState", "IDLE") != "IDLE" || prefs.getLong("accumulatedStudy", 0L) > 0L
+            val isTimerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE" || prefs.safeLong("accumulatedStudy", 0L) > 0L
             val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             if (!isTimerActive) {
                 TimelineLogger.reconcileSubjectDurationsFromTimeline(context, todayStr)

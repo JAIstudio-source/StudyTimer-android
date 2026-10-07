@@ -33,20 +33,20 @@ class StudyWidgetProvider : AppWidgetProvider() {
             val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val todayStr = sdf.format(Date())
-            val accumulated = prefs.getLong("accumulatedStudy", 0L)
-            val focusToday = prefs.getLong("${todayStr}_focus_total", 0L) + accumulated
+            val accumulated = prefs.safeLong("accumulatedStudy", 0L)
+            val focusToday = prefs.safeLong("${todayStr}_focus_total", 0L) + accumulated
             val streak = prefs.safeInt("current_streak", 0)
-            val state = TimerState.valueOf(prefs.getString("timerState", "IDLE") ?: "IDLE")
+            val state = runCatching { TimerState.valueOf(prefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
 
-            val oled = prefs.getString("activeBgMode", "OLED") == "OLED"
-            val light = prefs.getString("activeBgMode", "OLED") == "LIGHT"
+            val oled = prefs.safeString("activeBgMode", "OLED") == "OLED"
+            val light = prefs.safeString("activeBgMode", "OLED") == "LIGHT"
             val bgColor = when {
                 light -> 0xFFFFFFFF.toInt()
                 oled -> 0xFF121212.toInt()
                 else -> 0xFF1E293B.toInt()
             }
             val textColor = if (light) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
-            val primary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && prefs.getBoolean("dynamic_color", false)) {
+            val primary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && prefs.safeBoolean("dynamic_color", false)) {
                 context.getColor(android.R.color.system_accent1_500)
             } else {
                 prefs.safeInt("customPrimary", 0xFFA78BFA.toInt())
@@ -100,7 +100,7 @@ class StudyWidgetProvider : AppWidgetProvider() {
             if (refreshScheduled) return
             refreshScheduled = true
             val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val state = TimerState.valueOf(prefs.getString("timerState", "IDLE") ?: "IDLE")
+            val state = runCatching { TimerState.valueOf(prefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
             val delay = if (state != TimerState.IDLE) 30_000L else 5 * 60 * 1000L
             handler.postDelayed({
                 refreshScheduled = false
