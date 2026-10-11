@@ -4,6 +4,7 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
@@ -101,7 +102,7 @@ object ExamCountdownManager {
         colorHex: String? = null,
         notes: String? = null
     ): ExamCountdown {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val dateStr = sdf.format(Date(targetTimestampMs))
         val newExam = ExamCountdown(
             id = UUID.randomUUID().toString(),
@@ -137,13 +138,37 @@ object ExamCountdownManager {
      */
     fun getCountdownBreakdown(targetMs: Long): ExamCountdownBreakdown {
         val now = System.currentTimeMillis()
+        val targetCal = Calendar.getInstance().apply { timeInMillis = targetMs }
+        val nowCal = Calendar.getInstance().apply { timeInMillis = now }
+
+        val isSameCalendarDay = targetCal.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) &&
+                targetCal.get(Calendar.DAY_OF_YEAR) == nowCal.get(Calendar.DAY_OF_YEAR)
+
+        if (isSameCalendarDay) {
+            return ExamCountdownBreakdown(
+                isPast = false,
+                isToday = true,
+                daysAgo = 0L,
+                totalDays = 0,
+                totalWeeks = 0.0,
+                totalMonths = 0.0,
+                monthsPart = 0,
+                daysPart = 0,
+                hoursPart = 0,
+                minsPart = 0,
+                mainHeadline = "Exam is Today",
+                readableSubtitle = "Scheduled for today"
+            )
+        }
+
         val diffMs = targetMs - now
         if (diffMs <= 0) {
-            val daysAgo = -diffMs / (24L * 3600_000L)
-            val isToday = daysAgo == 0L
+            targetCal.set(Calendar.HOUR_OF_DAY, 0); targetCal.set(Calendar.MINUTE, 0); targetCal.set(Calendar.SECOND, 0); targetCal.set(Calendar.MILLISECOND, 0)
+            nowCal.set(Calendar.HOUR_OF_DAY, 0); nowCal.set(Calendar.MINUTE, 0); nowCal.set(Calendar.SECOND, 0); nowCal.set(Calendar.MILLISECOND, 0)
+            val daysAgo = maxOf(1L, (nowCal.timeInMillis - targetCal.timeInMillis) / (24L * 3600_000L))
             return ExamCountdownBreakdown(
-                isPast = !isToday,
-                isToday = isToday,
+                isPast = true,
+                isToday = false,
                 daysAgo = daysAgo,
                 totalDays = 0,
                 totalWeeks = 0.0,
@@ -152,8 +177,8 @@ object ExamCountdownManager {
                 daysPart = 0,
                 hoursPart = 0,
                 minsPart = 0,
-                mainHeadline = if (isToday) "Exam is Today" else "$daysAgo days ago",
-                readableSubtitle = if (isToday) "Scheduled for today" else "Exam date has passed"
+                mainHeadline = if (daysAgo == 1L) "1 day ago" else "$daysAgo days ago",
+                readableSubtitle = "Exam date has passed"
             )
         }
 

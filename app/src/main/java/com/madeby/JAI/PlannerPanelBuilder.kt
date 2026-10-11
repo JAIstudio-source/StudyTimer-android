@@ -730,7 +730,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             orientation = LinearLayout.VERTICAL
         }
 
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val dateKeys = historyDetailedMap.keys.mapNotNull { runCatching { sdf.parse(it) }.getOrNull() }
         val minCal = Calendar.getInstance()
         if (dateKeys.isNotEmpty()) {
@@ -960,7 +960,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
 
         val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-        val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
+        val yesterdayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
         val yesterdayDisplayStr = SimpleDateFormat("EEEE, dd MMMM", Locale.getDefault()).format(cal.time)
 
         val (plannerPrimary, _) = resolvePlannerColors()
@@ -1353,7 +1353,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             setPadding(0, dp(2), 0, dp(10))
         })
 
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val dateHeaderFmt = SimpleDateFormat("MMM dd", Locale.getDefault())
 
         // Collect all goals (both active and historically deleted)
@@ -2073,7 +2073,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             val dm = host.resources.displayMetrics
             val freeRamMb = Runtime.getRuntime().freeMemory() / (1024 * 1024)
             val maxRamMb = Runtime.getRuntime().maxMemory() / (1024 * 1024)
-            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             val todayFocusSecs = prefs.safeLong("${todayStr}_focus_total", 0L)
 
             // Build Comprehensive Privacy-Safe Diagnostic Object
@@ -3132,16 +3132,12 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val hasEnabled = items.any { it.enabled }
         prefs.edit()
             .putString("lecture_schedules_json", array.toString())
-            .putBoolean("lecture_mode_enabled", hasEnabled)
             .apply()
 
         if (hasEnabled) {
-            val serviceIntent = Intent(host, TimerService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                host.startForegroundService(serviceIntent)
-            } else {
-                host.startService(serviceIntent)
-            }
+            LectureScheduleScheduler.scheduleAll(host)
+        } else {
+            LectureScheduleScheduler.cancelAll(host)
         }
     }
 
@@ -3635,25 +3631,28 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     val endText = convertTo24h(endHEdit, endMEdit, endIsPm)
                     val selectedSubjectId = chosenSubId
 
-                    if (titleText.isNotBlank() && startText.isNotBlank() && endText.isNotBlank()) {
-                        val currentSchedules = loadLectureSchedulesFromJson(host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("lecture_schedules_json", "[]") ?: "[]").toMutableList()
-                        if (editItem != null) {
-                            val idx = currentSchedules.indexOfFirst { it.id == editItem.id }
-                            if (idx != -1) {
-                                currentSchedules[idx] = editItem.copy(title = titleText, startTime = startText, endTime = endText, subjectId = selectedSubjectId)
-                            }
-                        } else {
-                            currentSchedules.add(LectureScheduleItem(title = titleText, startTime = startText, endTime = endText, subjectId = selectedSubjectId))
-                        }
-                        saveLectureSchedulesToJson(currentSchedules)
-
-                        val serviceIntent = Intent(host, TimerService::class.java)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            host.startForegroundService(serviceIntent)
-                        } else {
-                            host.startService(serviceIntent)
-                        }
+                    if (titleText.isBlank() || startText.isBlank() || endText.isBlank()) {
+                        android.widget.Toast.makeText(host, "Please fill all fields", android.widget.Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
                     }
+                    val sM = parseTimeToMinutes(startText)
+                    val eM = parseTimeToMinutes(endText)
+                    if (sM == null || eM == null || eM <= sM) {
+                        android.widget.Toast.makeText(host, "End time must be after start time", android.widget.Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+
+                    val currentSchedules = loadLectureSchedulesFromJson(host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("lecture_schedules_json", "[]") ?: "[]").toMutableList()
+                    if (editItem != null) {
+                        val idx = currentSchedules.indexOfFirst { it.id == editItem.id }
+                        if (idx != -1) {
+                            currentSchedules[idx] = editItem.copy(title = titleText, startTime = startText, endTime = endText, subjectId = selectedSubjectId)
+                        }
+                    } else {
+                        currentSchedules.add(LectureScheduleItem(title = titleText, startTime = startText, endTime = endText, subjectId = selectedSubjectId))
+                    }
+                    saveLectureSchedulesToJson(currentSchedules)
+                    LectureScheduleScheduler.scheduleAll(host)
                     dialog.dismiss()
                     showLectureScheduleManagerDialog()
                 }

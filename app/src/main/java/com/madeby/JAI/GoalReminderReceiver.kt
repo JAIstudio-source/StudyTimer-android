@@ -19,13 +19,16 @@ class GoalReminderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED -> GoalReminderScheduler.schedule(context)
-            ACTION_DAILY_REMIND -> maybeShowReminder(context)
+            ACTION_DAILY_REMIND -> {
+                maybeShowReminder(context)
+                GoalReminderScheduler.schedule(context)
+            }
         }
     }
 
     private fun maybeShowReminder(context: Context) {
         val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val focus = prefs.getLong("${todayStr}_focus_total", 0L) + prefs.getLong("accumulatedStudy", 0L)
         val goal = prefs.getLong("${todayStr}_goal_secs", prefs.getLong("daily_goal_secs", 2700L))
         if (focus >= goal) return

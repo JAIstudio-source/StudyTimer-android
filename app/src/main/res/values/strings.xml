@@ -258,6 +258,8 @@
     <string name="notif_title_paused">Session paused</string>
     <string name="notif_content_countdown">Time left: %1$s | Break: %2$s</string>
     <string name="notif_content_stopwatch">Studying: %1$s | Break: %2$s</string>
+    <string name="notif_content_break_countdown">Break left: %1$s | Studied: %2$s</string>
+    <string name="notif_content_break_stopwatch">Break: %1$s | Studied: %2$s</string>
     <string name="notif_action_switch_to_break">Take a Break</string>
     <string name="notif_action_resume_focus">Resume Studying</string>
     <string name="notif_action_resume">Resume</string>

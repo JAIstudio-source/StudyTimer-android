@@ -78,7 +78,7 @@ class HeatmapView @JvmOverloads constructor(
         textSize = 9f * resources.displayMetrics.density
     }
     private val monthSdf = SimpleDateFormat("MMM", Locale.getDefault())
-    private val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
     private val weekdayLetters = arrayOf("M", "T", "W", "T", "F", "S", "S")
 
     fun setData(data: Map<String, Long>, primaryColor: Int, text: Int, goalFor: (String) -> Long) {

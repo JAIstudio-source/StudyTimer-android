@@ -33,8 +33,8 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
 
     fun reconcileDayTotals(dateStr: String) {
         val (sessions, breaks) = dayBlocks(dateStr)
-        val fSecs = sessions.sumOf { it.secs }
-        val bSecs = breaks.sumOf { it.secs }
+        val fSecs = sessions.filter { !it.running }.sumOf { it.secs }
+        val bSecs = breaks.filter { !it.running }.sumOf { it.secs }
         host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
             .putLong("${dateStr}_focus_total", fSecs)
             .putLong("${dateStr}_break_total", bSecs)
@@ -56,6 +56,9 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
             subColor = block.subjectColor
         )
         reconcileDayTotals(dateStr)
+        if (!isBreak) {
+            TimelineLogger.reconcileSubjectDurationsFromTimeline(host, dateStr)
+        }
         host.invalidateStatsCache()
         host.refreshStatsPanel()
         host.recalculateStreak()
@@ -91,10 +94,61 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
         val calStart = Calendar.getInstance().apply { timeInMillis = block.startMs }
         val calEnd = Calendar.getInstance().apply { timeInMillis = block.endMs }
 
+        val (allSessions, allBreaks) = dayBlocks(dateStr)
+        val otherBlocks = (allSessions + allBreaks).filterNot { it.startMs == block.startMs && it.endMs == block.endMs }
+
+        val conflictSubtitle = TextView(host).apply {
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(Color.parseColor("#EF4444"))
+            visibility = View.GONE
+            setPadding(0, 0, 0, dp(12))
+        }
+
+        val saveBtn = Button(host).apply {
+            text = "Save"
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(themeCoordinator.primaryColor)
+            }
+        }
+
+        fun hasConflict(): Boolean {
+            val s = calStart.timeInMillis
+            val e = calEnd.timeInMillis
+            if (e <= s) return false
+            return otherBlocks.any { other ->
+                max(s, other.startMs) < kotlin.math.min(e, other.endMs)
+            }
+        }
+
+        fun updateConflictState() {
+            val s = calStart.timeInMillis
+            val e = calEnd.timeInMillis
+            when {
+                e <= s -> {
+                    conflictSubtitle.text = "⚠️ End time must be after start time"
+                    conflictSubtitle.visibility = View.VISIBLE
+                    saveBtn.alpha = 0.5f
+                }
+                hasConflict() -> {
+                    conflictSubtitle.text = "⚠️ Changed time conflicts with existing time"
+                    conflictSubtitle.visibility = View.VISIBLE
+                    saveBtn.alpha = 0.5f
+                }
+                else -> {
+                    conflictSubtitle.visibility = View.GONE
+                    saveBtn.alpha = 1.0f
+                }
+            }
+        }
+
         val timeRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(14))
+            setPadding(0, 0, 0, dp(10))
         }
 
         val startBtn = TextView(host).apply {
@@ -110,6 +164,7 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
                     calStart.set(Calendar.HOUR_OF_DAY, h)
                     calStart.set(Calendar.MINUTE, m)
                     text = "Start: ${TimeFormat.formatWallClock(host, calStart.timeInMillis)}"
+                    updateConflictState()
                 }, calStart.get(Calendar.HOUR_OF_DAY), calStart.get(Calendar.MINUTE), false).show()
             }
         }
@@ -128,11 +183,13 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
                     calEnd.set(Calendar.HOUR_OF_DAY, h)
                     calEnd.set(Calendar.MINUTE, m)
                     text = "End: ${TimeFormat.formatWallClock(host, calEnd.timeInMillis)}"
+                    updateConflictState()
                 }, calEnd.get(Calendar.HOUR_OF_DAY), calEnd.get(Calendar.MINUTE), false).show()
             }
         }
         timeRow.addView(endBtn)
         content.addView(timeRow)
+        content.addView(conflictSubtitle)
 
         val btnRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -147,23 +204,20 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
         }
         btnRow.addView(cancelBtn)
 
-        val saveBtn = Button(host).apply {
-            text = "Save"
-            setTextColor(Color.WHITE)
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(themeCoordinator.primaryColor)
+        saveBtn.setOnClickListener {
+            if (calEnd.timeInMillis <= calStart.timeInMillis) {
+                updateConflictState()
+                Toast.makeText(host, "End time must be after start time", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
-            setOnClickListener {
-                if (calEnd.timeInMillis > calStart.timeInMillis) {
-                    applyBlockEdit(dateStr, block, isBreak, calStart.timeInMillis, calEnd.timeInMillis)
-                    dialog.dismiss()
-                    onApplied?.invoke()
-                } else {
-                    Toast.makeText(host, "End time must be after start time", Toast.LENGTH_SHORT).show()
-                }
+            if (hasConflict()) {
+                updateConflictState()
+                Toast.makeText(host, "Cannot save: changed time conflicts with existing time", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
             }
+            applyBlockEdit(dateStr, block, isBreak, calStart.timeInMillis, calEnd.timeInMillis)
+            dialog.dismiss()
+            onApplied?.invoke()
         }
         btnRow.addView(saveBtn)
         content.addView(btnRow)
@@ -176,7 +230,7 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
     }
 
     fun showDevTimelineEditor() {
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         showDayDialog(todayStr, "Today's Timeline")
     }
 
@@ -276,10 +330,11 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
             }
 
             if (dateStr != null && !b.running) {
-                row.setOnClickListener {
+                row.setOnLongClickListener {
                     showBlockEditDialog(dateStr, b, isBreak) {
                         // refresh handled by caller
                     }
+                    true
                 }
             }
 
@@ -348,8 +403,8 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
         val focusSecs = shared.getLong("${dateStr}_focus_total", 0L) + (if (dateStr == todayStr) host.accumulatedStudy else 0L)
         val breakSecs = shared.getLong("${dateStr}_break_total", 0L) + (if (dateStr == todayStr) host.currentBreakSeconds else 0L)
         val (allSessions, allBreaks) = dayBlocks(dateStr)
-        val sessions = allSessions.filter { it.secs >= 60L }
-        val breaks = allBreaks.filter { it.secs >= 60L }
+        val sessions = allSessions.filter { it.running || it.secs >= 60L }
+        val breaks = allBreaks.filter { it.running || it.secs >= 60L }
         val longest = sessions.maxOfOrNull { it.secs } ?: 0L
         val goal = host.resolveGoalFor(dateStr)
         val goalReached = goal > 0L && focusSecs >= goal
@@ -609,7 +664,7 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
         })
 
         val shared = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val daySdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val daySdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val dayLabelSdf = SimpleDateFormat("dd MMM", Locale.getDefault())
         val todayStr = daySdf.format(Date())
         val monthSdf = SimpleDateFormat("MMM yyyy", Locale.getDefault())

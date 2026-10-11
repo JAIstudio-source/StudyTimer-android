@@ -31,7 +31,7 @@ class StudyWidgetProvider : AppWidgetProvider() {
 
         private fun render(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
             val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val todayStr = sdf.format(Date())
             val accumulated = prefs.safeLong("accumulatedStudy", 0L)
             val focusToday = prefs.safeLong("${todayStr}_focus_total", 0L) + accumulated

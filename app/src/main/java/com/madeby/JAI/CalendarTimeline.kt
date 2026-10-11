@@ -247,7 +247,7 @@ class CalendarTimeline(private val host: MainActivity) {
                 val dateStr = dateKey(year, month, d)
                 val f = snap.dayFocus[dateStr] ?: 0L
                 if (f > 0L) monthFocus += f
-                if (f >= resolveGoalFor(dateStr)) goalDays++
+                if (f > 0L && f >= resolveGoalFor(dateStr)) goalDays++
             }
 
             val summaryRow = LinearLayout(this).apply {
@@ -704,7 +704,7 @@ class CalendarTimeline(private val host: MainActivity) {
                     }
 
                     val dateFmt = try {
-                        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(exam.targetDateStr)
+                        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(exam.targetDateStr)
                         SimpleDateFormat("EEEE, dd MMM yyyy", Locale.getDefault()).format(parsed ?: Date())
                     } catch (_: Exception) {
                         exam.targetDateStr
@@ -791,7 +791,7 @@ class CalendarTimeline(private val host: MainActivity) {
         root.addView(titleBar)
 
         val dateDisplay = try {
-            val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(exam.targetDateStr)
+            val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(exam.targetDateStr)
             SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(parsed ?: Date())
         } catch (_: Exception) {
             exam.targetDateStr
@@ -1112,7 +1112,7 @@ class CalendarTimeline(private val host: MainActivity) {
                 val colorHex = selectedSubject?.colorHex
 
                 if (existing != null) {
-                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                     val updated = existing.copy(
                         title = enteredTitle,
                         targetDateStr = sdf.format(Date(targetMs)),

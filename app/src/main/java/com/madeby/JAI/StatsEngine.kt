@@ -20,8 +20,8 @@ class StatsEngine(private val context: Context) {
         return GoalHistoryManager.resolveGoalForDate(context, dateStr, dailyGoalSecs())
     }
 
-    fun recalculateStreak(todayExtra: Long = 0L) {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    fun recalculateStreak(todayExtra: Long = prefs.getLong("accumulatedStudy", 0L)) {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
         val streakGoalBased = prefs.getBoolean("streak_uses_daily_goal", false)
 
@@ -48,7 +48,7 @@ class StatsEngine(private val context: Context) {
 
     fun dayBlocks(dateStr: String): Pair<List<BlockInfo>, List<BlockInfo>> {
         val entries = TimelineLogger.load(context)
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val parsedStart = runCatching { sdf.parse(dateStr)?.time }.getOrNull() ?: 0L
         val startCal = Calendar.getInstance().apply {
             timeInMillis = parsedStart
@@ -73,7 +73,7 @@ class StatsEngine(private val context: Context) {
             }
         }
 
-        val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val isToday = dateStr == dateSdf.format(Date())
         val timerState = prefs.safeString("timerState", "IDLE") ?: "IDLE"
         val timerRunning = timerState == "STUDYING" || timerState == "BREAK"
@@ -145,7 +145,7 @@ class StatsEngine(private val context: Context) {
 
     fun dayBlocks(dateStr: String, entries: List<TimelineEntry>): Pair<List<BlockInfo>, List<BlockInfo>> {
         val parsed = parseDayBlocks(entries)
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val parsedStart = runCatching { sdf.parse(dateStr)?.time }.getOrNull() ?: 0L
         val startCal = Calendar.getInstance().apply {
             timeInMillis = parsedStart
@@ -234,7 +234,7 @@ class StatsEngine(private val context: Context) {
     }
 
     fun sanitizeAndHealHistoricalTotals() {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
         val allKeys = prefs.all.keys.toList()
         val focusKeys = allKeys.filter { it.endsWith("_focus_total") }
@@ -290,7 +290,7 @@ class StatsEngine(private val context: Context) {
 
     fun reconcileDayTotals(dateStr: String) {
         val timerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE"
-        if (timerActive && dateStr == SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())) return
+        if (timerActive && dateStr == SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())) return
         val (sessions, breaks) = dayBlocks(dateStr)
         val focusSum = sessions.filter { !it.running }.sumOf { it.secs }
         val breakSum = breaks.filter { !it.running }.sumOf { it.secs }
@@ -312,7 +312,7 @@ class StatsEngine(private val context: Context) {
         val focusKey = "${dateStr}_focus_total"
         val breakKey = "${dateStr}_break_total"
         val isTimerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE" || prefs.safeLong("accumulatedStudy", 0L) > 0L
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val effectiveFocus = if (isTimerActive && dateStr == todayStr) maxOf(prefs.safeLong(focusKey, 0L), focusSum) else focusSum
         val effectiveBreak = if (isTimerActive && dateStr == todayStr) maxOf(prefs.safeLong(breakKey, 0L), breakSum) else breakSum
 
@@ -324,7 +324,7 @@ class StatsEngine(private val context: Context) {
     }
 
     fun computeStatsSnapshot(currentBreakSecs: Long = 0L): StatsSnapshot {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
         reconcileDayTotals(todayStr)
         val currentSessionSecs = prefs.getLong("accumulatedStudy", 0L)
@@ -374,26 +374,22 @@ class StatsEngine(private val context: Context) {
         val streakGoalBased = prefs.getBoolean("streak_uses_daily_goal", false)
 
         var longestStreak = StreakCalculator.longestStreak(
-            allFocusKeys.mapNotNull { key ->
-                val dStr = key.removeSuffix("_focus_total")
+            dayFocus.keys.mapNotNull { dStr ->
                 val parsed = runCatching { sdf.parse(dStr) }.getOrNull() ?: return@mapNotNull null
                 Pair(parsed, dayFocus[dStr] ?: 0L)
             },
             goalFor = if (streakGoalBased) ({ date -> resolveGoalFor(sdf.format(date)) }) else null
         )
 
-        val activeDays = allFocusKeys.count { k ->
-            val d = k.removeSuffix("_focus_total")
+        val activeDays = dayFocus.keys.count { d ->
             val f = dayFocus[d] ?: 0L
             val b = dayBreak[d] ?: 0L
-            if (f > 0L || b > 0L) true
-            else d == todayStr && (currentSessionSecs > 0L || currentBreakSecs > 0L)
+            f > 0L || b > 0L
         }
 
         val weekdayTotals = LongArray(7)
         val weekdayCounts = IntArray(7)
-        for (k in allFocusKeys) {
-            val dStr = k.removeSuffix("_focus_total")
+        for (dStr in dayFocus.keys) {
             if (dStr == todayStr) continue
             val parsed = try { sdf.parse(dStr) } catch (_: Exception) { null } ?: continue
             val f = dayFocus[dStr] ?: 0L
@@ -430,8 +426,7 @@ class StatsEngine(private val context: Context) {
         }
 
         val weekTotals = HashMap<String, Long>()
-        for (k in allFocusKeys) {
-            val dStr = k.removeSuffix("_focus_total")
+        for (dStr in dayFocus.keys) {
             val parsed = try { sdf.parse(dStr) } catch (_: Exception) { null } ?: continue
             val f = dayFocus[dStr] ?: 0L
             if (f <= 0L) continue
@@ -546,12 +541,17 @@ class StatsEngine(private val context: Context) {
                 s = segEnd
             }
         }
+        val timerState = prefs.safeString("timerState", "IDLE") ?: "IDLE"
+        val isTimerStudying = timerState == "STUDYING"
         for (i in 1 until timeline.size) {
             if (timeline[i - 1].state != "STUDYING" && timeline[i - 1].state != "MANUAL_FOCUS") continue
             addFocusInterval(timeline[i - 1].timestamp, timeline[i].timestamp)
         }
         timeline.lastOrNull()?.let { last ->
-            if (last.state == "STUDYING" || last.state == "MANUAL_FOCUS") addFocusInterval(last.timestamp, nowMs)
+            if ((last.state == "STUDYING" || last.state == "MANUAL_FOCUS") && isTimerStudying) {
+                val cappedNowMs = min(nowMs, last.timestamp + 14400_000L)
+                addFocusInterval(last.timestamp, cappedNowMs)
+            }
         }
         val manualFocusToday = prefs.getLong("${todayStr}_focus_manual", 0L)
         if (manualFocusToday != 0L) {
@@ -567,7 +567,7 @@ class StatsEngine(private val context: Context) {
     }
 
     fun buildHeatmapData(): Map<String, Long> {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
         val data = HashMap<String, Long>()
         for (k in prefs.all.keys) {
@@ -583,7 +583,7 @@ class StatsEngine(private val context: Context) {
     }
 
     fun msForDateAndTime(dateStr: String, h: Int, m: Int): Long {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val base = try { sdf.parse(dateStr) } catch (_: Exception) { null } ?: Date()
         val c = Calendar.getInstance().apply { time = base }
         c.set(Calendar.HOUR_OF_DAY, h)
@@ -681,13 +681,17 @@ internal fun parseDayBlocks(entries: List<TimelineEntry>): ParsedDay {
             "STUDYING", "MANUAL_FOCUS" -> {
                 if (fs != null) {
                     val gapMs = e.timestamp - fs
-                    val effectiveEndMs = if (gapMs > 14400_000L) fs + 14400_000L else e.timestamp
-                    addSplitBlock(sessions, fs, effectiveEndMs, manual = fsManual, subjectId = fsSubId, subjectName = fsSubName, subjectColor = fsSubColor)
+                    if (gapMs <= 24L * 3600_000L) {
+                        val effectiveEndMs = if (gapMs > 14400_000L) fs + 14400_000L else e.timestamp
+                        addSplitBlock(sessions, fs, effectiveEndMs, manual = fsManual, subjectId = fsSubId, subjectName = fsSubName, subjectColor = fsSubColor)
+                    }
                 }
                 if (bs != null) {
                     val gapMs = e.timestamp - bs
-                    val effectiveEndMs = if (gapMs > 14400_000L) bs + 14400_000L else e.timestamp
-                    addSplitBlock(breaks, bs, effectiveEndMs, manual = bsManual)
+                    if (gapMs <= 24L * 3600_000L) {
+                        val effectiveEndMs = if (gapMs > 14400_000L) bs + 14400_000L else e.timestamp
+                        addSplitBlock(breaks, bs, effectiveEndMs, manual = bsManual)
+                    }
                 }
                 bs = null
                 bsManual = false

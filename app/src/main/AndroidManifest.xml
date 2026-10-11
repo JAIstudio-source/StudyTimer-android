@@ -7,10 +7,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:name=".StudyTimerApp"
-        android:label="@string/app_name"
+        android:label="${appName}"
         android:supportsRtl="true"
         android:icon="@drawable/mylogo"
         android:theme="@style/AppTheme"
@@ -53,7 +54,7 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.madeby.JAI.fileprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
@@ -81,9 +82,18 @@
         </receiver>
 
         <receiver
+            android:name=".LectureScheduleReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="com.madeby.JAI.ACTION_LECTURE_START" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".StudyWidgetProvider"
             android:exported="true"
-            android:label="StudyTimer Widget">
+            android:label="${appName} Widget">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.madeby.JAI.WIDGET_TOGGLE" />

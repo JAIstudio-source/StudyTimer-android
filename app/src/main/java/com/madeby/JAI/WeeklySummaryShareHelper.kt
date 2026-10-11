@@ -54,7 +54,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
         dialog.window?.attributes?.windowAnimations = R.style.DialogScaleAnimation
 
         val sharedPrefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
         val currentSessionSecs = sharedPrefs.getLong("accumulatedStudy", 0L)
         val currentBreakSecs = sharedPrefs.getLong("currentBreakSeconds", 0L)
@@ -117,17 +117,32 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
             val dateRange = "${dateRangeFormat.format(startCal.time)} – ${dateRangeFormat.format(endCal.time)}".uppercase()
 
             // Streak as of the week's end (capped at today), counting back goal-qualifying days
-            var streakEnd = endCal.clone() as Calendar
-            val todayCal = Calendar.getInstance()
-            if (streakEnd.after(todayCal)) streakEnd = todayCal
-            var streak = 0
-            var streakCal = streakEnd.clone() as Calendar
-            while (streak < 365) {
-                val dStr = sdf.format(streakCal.time)
-                val dSecs = sharedPrefs.getLong("${dStr}_focus_total", 0L)
-                val streakThreshold = if (streakGoalBased) host.resolveGoalFor(dStr) else 2700L
-                if (dSecs >= streakThreshold) streak++ else break
-                streakCal.add(Calendar.DAY_OF_YEAR, -1)
+            val streak = if (weekOffset == 0) {
+                StreakCalculator.currentStreak(
+                    focusOn = { daysAgo ->
+                        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
+                        sharedPrefs.getLong("${sdf.format(cal.time)}_focus_total", 0L)
+                    },
+                    todayExtra = currentSessionSecs,
+                    goalFor = if (streakGoalBased) ({ daysAgo ->
+                        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
+                        host.resolveGoalFor(sdf.format(cal.time))
+                    }) else null
+                )
+            } else {
+                var streakEnd = endCal.clone() as Calendar
+                val todayCal = Calendar.getInstance()
+                if (streakEnd.after(todayCal)) streakEnd = todayCal
+                var s = 0
+                var streakCal = streakEnd.clone() as Calendar
+                while (s < 365) {
+                    val dStr = sdf.format(streakCal.time)
+                    val dSecs = sharedPrefs.getLong("${dStr}_focus_total", 0L)
+                    val streakThreshold = if (streakGoalBased) host.resolveGoalFor(dStr) else 2700L
+                    if (dSecs >= streakThreshold) s++ else break
+                    streakCal.add(Calendar.DAY_OF_YEAR, -1)
+                }
+                s
             }
 
             return WeekStats(totalSecs, bestSecs, bestName, bestDate, vsPrev, dateRange, breakSecs, streak, totalSecs > 0L || breakSecs > 0L, daySecs, dayGoals, dayLabels, sessionCount)
@@ -592,7 +607,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
         val weekdays = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
         val cal = Calendar.getInstance()
         val mondayOffset = WeekHelper.mondayOffset(cal)
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayDateStr = sdf.format(Date())
 
         val listContainer = LinearLayout(host).apply { orientation = LinearLayout.VERTICAL }
@@ -953,7 +968,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
         var totalDuration = 0L
         var longestSession = 0L
         val entries = TimelineLogger.load(host)
-        val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val allDates = entries.mapNotNull { if (it.timestamp > 0L) dateSdf.format(Date(it.timestamp)) else null }.distinct()
         for (dStr in allDates) {
             val (sessions, _) = host.dayBlocks(dStr)

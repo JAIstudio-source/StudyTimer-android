@@ -82,10 +82,9 @@ object PlannerHistoryManager {
             }
         }
 
-        // 3. Compute untagged focus pool:
-        // Untagged focus = total focus minus all time spent on specific subjects
-        val totalSubjectTaggedMins = dailySubjectDurations.filterKeys { !it.isNullOrBlank() && it != "all" }.values.sumOf { (it / 60).toInt() }
-        var untaggedPoolMins = (totalFocusMins - totalSubjectTaggedMins).coerceAtLeast(0)
+        // 3. Compute untagged / all-subjects focus pool:
+        // Untagged and "all" goals represent general study time across the day
+        var untaggedPoolMins = totalFocusMins
 
         val untaggedGoalsWithTarget = untaggedGoals.filter { it.targetMinutes > 0 }
         val lastUntaggedTargetGoalId = untaggedGoalsWithTarget.lastOrNull()?.id
@@ -93,7 +92,7 @@ object PlannerHistoryManager {
         for (g in untaggedGoals) {
             if (g.targetMinutes <= 0) {
                 val isAchieved = g.completed
-                result[g.id] = GoalProgress(g.id, actualMinutes = 0, targetMinutes = 0, isAchieved = isAchieved)
+                result[g.id] = GoalProgress(g.id, actualMinutes = totalFocusMins, targetMinutes = 0, isAchieved = isAchieved)
             } else {
                 val allocated: Int
                 if (g.id == lastUntaggedTargetGoalId) {
@@ -113,7 +112,7 @@ object PlannerHistoryManager {
     }
 
     fun snapshotToday(context: Context, goals: List<PlannerGoal>) {
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         snapshotForDate(context, todayStr, goals)
     }
 
@@ -161,7 +160,7 @@ object PlannerHistoryManager {
                 val obj = array.getJSONObject(i)
                 val completed = obj.optBoolean("completed", false)
                 val isAchieved = obj.optBoolean("isAchieved", completed)
-                val subId = if (obj.has("subjectId") && !obj.isNull("subjectId")) obj.optString("subjectId", null) else null
+                val subId = if (obj.has("subjectId") && !obj.isNull("subjectId")) obj.optString("subjectId") else null
                 list.add(
                     PlannerGoalSnapshot(
                         goalId = obj.optString("goalId", ""),
@@ -247,7 +246,7 @@ object PlannerHistoryManager {
             return GoalInsights(0, 0, 0, 0, 0f, "N/A")
         }
 
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val sortedDates = history.keys.mapNotNull {
             runCatching { sdf.parse(it) }.getOrNull()
         }.sorted()
@@ -347,7 +346,7 @@ object PlannerHistoryManager {
         }
 
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         for (key in prefs.all.keys) {
             if (key.endsWith(SNAPSHOT_KEY_SUFFIX)) {
                 val dStr = key.removeSuffix(SNAPSHOT_KEY_SUFFIX)

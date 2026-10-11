@@ -107,7 +107,7 @@ object GoalHistoryManager {
 
         // 4. Default fallback: use global goal for today or fallback
         val defaultGoal = if (fallbackGlobalGoal > 0L) fallbackGlobalGoal else 2700L
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         if (dateStr == todayStr) {
             prefs.edit().putLong("${todayStr}_goal_secs", defaultGoal).apply()
         }
@@ -120,7 +120,7 @@ object GoalHistoryManager {
     fun reconcileAllHistoricalGoals(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val globalGoal = prefs.getLong("daily_goal_secs", 2700L)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
         val history = loadHistory(context)
         if (history.isEmpty()) {

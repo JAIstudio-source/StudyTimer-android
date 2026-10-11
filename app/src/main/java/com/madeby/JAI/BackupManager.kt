@@ -398,7 +398,7 @@ class BackupManager(private val context: Context) {
     fun exportDataToCSV(uri: Uri): Boolean {
         try {
             val logs = TimelineLogger.load(context)
-            val sdfDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val sdfDate = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val sdfTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
             val sb = StringBuilder()
@@ -492,7 +492,7 @@ class BackupManager(private val context: Context) {
         if (installState == AppInstallState.APP_UPDATE) {
             // Perform non-destructive migration & reconciliation on update only when timer is IDLE
             val isTimerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE" || prefs.safeLong("accumulatedStudy", 0L) > 0L
-            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             if (!isTimerActive) {
                 TimelineLogger.reconcileSubjectDurationsFromTimeline(context, todayStr)
                 StatsEngine(context).reconcileDayTotals(todayStr)

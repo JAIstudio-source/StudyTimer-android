@@ -95,7 +95,11 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
     }
 
     fun showLectureEndDialog() {
+        if (host.isFinishing || host.isDestroyed) return
+        if (host.lectureEndDialog?.isShowing == true) return
+
         val (dialog, content) = DialogFactory.createBaseDialog(host, themeCoordinator)
+        host.lectureEndDialog = dialog
 
         content.addView(TextView(host).apply {
             text = "🎓 Class Session Finished!"
@@ -115,6 +119,8 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             setPadding(0, 0, 0, dp(18))
         })
 
+        var autoDismissTimer: android.os.CountDownTimer? = null
+
         val btnBreak = Button(host).apply {
             text = "☕ Take a 5m Break"
             textSize = 14f
@@ -128,6 +134,7 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
                 setMargins(0, 0, 0, dp(10))
             }
             setOnClickListener {
+                autoDismissTimer?.cancel()
                 dialog.dismiss()
                 host.handleStartBreak()
             }
@@ -144,6 +151,7 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
                 setMargins(0, 0, 0, dp(10))
             }
             setOnClickListener {
+                autoDismissTimer?.cancel()
                 dialog.dismiss()
                 host.handleExtendLecture(300L)
             }
@@ -151,17 +159,38 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
         content.addView(btnExtend)
 
         val btnStop = Button(host).apply {
-            text = "Finish Session"
+            text = "Finish Session (60s)"
             textSize = 13.5f
             setTextColor(themeCoordinator.textColor)
             alpha = 0.6f
             background = null
             setOnClickListener {
+                autoDismissTimer?.cancel()
                 dialog.dismiss()
                 host.handleStopSession()
             }
         }
         content.addView(btnStop)
+
+        autoDismissTimer = object : android.os.CountDownTimer(60000L, 1000L) {
+            override fun onTick(millisUntilFinished: Long) {
+                val secs = (millisUntilFinished / 1000L).coerceAtLeast(1L)
+                btnStop.text = "Finish Session (${secs}s)"
+            }
+            override fun onFinish() {
+                if (dialog.isShowing) {
+                    dialog.dismiss()
+                    host.handleStopSession()
+                }
+            }
+        }.start()
+
+        dialog.setOnDismissListener {
+            autoDismissTimer?.cancel()
+            if (host.lectureEndDialog === dialog) {
+                host.lectureEndDialog = null
+            }
+        }
 
         dialog.setContentView(content)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -171,7 +200,12 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
     }
 
     fun showScheduledLecturePromptDialog(item: LectureScheduleItem, remainingSecs: Long, skipKey: String) {
+        if (host.isFinishing || host.isDestroyed) return
+        if (host.scheduledLecturePromptDialog?.isShowing == true) return
+
         val (dialog, content) = DialogFactory.createBaseDialog(host, themeCoordinator)
+        host.scheduledLecturePromptDialog = dialog
+        host.ongoingLectureDialogShowing = true
 
         content.addView(TextView(host).apply {
             text = "📅 ${item.title}"
@@ -206,8 +240,18 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
                 dialog.dismiss()
                 host.focusCountdownSecs = remainingSecs
                 host.focusRemainingSecs = remainingSecs
-                host.timerMode = "COUNTDOWN"
-                host.handleStateToggle()
+                host.timerMode = "LECTURE"
+                val intent = Intent(host, TimerService::class.java).apply {
+                    action = TimerService.ACTION_START_LECTURE
+                    putExtra(TimerService.EXTRA_LECTURE_TITLE, item.title)
+                    putExtra(TimerService.EXTRA_LECTURE_SUBJECT_ID, item.subjectId)
+                    putExtra(TimerService.EXTRA_LECTURE_REMAINING_SECS, remainingSecs)
+                }
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    host.startForegroundService(intent)
+                } else {
+                    host.startService(intent)
+                }
             }
         }
         content.addView(startBtn)
@@ -226,6 +270,13 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             }
         }
         content.addView(dismissBtn)
+
+        dialog.setOnDismissListener {
+            host.ongoingLectureDialogShowing = false
+            if (host.scheduledLecturePromptDialog === dialog) {
+                host.scheduledLecturePromptDialog = null
+            }
+        }
 
         dialog.setContentView(content)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)

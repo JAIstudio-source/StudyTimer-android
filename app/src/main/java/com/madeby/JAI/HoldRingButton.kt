@@ -111,6 +111,7 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
         lineSegment(edgeW, right - r, bottom, left + r, bottom)
         cornerArc(left, bottom - 2f * r, left + 2f * r, bottom, 90f)
         lineSegment(edgeH, left, bottom - r, left, top + r)
+        cornerArc(left, top, left + 2f * r, top + 2f * r, 180f)
         canvas.drawPath(ringPath, paint)
     }
 

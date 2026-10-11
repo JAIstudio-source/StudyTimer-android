@@ -13,6 +13,7 @@ object NotificationHelper {
     const val CHANNEL_TIMER = "study_timer_channels"
     const val CHANNEL_COMPLETION = "study_timer_completion_v4"
     const val CHANNEL_GOAL_REMINDER = "goal_reminders_v4"
+    const val CHANNEL_LECTURE = "lecture_schedule_v1"
 
     // Backward-compatible alias channels in case cached intents or older components reference them
     private const val CHANNEL_TIMER_LEGACY = "study_timer_channel"
@@ -23,6 +24,7 @@ object NotificationHelper {
     const val NOTIFICATION_ID_COMPLETION = 1002
     const val NOTIFICATION_ID_GOAL_REMINDER = 1007
     const val NOTIFICATION_ID_INACTIVITY_CHECK = 1005
+    const val NOTIFICATION_ID_LECTURE = 1008
 
     /**
      * Initializes all app notification channels (Android O+).
@@ -91,6 +93,27 @@ object NotificationHelper {
                 }
                 nm.createNotificationChannel(goalChannel)
             }
+        }
+
+        // 4. Lecture Schedule Reminders Channel
+        if (nm.getNotificationChannel(CHANNEL_LECTURE) == null) {
+            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+            val audioAttributes = AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                .build()
+
+            val lectureChannel = NotificationChannel(
+                CHANNEL_LECTURE,
+                "Class Schedule Reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifications when scheduled classes begin"
+                enableVibration(true)
+                setSound(soundUri, audioAttributes)
+                setShowBadge(true)
+            }
+            nm.createNotificationChannel(lectureChannel)
         }
     }
 

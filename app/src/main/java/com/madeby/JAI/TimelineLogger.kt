@@ -160,7 +160,7 @@ object TimelineLogger {
         subColor: String? = null
     ): Pair<Long, Long> {
         if (durationSecs <= 0) return 0L to 0L
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
         val startCal = java.util.Calendar.getInstance().apply {
             time = parsed
@@ -234,7 +234,7 @@ object TimelineLogger {
         targetSubId: String? = null
     ) {
         if (deductSecs <= 0L) return
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
         val startCal = java.util.Calendar.getInstance().apply {
             time = parsed
@@ -329,7 +329,7 @@ object TimelineLogger {
      * to eliminate any drift or discrepancy.
      */
     fun reconcileSubjectDurationsFromTimeline(context: Context, dateStr: String) {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
         val startCal = java.util.Calendar.getInstance().apply {
             time = parsed
@@ -412,7 +412,7 @@ object TimelineLogger {
         subName: String? = null,
         subColor: String? = null
     ) {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
         val startCal = java.util.Calendar.getInstance().apply {
             time = parsed
@@ -458,7 +458,7 @@ object TimelineLogger {
 
     fun deleteDay(context: Context, dateStr: String) {
         synchronized(this) {
-            val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             persist(context, removeDayEntries(load(context), dateStr, fmt))
         }
     }
