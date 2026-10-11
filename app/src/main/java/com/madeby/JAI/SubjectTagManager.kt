@@ -393,7 +393,7 @@ object SubjectTagManager {
     private const val KEY_DAILY_SUBJECT_BREAK_DURATIONS = "daily_subject_break_durations_json"
 
     fun getTodayKey(): String {
-        return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     }
 
     fun adjustSubjectStudyTime(context: Context, subjectId: String, deltaSecs: Long, dateKey: String = getTodayKey()) {
@@ -426,6 +426,28 @@ object SubjectTagManager {
     fun recordSubjectStudyTime(context: Context, subjectId: String, durationSecs: Long, dateKey: String = getTodayKey()) {
         if (durationSecs == 0L) return
         adjustSubjectStudyTime(context, subjectId, durationSecs, dateKey)
+    }
+
+    fun finalizePomoGraceReallocation(context: Context, targetSubjectId: String) {
+        val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val isPending = prefs.getBoolean("pomo_grace_realloc_pending", false)
+        if (!isPending) return
+
+        val graceSecs = prefs.getLong("pomo_grace_seconds", 0L)
+
+        prefs.edit()
+            .putBoolean("pomo_grace_realloc_pending", false)
+            .putBoolean("pomo_prompt_subject_change", false)
+            .putLong("pomo_grace_seconds", 0L)
+            .putLong("pomo_prompt_start_time", 0L)
+            .remove("pomo_grace_orig_subject_id")
+            .apply()
+
+        if (graceSecs > 0L && targetSubjectId != "general") {
+            // Deduct the grace period seconds accumulated under "general" and allocate them to the target subject
+            adjustSubjectStudyTime(context, "general", -graceSecs)
+            adjustSubjectStudyTime(context, targetSubjectId, graceSecs)
+        }
     }
 
     fun recordSubjectBreakTime(context: Context, subjectId: String, durationSecs: Long, dateKey: String = getTodayKey()) {

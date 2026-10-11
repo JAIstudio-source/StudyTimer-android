@@ -36,11 +36,12 @@ android {
         minSdk = 28
         targetSdk = 34
         
-        versionCode = 41
-        versionName = "3.1.8"
+        versionCode = 42
+        versionName = "3.1.9"
 
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["appName"] = "StudyTimer"
 
         buildConfigField("String", "SUPABASE_URL", "\"${secret("SUPABASE_URL")}\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"${secret("SUPABASE_ANON_KEY")}\"")
@@ -60,7 +61,14 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            manifestPlaceholders["appName"] = "StudyTimer (Debug)"
+        }
+
         getByName("release") {
+            manifestPlaceholders["appName"] = "StudyTimer"
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

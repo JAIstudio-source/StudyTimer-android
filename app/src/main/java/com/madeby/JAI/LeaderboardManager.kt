@@ -125,6 +125,10 @@ object LeaderboardManager {
                     val subjectColor = obj.optString("subject_color", "#3b82f6")
                     val lastActiveAt = obj.optString("last_active_at", "")
 
+                    if (totalSecs <= 0 && !isStudying) {
+                        continue // Skip zero-second inactive records
+                    }
+
                     val dedupeKey = if (userId.isNotBlank()) userId.trim().lowercase() else userName.trim().lowercase()
                     if (!seenUsers.contains(dedupeKey)) {
                         seenUsers.add(dedupeKey)
@@ -338,6 +342,93 @@ object LeaderboardManager {
             .apply()
     }
 
+    suspend fun removeTodayLeaderboardEntry(context: Context): Boolean = withContext(Dispatchers.IO) {
+        if (!AuthManager.isLoggedIn(context)) return@withContext false
+        val supabaseUrl = BuildConfig.SUPABASE_URL
+        val anonKey = BuildConfig.SUPABASE_ANON_KEY
+        val userId = AuthManager.getUserId(context)
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+        if (supabaseUrl.isBlank() || anonKey.isBlank() || userId.isNullOrBlank()) {
+            return@withContext false
+        }
+
+        // Also ensure presence RPC clears live state immediately
+        try {
+            val presenceUrl = URL("$supabaseUrl/rest/v1/rpc/update_study_presence")
+            val pConn = presenceUrl.openConnection() as HttpURLConnection
+            pConn.requestMethod = "POST"
+            pConn.setRequestProperty("apikey", anonKey)
+            pConn.setRequestProperty("Authorization", "Bearer $anonKey")
+            pConn.setRequestProperty("Content-Type", "application/json")
+            pConn.connectTimeout = 5000
+            pConn.readTimeout = 5000
+            pConn.doOutput = true
+            val pBody = JSONObject().apply {
+                put("p_user_id", userId)
+                put("p_user_name", ProfileManager.getEffectiveDisplayName(context).trim().take(30))
+                put("p_avatar_url", ProfileManager.getPublicAvatarUrl(context).take(250))
+                put("p_is_studying", false)
+                put("p_current_subject", "")
+                put("p_subject_color", "#3b82f6")
+                put("p_study_date", todayStr)
+            }
+            pConn.outputStream.use { it.write(pBody.toString().toByteArray(Charsets.UTF_8)) }
+            pConn.responseCode
+        } catch (_: Exception) {}
+
+        try {
+            // Attempt 1: HTTP DELETE on daily_leaderboard for this user & today
+            val delUrl = URL("$supabaseUrl/rest/v1/daily_leaderboard?user_id=eq.$userId&study_date=eq.$todayStr")
+            val delConn = delUrl.openConnection() as HttpURLConnection
+            delConn.requestMethod = "DELETE"
+            delConn.setRequestProperty("apikey", anonKey)
+            delConn.setRequestProperty("Authorization", "Bearer $anonKey")
+            delConn.connectTimeout = 6000
+            delConn.readTimeout = 6000
+            val delCode = delConn.responseCode
+            if (delCode in 200..299) {
+                clearCache()
+                Log.i(TAG, "Removed today's leaderboard row for user $userId (HTTP $delCode)")
+                return@withContext true
+            }
+
+            // Attempt 2: Fallback PATCH to zero out total_seconds if DELETE is blocked by RLS
+            val patchUrl = URL("$supabaseUrl/rest/v1/daily_leaderboard?user_id=eq.$userId&study_date=eq.$todayStr")
+            val patchConn = patchUrl.openConnection() as HttpURLConnection
+            patchConn.requestMethod = "PATCH"
+            patchConn.setRequestProperty("apikey", anonKey)
+            patchConn.setRequestProperty("Authorization", "Bearer $anonKey")
+            patchConn.setRequestProperty("Content-Type", "application/json")
+            patchConn.connectTimeout = 6000
+            patchConn.readTimeout = 6000
+            patchConn.doOutput = true
+
+            val isoFmt = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            val nowIso = isoFmt.format(Date())
+            val patchBody = JSONObject().apply {
+                put("total_seconds", 0)
+                put("is_studying", false)
+                put("current_subject", "")
+                put("updated_at", nowIso)
+                put("last_active_at", nowIso)
+            }
+            patchConn.outputStream.use { it.write(patchBody.toString().toByteArray(Charsets.UTF_8)) }
+            val patchCode = patchConn.responseCode
+            if (patchCode in 200..299) {
+                clearCache()
+                Log.i(TAG, "Zeroed out today's leaderboard row for opted-out user $userId (HTTP $patchCode)")
+                return@withContext true
+            }
+            false
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to remove/zero leaderboard entry for user $userId", e)
+            false
+        }
+    }
+
     suspend fun updateStudyPresence(
         context: Context,
         isStudying: Boolean,
@@ -347,12 +438,17 @@ object LeaderboardManager {
         if (!AuthManager.isLoggedIn(context)) {
             return@withContext false // Gated: Guests do not publish presence
         }
+        if (!isParticipating(context)) {
+            return@withContext false // Gated: Leaderboard participation disabled
+        }
 
         val shareLive = isLiveStatusSharingEnabled(context)
-        val participating = isParticipating(context)
-        val effectiveIsStudying = if (shareLive && participating) isStudying else false
-        val effectiveSubject = if (shareLive && participating && effectiveIsStudying) subject else ""
-        val effectiveColor = if (shareLive && participating && effectiveIsStudying) color else "#3b82f6"
+        if (!shareLive && isStudying) {
+            return@withContext false // Gated: Live sharing disabled while studying
+        }
+        val effectiveIsStudying = if (shareLive) isStudying else false
+        val effectiveSubject = if (shareLive && effectiveIsStudying) subject else ""
+        val effectiveColor = if (shareLive && effectiveIsStudying) color else "#3b82f6"
 
         val supabaseUrl = BuildConfig.SUPABASE_URL
         val anonKey = BuildConfig.SUPABASE_ANON_KEY
@@ -409,7 +505,8 @@ object LeaderboardManager {
         incrementalSeconds: Int,
         isStudying: Boolean,
         subject: String = "",
-        color: String = "#3b82f6"
+        color: String = "#3b82f6",
+        studyDate: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         if (!AuthManager.isLoggedIn(context)) {
             return@withContext false
@@ -428,7 +525,7 @@ object LeaderboardManager {
         val userId = AuthManager.getUserId(context)
         val userName = ProfileManager.getEffectiveDisplayName(context).trim().take(30)
         val avatarUrl = ProfileManager.getPublicAvatarUrl(context).take(250)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val targetDateStr = studyDate ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
         if (supabaseUrl.isBlank() || anonKey.isBlank() || userId.isNullOrBlank()) {
             return@withContext false
@@ -455,7 +552,7 @@ object LeaderboardManager {
                 put("p_is_studying", effectiveIsStudying)
                 put("p_current_subject", effectiveSubject)
                 put("p_subject_color", effectiveColor)
-                put("p_study_date", todayStr)
+                put("p_study_date", targetDateStr)
             }
 
             conn.outputStream.use { os ->
@@ -468,7 +565,7 @@ object LeaderboardManager {
                 true
             } else if (code == 404 || code == 400) {
                 if (clampedSeconds > 0) {
-                    recordStudySession(context, clampedSeconds, effectiveSubject, effectiveColor)
+                    recordStudySession(context, clampedSeconds, effectiveSubject, effectiveColor, studyDate = targetDateStr)
                 }
                 updateStudyPresence(context, effectiveIsStudying, effectiveSubject, effectiveColor)
             } else {
@@ -485,7 +582,8 @@ object LeaderboardManager {
         context: Context,
         durationSeconds: Int,
         subject: String = "",
-        color: String = "#3b82f6"
+        color: String = "#3b82f6",
+        studyDate: String? = null
     ): Boolean = withContext(Dispatchers.IO) {
         if (!AuthManager.isLoggedIn(context) || durationSeconds <= 0) {
             return@withContext false // Gated: Only authenticated sessions are published
@@ -504,7 +602,7 @@ object LeaderboardManager {
         val userId = AuthManager.getUserId(context)
         val userName = ProfileManager.getEffectiveDisplayName(context).trim().take(30)
         val avatarUrl = ProfileManager.getPublicAvatarUrl(context).take(250)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val targetDateStr = studyDate ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
         if (supabaseUrl.isBlank() || anonKey.isBlank() || userId.isNullOrBlank()) {
             return@withContext false
@@ -528,7 +626,7 @@ object LeaderboardManager {
                 put("p_duration_seconds", clampedDuration)
                 put("p_subject", effectiveSubject)
                 put("p_subject_color", effectiveColor)
-                put("p_study_date", todayStr)
+                put("p_study_date", targetDateStr)
             }
 
             conn.outputStream.use { os ->
@@ -641,13 +739,22 @@ object LeaderboardManager {
     }
 
     fun isCurrentUser(entry: LeaderboardEntry, context: Context): Boolean {
-        val currentUserId = AuthManager.getUserId(context)
-        val currentEmail = AuthManager.getUserEmail(context)
-        val currentName = AuthManager.getUserName(context)
+        val currentUserId = AuthManager.getUserId(context)?.trim()
+        val currentEmail = AuthManager.getUserEmail(context)?.trim()
 
-        if (!currentUserId.isNullOrBlank() && entry.userId.equals(currentUserId, ignoreCase = true)) return true
-        if (!currentEmail.isNullOrBlank() && entry.userId.equals(currentEmail, ignoreCase = true)) return true
-        if (!currentName.isNullOrBlank() && entry.userName.equals(currentName, ignoreCase = true)) return true
+        if (!currentUserId.isNullOrBlank() && entry.userId.isNotBlank()) {
+            return entry.userId.trim().equals(currentUserId, ignoreCase = true)
+        }
+        if (!currentEmail.isNullOrBlank() && entry.userId.isNotBlank()) {
+            return entry.userId.trim().equals(currentEmail, ignoreCase = true)
+        }
+        // If entry has no user_id (legacy), fallback to comparing custom name (excluding default generic names)
+        if (entry.userId.isBlank()) {
+            val currentName = AuthManager.getUserName(context)?.trim()
+            if (!currentName.isNullOrBlank() && currentName != "Student" && currentName != "Guest") {
+                return entry.userName.trim().equals(currentName, ignoreCase = true)
+            }
+        }
         return false
     }
 
@@ -730,7 +837,9 @@ object LeaderboardManager {
         val realSessionSum = sessions.filter { !it.manual }.sumOf { it.secs }
 
         val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val runningStudy = prefs.getLong("accumulatedStudy", 0L)
+        val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
+        val isTimerStudying = timerState == "STUDYING" || timerState == "PAUSED"
+        val runningStudy = if (isTimerStudying) prefs.getLong("accumulatedStudy", 0L) else 0L
 
         // Sum developer-authorized bonus for all dates in range
         var devBonus = 0L
@@ -751,7 +860,7 @@ object LeaderboardManager {
      * Developer-authorized leaderboard additions (dev_leaderboard_bonus_secs) are included.
      */
     fun getRealTimerFocusSecondsForDate(context: Context, dateStr: String): Long {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
         val startCal = Calendar.getInstance().apply {
             time = parsed
@@ -772,7 +881,9 @@ object LeaderboardManager {
 
         val isToday = dateStr == sdf.format(Date())
         val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val runningStudy = if (isToday) prefs.getLong("accumulatedStudy", 0L) else 0L
+        val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
+        val isTimerStudying = timerState == "STUDYING" || timerState == "PAUSED"
+        val runningStudy = if (isToday && isTimerStudying) prefs.getLong("accumulatedStudy", 0L) else 0L
         val devBonus = prefs.getLong("dev_leaderboard_bonus_secs_$dateStr", 0L)
 
         return (realSessionSum + runningStudy + devBonus).coerceAtLeast(0L)

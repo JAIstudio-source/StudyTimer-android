@@ -28,13 +28,14 @@ class SubjectDialogHelper(private val host: MainActivity) {
     private fun dp(v: Int): Int = host.dp(v)
     private fun tintedColor(color: Int, alpha: Int): Int = host.tintedColor(color, alpha)
 
-    fun showSubjectPickerDialog() {
-        if (host.currentTimerState != TimerState.IDLE || host.accumulatedStudy > 0L || host.currentBreakSeconds > 0L) {
+    fun showSubjectPickerDialog(allowActiveSwitch: Boolean = false) {
+        val isBreak = host.currentTimerState == TimerState.BREAK
+        if (!allowActiveSwitch && !isBreak && host.currentTimerState != TimerState.IDLE) {
             DeveloperToolsHelper.showThemedConfirmDialog(
                 activity = host,
                 themeCoordinator = themeCoordinator,
                 title = "⏱️ Active Session Running",
-                message = "Subject cannot be changed during an active session.\n\nPlease finish or stop your active timer before switching subjects.",
+                message = "Subject cannot be changed during an active study session.\n\nYou can change subjects during breaks, between Pomodoro rounds, or when the timer is idle.",
                 confirmText = "OK",
                 isDestructive = false,
                 onCancel = {}
@@ -45,6 +46,15 @@ class SubjectDialogHelper(private val host: MainActivity) {
             val dialog = Dialog(host)
             dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+            var selectionMade = false
+            dialog.setOnDismissListener {
+                if (!selectionMade && host.appPrefs.getBoolean("pomo_grace_realloc_pending", false)) {
+                    val origSubId = host.appPrefs.getString("pomo_grace_orig_subject_id", null) ?: SubjectTagManager.getSelectedSubject(host).id
+                    SubjectTagManager.finalizePomoGraceReallocation(host, origSubId)
+                    host.invalidateStatsCache()
+                }
+            }
 
             val container = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
@@ -115,9 +125,20 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     }
                     layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
                     setOnClickListener {
+                        selectionMade = true
+                        val wasGracePending = host.appPrefs.getBoolean("pomo_grace_realloc_pending", false)
+                        if (wasGracePending) {
+                            SubjectTagManager.finalizePomoGraceReallocation(host, subj.id)
+                        }
                         SubjectTagManager.setSelectedSubject(host, subj.id)
+                        if (host.currentTimerState != TimerState.IDLE) {
+                            TimelineLogger.record(host, host.currentTimerState, subId = subj.id, subName = subj.name, subColor = subj.colorHex)
+                            StudyWidgetProvider.refresh(host)
+                            host.invalidateStatsCache()
+                        }
                         dialog.dismiss()
                         host.navigateToPanel(AppPanel.FOCUS)
+                        Toast.makeText(host, "Subject selected: ${subj.name}", Toast.LENGTH_SHORT).show()
                     }
                     setOnLongClickListener {
                         dialog.dismiss()
@@ -841,7 +862,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             } catch (_: Exception) {}
         }
         var currentDateKey = initialDateKey
-        val sdfKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdfKey = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val sdfDisplay = SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault())
         val todayKey = SubjectTagManager.getTodayKey()
 
@@ -952,11 +973,10 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             // Aggregate focus durations directly from unified session logs
             for (s in daySessions) {
-                if (s.subjectId != null || (!s.subjectName.isNullOrBlank() && s.subjectName != "Focus")) {
-                    val subj = SubjectTagManager.resolveSubject(host, s.subjectId, s.subjectName, s.subjectColor)
-                    val currentSecs = subjectMap[subj.id]?.second ?: 0L
-                    subjectMap[subj.id] = subj to (currentSecs + s.secs)
-                }
+                val effectiveSubId = s.subjectId ?: "general"
+                val subj = SubjectTagManager.resolveSubject(host, effectiveSubId, s.subjectName ?: "General", s.subjectColor)
+                val currentSecs = subjectMap[subj.id]?.second ?: 0L
+                subjectMap[subj.id] = subj to (currentSecs + s.secs)
             }
 
             // Fallback to legacy SubjectTagManager if daySessions is empty

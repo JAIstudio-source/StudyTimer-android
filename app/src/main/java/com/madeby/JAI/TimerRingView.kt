@@ -176,8 +176,7 @@ class TimerRingView(context: Context) : View(context) {
         canvas.drawCircle(cx, cy, radius, trackPaint)
 
         if (sweepDeg > 0.01f) {
-            val inset = strokePx / 2f + padPx
-            ringBounds.set(inset, inset, w - inset, h - inset)
+            ringBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
             applyArcShader(cx, cy)
             canvas.drawArc(ringBounds, -90f, sweepDeg, false, ringPaint)
 

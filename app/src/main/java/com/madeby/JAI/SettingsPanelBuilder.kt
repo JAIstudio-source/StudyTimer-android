@@ -1540,7 +1540,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 lectureRow.setOnClickListener {
                     if (checkTimerRunningBeforeModeChange()) return@setOnClickListener
                     val isConfigured = !sharedPrefs.getString("lecture_schedules_json", "").isNullOrEmpty() && sharedPrefs.getString("lecture_schedules_json", "[]") != "[]"
-                    sharedPrefs.edit().putString("timer_mode", "LECTURE").putBoolean("lecture_mode_enabled", true).apply()
+                    sharedPrefs.edit().putString("timer_mode", "LECTURE").putBoolean("lecture_mode_enabled", false).apply()
                     timerMode = "LECTURE"
                     if (isConfigured) {
                         navigateToPanel(AppPanel.FOCUS)
@@ -1878,7 +1878,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         setOnClickListener {
                             val current = sharedPrefs.getLong("daily_goal_secs", 2700L)
                             val next = max(900L, current + stepSecs)
-                            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                             sharedPrefs.edit()
                                 .putLong("daily_goal_secs", next)
                                 .putLong("${todayStr}_goal_secs", next)

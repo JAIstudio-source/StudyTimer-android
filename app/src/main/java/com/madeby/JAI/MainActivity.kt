@@ -106,12 +106,16 @@ class MainActivity : AppCompatActivity() {
     internal var accumulatedStudy: Long
         get() = timerViewModel.uiState.value.accumulatedStudy
         set(value) {
-            getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putLong("accumulatedStudy", value).apply()
+            if (timerViewModel.uiState.value.accumulatedStudy != value) {
+                getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putLong("accumulatedStudy", value).apply()
+            }
         }
     internal var currentBreakSeconds: Long
         get() = timerViewModel.uiState.value.currentBreakSeconds
         set(value) {
-            getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putLong("currentBreakSeconds", value).apply()
+            if (timerViewModel.uiState.value.currentBreakSeconds != value) {
+                getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putLong("currentBreakSeconds", value).apply()
+            }
         }
 
     internal fun resetRunningSessionAccumulators() {
@@ -364,7 +368,7 @@ class MainActivity : AppCompatActivity() {
     internal lateinit var themeCoordinator: ThemeCoordinator
     private lateinit var backupManager: BackupManager
     internal val statsEngine by lazy { StatsEngine(this) }
-    internal val dateKeyFmt by lazy { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
+    internal val dateKeyFmt by lazy { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
 
     private lateinit var rootLayout: FrameLayout
     internal lateinit var panelContainer: LinearLayout
@@ -1657,6 +1661,7 @@ class MainActivity : AppCompatActivity() {
             handleStateToggle()
         }
         if (intent?.getBooleanExtra(TimerService.EXTRA_SWITCH_TO_LECTURE, false) == true) {
+            intent?.removeExtra(TimerService.EXTRA_SWITCH_TO_LECTURE)
             showSwitchToLectureDialog()
         }
 
@@ -1679,7 +1684,7 @@ class MainActivity : AppCompatActivity() {
     private fun exportCsv(uri: Uri): Boolean {
         return try {
             val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
             val dayNameSdf = SimpleDateFormat("EEEE", Locale.getDefault())
             val todayStr = sdf.format(Date())
             val sb = StringBuilder()
@@ -1797,12 +1802,21 @@ class MainActivity : AppCompatActivity() {
             handleStateToggle()
         }
         if (intent?.getBooleanExtra(TimerService.EXTRA_SWITCH_TO_LECTURE, false) == true) {
+            intent?.removeExtra(TimerService.EXTRA_SWITCH_TO_LECTURE)
             showSwitchToLectureDialog()
+        }
+        if (intent?.getBooleanExtra("EXTRA_PROMPT_CHANGE_SUBJECT", false) == true) {
+            checkPomoSubjectPrompt()
         }
     }
 
     private fun showSwitchToLectureDialog() {
+        if (isFinishing || isDestroyed) return
+        if (switchLectureDialog?.isShowing == true) return
+
         val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        prefs.edit().remove("pending_switch_to_lecture").apply()
+
         val title = prefs.getString("pending_lecture_title", "") ?: ""
         val startTime = prefs.getString("pending_lecture_start", "") ?: ""
         val endTime = prefs.getString("pending_lecture_end", "") ?: ""
@@ -1810,10 +1824,16 @@ class MainActivity : AppCompatActivity() {
         val skipKey = prefs.getString("pending_lecture_skip_key", null)
         if (title.isEmpty() || remainingSecs <= 0L) return
 
+        if (lectureEndDialog?.isShowing == true) {
+            lectureEndDialog?.dismiss()
+            lectureEndDialog = null
+        }
+
         ongoingLectureDialogShowing = true
         val remainingStr = if (remainingSecs >= 3600) "${remainingSecs / 3600}h ${(remainingSecs % 3600) / 60}m" else "${(remainingSecs % 3600) / 60}m"
 
         val dialog = Dialog(this)
+        switchLectureDialog = dialog
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1850,6 +1870,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 // Mark skipped so service doesn't ask again for this lecture slot
                 if (skipKey != null) prefs.edit().putBoolean(skipKey, true).apply()
+                prefs.edit().remove("pending_switch_to_lecture").apply()
                 ongoingLectureDialogShowing = false
                 dialog.dismiss()
             }
@@ -1867,6 +1888,8 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
                 // Mark skipKey so service knows we handled this lecture
                 if (skipKey != null) prefs.edit().putBoolean(skipKey, true).apply()
+                prefs.edit().remove("pending_switch_to_lecture").apply()
+                val pendingSubId = prefs.getString("pending_lecture_subject_id", null)
                 val nowSecs = System.currentTimeMillis() / 1000
                 prefs.edit()
                     .putString("timer_mode", "LECTURE")
@@ -1880,13 +1903,21 @@ class MainActivity : AppCompatActivity() {
                     .putLong("accumulatedStudy", 0L)
                     .apply()
 
+                if (!pendingSubId.isNullOrEmpty()) {
+                    prefs.edit().putString("active_lecture_subject_id", pendingSubId).apply()
+                    SubjectTagManager.setSelectedSubject(this@MainActivity, pendingSubId)
+                }
+
                 currentTimerState = TimerState.STUDYING
                 timerMode = "LECTURE"
                 focusRemainingSecs = remainingSecs
                 focusCountdownSecs = remainingSecs
 
                 val intent = Intent(this@MainActivity, TimerService::class.java).apply {
-                    action = TimerService.ACTION_RELOAD_STATE
+                    action = TimerService.ACTION_START_LECTURE
+                    putExtra(TimerService.EXTRA_LECTURE_TITLE, title)
+                    putExtra(TimerService.EXTRA_LECTURE_SUBJECT_ID, pendingSubId ?: "")
+                    putExtra(TimerService.EXTRA_LECTURE_REMAINING_SECS, remainingSecs)
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     startForegroundService(intent)
@@ -1898,7 +1929,12 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(btnRow)
-        dialog.setOnDismissListener { ongoingLectureDialogShowing = false }
+        dialog.setOnDismissListener {
+            ongoingLectureDialogShowing = false
+            if (switchLectureDialog === dialog) {
+                switchLectureDialog = null
+            }
+        }
         dialog.setContentView(root)
         dialog.window?.apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
@@ -2793,8 +2829,14 @@ class MainActivity : AppCompatActivity() {
     private fun setupTimerLoop() {
         updateRunnable = Runnable {
             val sharedPrefs = appPrefs
-            accumulatedStudy = sharedPrefs.safeLong("accumulatedStudy", 0L)
-            currentBreakSeconds = sharedPrefs.safeLong("currentBreakSeconds", 0L)
+            val prefStudy = sharedPrefs.safeLong("accumulatedStudy", 0L)
+            val prefBreak = sharedPrefs.safeLong("currentBreakSeconds", 0L)
+            if (timerViewModel.uiState.value.accumulatedStudy != prefStudy) {
+                accumulatedStudy = prefStudy
+            }
+            if (timerViewModel.uiState.value.currentBreakSeconds != prefBreak) {
+                currentBreakSeconds = prefBreak
+            }
             currentTimerState = runCatching { TimerState.valueOf(sharedPrefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
 
             // Self-heal corrupted 0-second PAUSED session to clean IDLE
@@ -2849,6 +2891,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
 
+            if (appPrefs.getBoolean("pomo_prompt_subject_change", false)) {
+                checkPomoSubjectPrompt()
+            }
+
             val currentMinuteBucket = accumulatedStudy / 60L
             val isMinuteTick = currentMinuteBucket != lastStatsMinuteTick && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK)
             if (isMinuteTick) {
@@ -2862,6 +2908,7 @@ class MainActivity : AppCompatActivity() {
 
             // Check if TimerService stored a pending lecture-switch request
             if (!ongoingLectureDialogShowing
+                && switchLectureDialog?.isShowing != true
                 && sharedPrefs.getBoolean("pending_switch_to_lecture", false)
                 && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK)) {
                 sharedPrefs.edit().remove("pending_switch_to_lecture").apply()
@@ -2884,7 +2931,7 @@ class MainActivity : AppCompatActivity() {
                 val showCountdown = (timerMode == "COUNTDOWN" || isLectureModeActive) && isStudying
 
                 val nextStudyText = when {
-                    showCountdown -> formatCountdown(if (focusRemainingSecs > 0L) focusRemainingSecs else focusCountdownSecs)
+                    showCountdown -> formatCountdown(if (accumulatedStudy == 0L && focusRemainingSecs == 0L) focusCountdownSecs else focusRemainingSecs.coerceAtLeast(0L))
                     timerMode == "COUNTDOWN" && currentTimerState == TimerState.IDLE -> formatCountdown(pomodoroConfiguredSecs)
                     else -> formatTime(accumulatedStudy)
                 }
@@ -3110,16 +3157,6 @@ class MainActivity : AppCompatActivity() {
         return 3600L
     }
 
-    private fun parseTimeToMinutes(timeStr: String): Int? {
-        val parts = timeStr.trim().split(":")
-        if (parts.size == 2) {
-            val h = parts[0].toIntOrNull() ?: return null
-            val m = parts[1].toIntOrNull() ?: return null
-            return h * 60 + m
-        }
-        return null
-    }
-
 
     private fun updatePauseBlink() {
         val animationsOff = try {
@@ -3250,11 +3287,21 @@ class MainActivity : AppCompatActivity() {
     private fun updateTimerRing(showCountdown: Boolean) {
         if (!::timerRing.isInitialized || timerRing.visibility != View.VISIBLE) return
         timerRing.setTimerActive(currentTimerState == TimerState.STUDYING)
-        if (timerMode != "COUNTDOWN") return
         val isPomoWhite = isPomodoroPureWhiteActive()
         val base = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.textColor
         val track = if (isPomoWhite) 0xFFE2E8F0.toInt() else ((base and 0x00FFFFFF) or 0x1F000000)
+        val primaryRingColor = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.primaryColor
+        val breakRingColor = if (isPomoWhite) 0xFF475569.toInt() else themeCoordinator.secondaryColor
+
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
+        val isLectureCountdown = timerMode == "LECTURE" && sharedPrefs.getBoolean("lecture_mode_enabled", false)
+        val shouldShowCountdownRing = (timerMode == "COUNTDOWN" || isLectureCountdown)
+
+        if (!shouldShowCountdownRing || currentTimerState == TimerState.IDLE) {
+            timerRing.setProgress(0f, primaryRingColor, track)
+            return
+        }
+
         val breakCountdownSecs = sharedPrefs.getLong("break_countdown_secs", 300L)
         val breakRemainingSecs = sharedPrefs.getLong("break_remaining_secs", 0L)
 
@@ -3263,12 +3310,9 @@ class MainActivity : AppCompatActivity() {
         val breaking = currentTimerState == TimerState.BREAK ||
             (currentTimerState == TimerState.PAUSED && prePauseState == TimerState.BREAK)
 
-        val primaryRingColor = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.primaryColor
-        val breakRingColor = if (isPomoWhite) 0xFF475569.toInt() else themeCoordinator.secondaryColor
-
         when {
             studying && showCountdown && focusCountdownSecs > 0 -> {
-                timerRing.setProgress(focusRemainingSecs.toFloat() / focusCountdownSecs, primaryRingColor, track)
+                timerRing.setProgress((focusRemainingSecs.toFloat() / focusCountdownSecs).coerceIn(0f, 1f), primaryRingColor, track)
             }
             breaking && timerMode == "COUNTDOWN" && breakCountdownSecs > 0L -> {
                 timerRing.setProgress((breakRemainingSecs.toFloat() / breakCountdownSecs).coerceIn(0f, 1f), breakRingColor, track)
@@ -3321,6 +3365,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun handleStopSession(silent: Boolean = false) {
+        lectureEndDialog?.dismiss()
+        lectureEndDialog = null
         val savedStudy = accumulatedStudy
         val intent = Intent(this, TimerService::class.java).apply {
             action = if (silent) TimerService.ACTION_STOP_SILENT else TimerService.ACTION_STOP
@@ -3333,16 +3379,19 @@ class MainActivity : AppCompatActivity() {
         accumulatedStudy = 0L
         currentBreakSeconds = 0L
         focusRemainingSecs = 0L
+        focusCountdownSecs = 0L
 
         getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE).edit()
             .putString("timerState", TimerState.IDLE.name)
             .putLong("accumulatedStudy", 0L)
             .putLong("currentBreakSeconds", 0L)
             .putLong("focus_remaining_secs", 0L)
+            .putLong("focus_countdown_secs", 0L)
             .putLong("break_countdown_secs", 0L)
             .putLong("break_remaining_secs", 0L)
             .putLong("lastTimestamp", 0L)
             .putBoolean("lecture_mode_enabled", false)
+            .remove("active_lecture_subject_id")
             .putString("pre_pause_state", TimerState.STUDYING.name)
             .apply()
 
@@ -3369,6 +3418,14 @@ class MainActivity : AppCompatActivity() {
             breakTimerDisplay.text = getString(R.string.break_prefix, "00:00:00")
             breakTimerDisplay.visibility = View.GONE
         }
+        if (::timerRing.isInitialized) {
+            val isPomoWhite = isPomodoroPureWhiteActive()
+            val base = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.textColor
+            val track = if (isPomoWhite) 0xFFE2E8F0.toInt() else ((base and 0x00FFFFFF) or 0x1F000000)
+            val primaryRingColor = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.primaryColor
+            timerRing.setTimerActive(false)
+            timerRing.setProgress(0f, primaryRingColor, track)
+        }
         StudyWidgetProvider.refresh(this)
         checkCelebration()
     }
@@ -3386,7 +3443,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var lectureEndDialog: Dialog? = null
+    internal var lectureEndDialog: Dialog? = null
 
     internal fun checkAndShowLecturePrompt() {
         if (isFinishing || isDestroyed) return
@@ -3404,6 +3461,8 @@ class MainActivity : AppCompatActivity() {
     internal fun showLectureEndDialog() = BreakAndLectureDialogHelper(this).showLectureEndDialog()
 
     internal fun handleStartBreak() {
+        lectureEndDialog?.dismiss()
+        lectureEndDialog = null
         statsDirty = true
         val now = System.currentTimeMillis() / 1000
         currentTimerState = TimerState.BREAK
@@ -3424,21 +3483,27 @@ class MainActivity : AppCompatActivity() {
             startService(intent)
         }
         playToggleFeedback()
-        if (::studyTimerDisplay.isInitialized) {
-            studyTimerDisplay.text = "00:00:00"
-        }
         StudyWidgetProvider.refresh(this)
     }
 
 
     internal fun handleExtendLecture(secs: Long = 300L) {
+        lectureEndDialog?.dismiss()
+        lectureEndDialog = null
         statsDirty = true
         val now = System.currentTimeMillis() / 1000
         currentTimerState = TimerState.STUDYING
+        timerMode = "LECTURE"
+        focusCountdownSecs = secs
         focusRemainingSecs = secs
         getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
+            .putString("timer_mode", "LECTURE")
+            .putBoolean("lecture_mode_enabled", true)
             .putString("timerState", "STUDYING")
+            .putLong("focus_countdown_secs", secs)
+            .putLong("focusCountdownSecs", secs)
             .putLong("focus_remaining_secs", secs)
+            .putLong("focusRemainingSecs", secs)
             .putLong("lastTimestamp", now - 1L)
             .putLong("lecture_prompt_timestamp", 0L)
             .apply()
@@ -3799,7 +3864,9 @@ class MainActivity : AppCompatActivity() {
         }
         applyImmersiveModeForLandscape()
         StudyWidgetProvider.refresh(this)
+        LectureScheduleScheduler.scheduleAll(this)
         checkOngoingScheduledLecturePrompt()
+        checkPomoSubjectPrompt()
         checkCelebration()
         triggerAutoSyncIfEligible()
         val oldProfile = ProfileManager.getProfile(this)
@@ -3844,7 +3911,7 @@ class MainActivity : AppCompatActivity() {
 
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val storedTodayFocus = sharedPrefs.getLong("${todayStr}_focus_total", 0L)
-        val runningSessionSecs = if (currentTimerState == TimerState.STUDYING) accumulatedStudy else 0L
+        val runningSessionSecs = if (currentTimerState != TimerState.IDLE) accumulatedStudy else 0L
         val totalTodayFocus = storedTodayFocus + runningSessionSecs
 
         if (totalTodayFocus >= dailyGoal) {
@@ -3859,7 +3926,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private var ongoingLectureDialogShowing = false
+    internal var ongoingLectureDialogShowing = false
+    internal var switchLectureDialog: Dialog? = null
+    internal var scheduledLecturePromptDialog: Dialog? = null
 
     private fun checkOngoingScheduledLecturePrompt() {
         if (ongoingLectureDialogShowing || currentTimerState != TimerState.IDLE) return
@@ -3872,7 +3941,7 @@ class MainActivity : AppCompatActivity() {
         val cal = Calendar.getInstance()
         val currentMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
         val currentSecsInMin = cal.get(Calendar.SECOND)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(cal.time)
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
 
         for (item in items) {
             val startMins = parseTimeToMinutes(item.startTime) ?: continue
@@ -4215,8 +4284,131 @@ class MainActivity : AppCompatActivity() {
         updateStatusBarIcons()
     }
 
-    fun showSubjectPickerDialog() {
-        SubjectDialogHelper(this).showSubjectPickerDialog()
+    fun showSubjectPickerDialog(allowActiveSwitch: Boolean = false) {
+        SubjectDialogHelper(this).showSubjectPickerDialog(allowActiveSwitch)
+    }
+
+    private var pomoSubjectPromptShowing = false
+
+    internal fun checkPomoSubjectPrompt() {
+        if (isFinishing || isDestroyed || pomoSubjectPromptShowing) return
+        val prefs = appPrefs
+        val hasFlag = prefs.getBoolean("pomo_prompt_subject_change", false)
+        val hasIntentExtra = intent?.getBooleanExtra("EXTRA_PROMPT_CHANGE_SUBJECT", false) == true
+        if (!hasFlag && !hasIntentExtra) return
+
+        prefs.edit().putBoolean("pomo_prompt_subject_change", false).apply()
+        intent?.removeExtra("EXTRA_PROMPT_CHANGE_SUBJECT")
+
+        val origSubId = prefs.getString("pomo_grace_orig_subject_id", null) ?: SubjectTagManager.getSelectedSubject(this).id
+        val curSub = SubjectTagManager.resolveSubject(this, origSubId)
+        val pomoCount = prefs.safeInt("pomo_completed_count", 0) + 1
+
+        val startTime = prefs.getLong("pomo_prompt_start_time", System.currentTimeMillis() / 1000)
+        val now = System.currentTimeMillis() / 1000
+        val elapsed = (now - startTime).coerceAtLeast(0L)
+        val totalTimeout = 60L
+        val remainingSecs = (totalTimeout - elapsed).coerceAtLeast(0L)
+
+        // If prompt already expired, finalize to origSubId and do not show
+        if (remainingSecs <= 0L) {
+            SubjectTagManager.finalizePomoGraceReallocation(this, origSubId)
+            invalidateStatsCache()
+            return
+        }
+
+        pomoSubjectPromptShowing = true
+        val dialog = Dialog(this)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        var dismissedByAction = false
+        var countDownTimer: android.os.CountDownTimer? = null
+
+        dialog.setOnDismissListener {
+            countDownTimer?.cancel()
+            pomoSubjectPromptShowing = false
+            if (!dismissedByAction) {
+                if (prefs.getBoolean("pomo_grace_realloc_pending", false)) {
+                    SubjectTagManager.finalizePomoGraceReallocation(this, origSubId)
+                    invalidateStatsCache()
+                }
+            }
+        }
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(20), dp(22), dp(20))
+            background = themeCoordinator.createDialogBackground(28f)
+        }
+
+        root.addView(TextView(this).apply {
+            text = "🍅 Break Finished"
+            setTextColor(themeCoordinator.primaryColor)
+            textSize = 18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+
+        root.addView(TextView(this).apply {
+            text = "Next Pomodoro session (#$pomoCount) has started.\n\nCurrent subject: ${curSub.iconEmoji} ${curSub.name}\n\nWould you like to keep this subject or switch to another?"
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.85f
+            textSize = 13.5f
+            setPadding(0, dp(10), 0, dp(18))
+        })
+
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+
+        val keepBtn = Button(this).apply {
+            text = "Keep (${curSub.name}) (${remainingSecs}s)"
+            setTextColor(themeCoordinator.textColor)
+            background = null
+            setOnClickListener {
+                dismissedByAction = true
+                dialog.dismiss()
+                SubjectTagManager.finalizePomoGraceReallocation(this@MainActivity, origSubId)
+                invalidateStatsCache()
+            }
+        }
+        btnRow.addView(keepBtn)
+
+        val switchBtn = Button(this).apply {
+            text = "Change Subject"
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(themeCoordinator.primaryColor)
+            }
+            setOnClickListener {
+                dismissedByAction = true
+                dialog.dismiss()
+                showSubjectPickerDialog(allowActiveSwitch = true)
+            }
+        }
+        btnRow.addView(switchBtn)
+        root.addView(btnRow)
+
+        dialog.setContentView(root)
+        dialog.show()
+        val width = (resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380))
+        dialog.window?.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        countDownTimer = object : android.os.CountDownTimer(remainingSecs * 1000L, 1000L) {
+            override fun onTick(millisUntilFinished: Long) {
+                val secLeft = (millisUntilFinished / 1000L).coerceAtLeast(1L)
+                keepBtn.text = "Keep (${curSub.name}) (${secLeft}s)"
+            }
+
+            override fun onFinish() {
+                if (dialog.isShowing) {
+                    dialog.dismiss()
+                }
+            }
+        }.start()
     }
 
     internal fun showDeleteSubjectConfirmDialog(subj: SubjectTag) {

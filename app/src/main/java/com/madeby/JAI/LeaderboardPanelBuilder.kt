@@ -370,7 +370,14 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                     setOnClickListener {
                         LeaderboardManager.setParticipating(host, true)
                         android.widget.Toast.makeText(host, "Leaderboard participation enabled! 🚀", android.widget.Toast.LENGTH_SHORT).show()
-                        loadLeaderboardData(root, forceRefresh = true)
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val todayKeyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                            val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(host, todayKeyFmt).toInt()
+                            LeaderboardManager.overrideLeaderboardDailyTotal(host, realSecs)
+                            withContext(Dispatchers.Main) {
+                                loadLeaderboardData(root, forceRefresh = true)
+                            }
+                        }
                     }
                 }
                 pausedCard.addView(pauseIcon)
@@ -1017,10 +1024,11 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
 
         // Ensure user's time is accurately calculated for the currently selected period (Day/Week/Month)
-        val myEntry = currentEntries.find { LeaderboardManager.isCurrentUser(it, host) }
+        val isParticipating = LeaderboardManager.isParticipating(host)
+        val myEntry = if (isParticipating) currentEntries.find { LeaderboardManager.isCurrentUser(it, host) } else null
         val periodRealSecs = LeaderboardManager.getRealTimerFocusSecondsForPeriod(host, selectedPeriod).toInt()
         val myTime: Int = if (myEntry != null && myEntry.totalSeconds > 0) myEntry.totalSeconds else periodRealSecs
-        val myRankText: String = if (myEntry != null && myEntry.rank > 0) "#${myEntry.rank}" else "--"
+        val myRankText: String = if (!isParticipating) "Unranked" else if (myEntry != null && myEntry.rank > 0) "#${myEntry.rank}" else "--"
 
         val targetTime: Int = entry.totalSeconds
         val targetRankText: String = if (entry.rank > 0) "#${entry.rank}" else "--"
@@ -1383,7 +1391,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
     }
 
     private fun buildRankRow(entry: LeaderboardEntry): View {
-        val isCurrent = LeaderboardManager.isCurrentUser(entry, host)
+        val isCurrent = LeaderboardManager.isParticipating(host) && LeaderboardManager.isCurrentUser(entry, host)
 
         val row = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1616,7 +1624,8 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             return ctaCard
         } else {
             // LOGGED-IN: Sticky Personal Ranking Card
-            val myEntry = currentEntries.find { LeaderboardManager.isCurrentUser(it, host) }
+            val isParticipating = LeaderboardManager.isParticipating(host)
+            val myEntry = if (isParticipating) currentEntries.find { LeaderboardManager.isCurrentUser(it, host) } else null
             val currentProfile = ProfileManager.getProfile(host)
             val effectiveName = ProfileManager.getEffectiveDisplayName(host)
 
@@ -1703,7 +1712,11 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                     LeaderboardPeriod.WEEKLY -> "this week"
                     LeaderboardPeriod.MONTHLY -> "this month"
                 }
-                text = if (myEntry != null) "Ranked #${myEntry.rank} • Tap to view profile" else "Active $periodLabel • Tap to view profile"
+                text = when {
+                    !isParticipating -> "Participation paused • Offline stats only"
+                    myEntry != null -> "Ranked #${myEntry.rank} • Tap to view profile"
+                    else -> "Active $periodLabel • Tap to view profile"
+                }
                 textSize = 11f
                 setTextColor(host.themeCoordinator.textColor)
                 alpha = 0.65f
@@ -1756,6 +1769,20 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
 
         var participateSwitchRef: com.google.android.material.switchmaterial.SwitchMaterial? = null
 
+        fun resumeParticipation() {
+            sharedPrefs.edit().putBoolean("leaderboard_participate", true).apply()
+            participateSwitchRef?.isChecked = true
+            Toast.makeText(host, "Participating in Leaderboard! 🚀", Toast.LENGTH_SHORT).show()
+            CoroutineScope(Dispatchers.IO).launch {
+                val todayKeyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(host, todayKeyFmt).toInt()
+                LeaderboardManager.overrideLeaderboardDailyTotal(host, realSecs)
+                withContext(Dispatchers.Main) {
+                    loadLeaderboardData(root, forceRefresh = true)
+                }
+            }
+        }
+
         fun promptTurnOffLeaderboard() {
             DeveloperToolsHelper.showThemedConfirmDialog(
                 activity = host,
@@ -1771,10 +1798,12 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 sharedPrefs.edit().putBoolean("leaderboard_participate", false).apply()
                 participateSwitchRef?.isChecked = false
                 CoroutineScope(Dispatchers.IO).launch {
-                    LeaderboardManager.updateStudyPresence(host, false)
+                    LeaderboardManager.removeTodayLeaderboardEntry(host)
+                    withContext(Dispatchers.Main) {
+                        loadLeaderboardData(root, forceRefresh = true)
+                    }
                 }
                 Toast.makeText(host, "Leaderboard participation paused", Toast.LENGTH_SHORT).show()
-                loadLeaderboardData(root, forceRefresh = true)
             }
         }
 
@@ -1786,9 +1815,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                     isChecked = true
                     promptTurnOffLeaderboard()
                 } else {
-                    sharedPrefs.edit().putBoolean("leaderboard_participate", true).apply()
-                    Toast.makeText(host, "Participating in Leaderboard! 🚀", Toast.LENGTH_SHORT).show()
-                    loadLeaderboardData(root, forceRefresh = true)
+                    resumeParticipation()
                 }
             }
         }
@@ -1803,10 +1830,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 if (cur) {
                     promptTurnOffLeaderboard()
                 } else {
-                    sharedPrefs.edit().putBoolean("leaderboard_participate", true).apply()
-                    partSwitch.isChecked = true
-                    Toast.makeText(host, "Participating in Leaderboard! 🚀", Toast.LENGTH_SHORT).show()
-                    loadLeaderboardData(root, forceRefresh = true)
+                    resumeParticipation()
                 }
             }
         }

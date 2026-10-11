@@ -11,4 +11,6 @@
 2. [x] Timer mode execution cycle (`Start Studying` -> `Pause` -> `Resume`).
 3. [x] Programmatic multi-panel navigation test across Insights/Stats, Leaderboard, and Settings panels.
 4. [x] Real-device visual UI audit and findings log update in `testing.md`.
+5. [x] Deep audit and fix for time calculation, persistence, and display across all timer modes, notifications, midnight rollovers, goals, and stats engine.
+6. [x] Full deep audit across UI/UX components, HoldRingButton geometry, daily alarm re-scheduling, weekly summary streaks, pie chart small-slice retention, and timer view model sync. All 44 unit tests passing.
 

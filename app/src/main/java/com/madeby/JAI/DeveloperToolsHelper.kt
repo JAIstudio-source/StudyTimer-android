@@ -756,7 +756,7 @@ object DeveloperToolsHelper {
             })
 
             addView(devButton("Clear Today's Logs Only", "Removes today's focus/break entries without touching past days", Color.parseColor("#EF4444")) {
-                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                 activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().apply {
                     remove("${todayStr}_focus_total")
                     remove("${todayStr}_break_total")
@@ -1236,7 +1236,7 @@ object DeveloperToolsHelper {
 
                 val startMs = startCal.timeInMillis
                 val endMs = endCal.timeInMillis
-                val dayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(startMs))
+                val dayKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(startMs))
 
                 val sharedPrefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
                 val curTotal = sharedPrefs.getLong("${dayKey}_focus_total", 0L)
@@ -1280,7 +1280,7 @@ object DeveloperToolsHelper {
 
     private fun fastForwardSession(activity: MainActivity, extraSecs: Long) {
         val sharedPrefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val currentFocus = sharedPrefs.getLong("${todayStr}_focus_total", 0L)
         val now = System.currentTimeMillis()
 
@@ -1443,7 +1443,7 @@ object DeveloperToolsHelper {
 
     fun seedPresetTodayBurst(activity: MainActivity, minutes: Long = 270L) {
         val subjects = SubjectTagManager.getAllSubjects(activity)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val totalSecs = minutes * 60L
         val breakSecs = (totalSecs * 0.18f).toLong()
 
@@ -1474,7 +1474,7 @@ object DeveloperToolsHelper {
             set(Calendar.SECOND, 0)
         }
         val list = TimelineLogger.load(activity).filterNot {
-            val entryDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(it.timestamp))
+            val entryDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(it.timestamp))
             entryDate == todayStr
         }.toMutableList()
 
@@ -1524,7 +1524,7 @@ object DeveloperToolsHelper {
             }
         }
 
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val cal = Calendar.getInstance()
         val timelineList = ArrayList<TimelineEntry>()
         val rng = Random(config.seed)
@@ -1736,7 +1736,7 @@ object DeveloperToolsHelper {
         val dp = { v: Int -> (v * activity.resources.displayMetrics.density).toInt() }
         val displayMetrics = activity.resources.displayMetrics
 
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         var targetDateStr = initialDate ?: todayStr
 
         var isFocusCategory = true // true = Study Focus, false = Break Time
@@ -1889,7 +1889,7 @@ object DeveloperToolsHelper {
                 setOnClickListener {
                     val cal = Calendar.getInstance()
                     try {
-                        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(targetDateStr)?.let {
+                        SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(targetDateStr)?.let {
                             cal.time = it
                         }
                     } catch (_: Exception) {}
@@ -2194,7 +2194,7 @@ object DeveloperToolsHelper {
 
             // Date label
             val dateDisplay = try {
-                val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(targetDateStr)
+                val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(targetDateStr)
                 SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(parsed ?: Date())
             } catch (_: Exception) {
                 targetDateStr
@@ -2487,7 +2487,7 @@ object DeveloperToolsHelper {
                     0 -> {
                         if (isClockWheelMode) {
                             // Construct exact start & end timestamps from the clock wheel on targetDateStr
-                            val parsedDate = try { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(targetDateStr) } catch (_: Exception) { null } ?: Date()
+                            val parsedDate = try { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(targetDateStr) } catch (_: Exception) { null } ?: Date()
                             val c1 = Calendar.getInstance().apply {
                                 time = parsedDate
                                 set(Calendar.HOUR_OF_DAY, startCal.get(Calendar.HOUR_OF_DAY))
@@ -2687,7 +2687,7 @@ object DeveloperToolsHelper {
         )
         activity.saveSessionGoalsToJson(sampleGoals)
         val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         prefs.edit().putString("last_planner_reset_date", todayStr).apply()
     }
 
@@ -2695,7 +2695,7 @@ object DeveloperToolsHelper {
         val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val currentGoals = activity.loadSessionGoalsFromJson(prefs.getString("session_goals_json", "[]") ?: "[]")
         if (currentGoals.isNotEmpty()) {
-            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             PlannerHistoryManager.snapshotToday(activity, currentGoals)
             val resetGoals = currentGoals.map { it.copy(completed = false, checkedAt = 0L) }
             activity.saveSessionGoalsToJson(resetGoals)
@@ -2714,7 +2714,7 @@ object DeveloperToolsHelper {
 
         val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val editor = prefs.edit()
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val cal = Calendar.getInstance()
         val rng = Random(888L)
 
@@ -2815,7 +2815,7 @@ object DeveloperToolsHelper {
         })
 
         val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) } // default yesterday
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val dateDisplayFmt = SimpleDateFormat("EEEE, dd MMM yyyy", Locale.getDefault())
 
         val datePickerBtn = TextView(activity).apply {

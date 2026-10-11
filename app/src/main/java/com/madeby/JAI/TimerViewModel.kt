@@ -38,6 +38,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             "currentBreakSeconds" -> _uiState.value = _uiState.value.copy(currentBreakSeconds = sharedPreferences.safeLong(key, 0L))
             "timerMode", "timer_mode" -> _uiState.value = _uiState.value.copy(mode = sharedPreferences.safeString("timer_mode", sharedPreferences.safeString("timerMode", "STOPWATCH")) ?: "STOPWATCH")
             "focusCountdownSecs", "focus_countdown_secs" -> _uiState.value = _uiState.value.copy(focusCountdownSecs = if (sharedPreferences.contains("focus_countdown_secs")) sharedPreferences.safeLong("focus_countdown_secs", 1500L) else sharedPreferences.safeLong("focusCountdownSecs", 1500L))
+            "focus_remaining_secs", "focusRemainingSecs" -> _uiState.value = _uiState.value.copy(focusRemainingSecs = if (sharedPreferences.contains("focus_remaining_secs")) sharedPreferences.safeLong("focus_remaining_secs", 0L) else sharedPreferences.safeLong("focusRemainingSecs", 0L))
             "timerState" -> {
                 val stateStr = sharedPreferences.safeString(key, "IDLE") ?: "IDLE"
                 _uiState.value = _uiState.value.copy(state = runCatching { TimerState.valueOf(stateStr) }.getOrDefault(TimerState.IDLE))
@@ -61,7 +62,8 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             accumulatedStudy = prefs.safeLong("accumulatedStudy", 0L),
             currentBreakSeconds = prefs.safeLong("currentBreakSeconds", 0L),
             mode = prefs.safeString("timer_mode", prefs.safeString("timerMode", "STOPWATCH")) ?: "STOPWATCH",
-            focusCountdownSecs = if (prefs.contains("focus_countdown_secs")) prefs.safeLong("focus_countdown_secs", 1500L) else prefs.safeLong("focusCountdownSecs", 1500L)
+            focusCountdownSecs = if (prefs.contains("focus_countdown_secs")) prefs.safeLong("focus_countdown_secs", 1500L) else prefs.safeLong("focusCountdownSecs", 1500L),
+            focusRemainingSecs = if (prefs.contains("focus_remaining_secs")) prefs.safeLong("focus_remaining_secs", 0L) else prefs.safeLong("focusRemainingSecs", 0L)
         )
         prefs.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
     }
@@ -73,7 +75,7 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTimerMode(mode: String) {
         _uiState.value = _uiState.value.copy(mode = mode)
-        prefs.edit().putString("timerMode", mode).apply()
+        prefs.edit().putString("timer_mode", mode).putString("timerMode", mode).apply()
     }
 
     fun setTimerState(state: TimerState) {

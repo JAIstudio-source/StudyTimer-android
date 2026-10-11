@@ -156,7 +156,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
     internal fun buildHeatmapFullscreenPanel() {
         val heatmapData = statsSnapshotCache?.heatmapData ?: buildHeatmapData()
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
         val root = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -348,7 +348,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
     }
 
     internal fun renderStatsContent(statsRoot: FrameLayout, snap: StatsSnapshot, tab: AppStatsTab = currentStatsTab) {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
 
         statsRoot.removeAllViews()
@@ -550,7 +550,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
     }
 
     internal fun renderOverviewTabContent(content: LinearLayout, snap: StatsSnapshot) {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
 
         val todayFocus = snap.todayFocus
@@ -1088,7 +1088,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 container.addView(emptyBox)
             } else {
                 val sortedSubjects = subjectMap.values
-                    .filter { it.second >= 60L }
+                    .filter { it.second > 0L }
                     .sortedByDescending { it.second }
 
                 for ((subj, secs) in sortedSubjects) {
@@ -1358,7 +1358,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     var totalSessionCount = 0
                     var totalDuration = 0L
                     val entries = TimelineLogger.load(host)
-                    val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                     val allDates = entries.mapNotNull { if (it.timestamp > 0L) dateSdf.format(Date(it.timestamp)) else null }.distinct()
                     for (dStr in allDates) {
                         val (sessions, _) = dayBlocks(dStr)
