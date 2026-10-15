@@ -1,0 +1,209 @@
+package com.madeby.JAI
+
+import android.content.Context
+import android.content.SharedPreferences
+
+object AuthManager {
+    private const val PREF_NAME = "studytimer_auth_prefs"
+    private const val KEY_IS_LOGGED_IN = "is_logged_in"
+    private const val KEY_IS_GUEST = "is_guest"
+    private const val KEY_HAS_COMPLETED_ONBOARDING = "has_completed_onboarding"
+    private const val KEY_USER_EMAIL = "user_email"
+    private const val KEY_USER_NAME = "user_name"
+    private const val KEY_ACCESS_TOKEN = "access_token"
+    private const val KEY_USER_ID = "user_id"
+    private const val KEY_PROFILE_IMAGE_URI = "profile_image_uri"
+    private const val KEY_LAST_ACTIVE_USER_ID = "last_active_user_id"
+    private const val KEY_TERMS_ACCEPTED_AT = "terms_accepted_at"
+    private const val KEY_TERMS_ACCEPTED_EPOCH = "terms_accepted_epoch"
+    private const val KEY_TERMS_VERSION = "terms_version"
+    const val CURRENT_TERMS_VERSION = "v1.0"
+
+    private fun getPrefs(context: Context): SharedPreferences {
+        return context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+    }
+
+    fun hasCompletedOnboarding(context: Context): Boolean {
+        val prefs = getPrefs(context)
+        return prefs.getBoolean(KEY_HAS_COMPLETED_ONBOARDING, false) || isLoggedIn(context) || prefs.getBoolean(KEY_IS_GUEST, false)
+    }
+
+    fun setOnboardingCompleted(context: Context) {
+        getPrefs(context).edit().putBoolean(KEY_HAS_COMPLETED_ONBOARDING, true).apply()
+    }
+
+    fun isLoggedIn(context: Context): Boolean {
+        val prefs = getPrefs(context)
+        val hasLoggedIn = prefs.getBoolean(KEY_IS_LOGGED_IN, false)
+        val email = prefs.getString(KEY_USER_EMAIL, null)
+        return hasLoggedIn && !email.isNullOrEmpty()
+    }
+
+    fun isGuest(context: Context): Boolean {
+        val prefs = getPrefs(context)
+        return prefs.getBoolean(KEY_IS_GUEST, false) || !isLoggedIn(context)
+    }
+
+    fun isSameUser(context: Context, newUserId: String?, newEmail: String?): Boolean {
+        val currentUserId = getUserId(context)
+        val currentEmail = getUserEmail(context)
+        if (!newUserId.isNullOrEmpty() && currentUserId == newUserId) return true
+        if (!newEmail.isNullOrEmpty() && currentEmail.equals(newEmail, ignoreCase = true)) return true
+        return false
+    }
+
+    fun saveUserSession(context: Context, email: String?, name: String?, token: String?, userId: String? = null) {
+        val actualUserId = if (!userId.isNullOrEmpty()) userId else email
+        val prefs = getPrefs(context)
+        
+        // Preserve user's custom chosen display name if already set
+        val existingCustomName = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+            .getString("custom_display_name", null)
+        val existingAuthName = prefs.getString(KEY_USER_NAME, null)
+        val currentValidName = when {
+            !existingCustomName.isNullOrBlank() && existingCustomName != "Student" -> existingCustomName
+            !existingAuthName.isNullOrBlank() && existingAuthName != "Student" -> existingAuthName
+            !name.isNullOrBlank() -> name
+            else -> (email?.substringBefore("@") ?: "Student")
+        }
+
+        prefs.edit().apply {
+            putBoolean(KEY_IS_LOGGED_IN, true)
+            putBoolean(KEY_IS_GUEST, false)
+            putBoolean(KEY_HAS_COMPLETED_ONBOARDING, true)
+            putString(KEY_USER_EMAIL, email)
+            putString(KEY_USER_NAME, currentValidName)
+            putString(KEY_ACCESS_TOKEN, token)
+            if (!actualUserId.isNullOrEmpty()) {
+                putString(KEY_USER_ID, actualUserId)
+                putString(KEY_LAST_ACTIVE_USER_ID, actualUserId)
+            }
+            apply()
+        }
+        AppAnalytics.associateUser(context, actualUserId)
+    }
+
+    fun updateUserName(context: Context, name: String) {
+        if (name.isBlank()) return
+        getPrefs(context).edit().apply {
+            putString(KEY_USER_NAME, name)
+            apply()
+        }
+        AppAnalytics.associateUser(context, getUserId(context))
+    }
+
+    fun saveProfileImageUri(context: Context, uriString: String) {
+        getPrefs(context).edit().putString(KEY_PROFILE_IMAGE_URI, uriString).apply()
+    }
+
+    fun getProfileImageUri(context: Context): String? {
+        return getPrefs(context).getString(KEY_PROFILE_IMAGE_URI, null)
+    }
+
+    fun setGuestMode(context: Context) {
+        getPrefs(context).edit().apply {
+            putBoolean(KEY_IS_LOGGED_IN, false)
+            putBoolean(KEY_IS_GUEST, true)
+            putBoolean(KEY_HAS_COMPLETED_ONBOARDING, true)
+            remove(KEY_USER_EMAIL)
+            remove(KEY_USER_NAME)
+            remove(KEY_ACCESS_TOKEN)
+            remove(KEY_USER_ID)
+            remove(KEY_PROFILE_IMAGE_URI)
+            apply()
+        }
+        AppAnalytics.associateUser(context, null)
+    }
+
+    fun getUserEmail(context: Context): String? {
+        return getPrefs(context).getString(KEY_USER_EMAIL, null)
+    }
+
+    fun getUserName(context: Context): String? {
+        return getPrefs(context).getString(KEY_USER_NAME, null)
+    }
+
+    fun getUserId(context: Context): String? {
+        return getPrefs(context).getString(KEY_USER_ID, null) ?: getUserEmail(context)
+    }
+
+    fun getLastActiveUserId(context: Context): String? {
+        return getPrefs(context).getString(KEY_LAST_ACTIVE_USER_ID, null)
+    }
+
+    fun getAccessToken(context: Context): String? {
+        return getPrefs(context).getString(KEY_ACCESS_TOKEN, null)
+    }
+
+    fun resetLocalUserData(context: Context) {
+        try {
+            // 1. First create a local safety snapshot so guest/prior data is NEVER lost
+            BackupManager(context).createPreAuthSafetySnapshot("pre_reset")
+
+            // 2. Reset main study preferences
+            context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().clear().apply()
+            // 3. Reset custom subjects and tags
+            context.getSharedPreferences("studytimer_subject_tags", Context.MODE_PRIVATE).edit().clear().apply()
+            // 4. Clear timeline logs
+            TimelineLogger.importRaw(context, null)
+            // 5. Delete local avatar
+            LocalAvatarManager.deleteAvatar(context)
+        } catch (_: Exception) {}
+    }
+
+    fun logout(context: Context) {
+        AppAnalytics.onLogout(context)
+        val prefs = getPrefs(context)
+        prefs.edit().apply {
+            putBoolean(KEY_IS_LOGGED_IN, false)
+            putBoolean(KEY_IS_GUEST, true)
+            putBoolean(KEY_HAS_COMPLETED_ONBOARDING, true)
+            remove(KEY_USER_EMAIL)
+            remove(KEY_USER_NAME)
+            remove(KEY_ACCESS_TOKEN)
+            remove(KEY_USER_ID)
+            remove(KEY_PROFILE_IMAGE_URI)
+            apply()
+        }
+        resetLocalUserData(context)
+    }
+
+    fun deleteLocalUserData(context: Context) {
+        logout(context)
+    }
+
+    fun hasAcceptedTerms(context: Context): Boolean {
+        val prefs = getPrefs(context)
+        return prefs.getLong(KEY_TERMS_ACCEPTED_EPOCH, 0L) > 0L
+    }
+
+    fun recordTermsConsent(
+        context: Context,
+        version: String = CURRENT_TERMS_VERSION,
+        isoTimestamp: String? = null,
+        epochMillis: Long = System.currentTimeMillis()
+    ) {
+        val iso = isoTimestamp ?: java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", java.util.Locale.US).apply {
+            timeZone = java.util.TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date(epochMillis))
+
+        getPrefs(context).edit().apply {
+            putString(KEY_TERMS_ACCEPTED_AT, iso)
+            putLong(KEY_TERMS_ACCEPTED_EPOCH, epochMillis)
+            putString(KEY_TERMS_VERSION, version)
+            apply()
+        }
+    }
+
+    fun getTermsAcceptedAt(context: Context): String? {
+        return getPrefs(context).getString(KEY_TERMS_ACCEPTED_AT, null)
+    }
+
+    fun getTermsAcceptedEpoch(context: Context): Long {
+        return getPrefs(context).getLong(KEY_TERMS_ACCEPTED_EPOCH, 0L)
+    }
+
+    fun getTermsVersion(context: Context): String {
+        return getPrefs(context).getString(KEY_TERMS_VERSION, CURRENT_TERMS_VERSION) ?: CURRENT_TERMS_VERSION
+    }
+}

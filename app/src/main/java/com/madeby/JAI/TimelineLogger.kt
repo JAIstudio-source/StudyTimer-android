@@ -1,0 +1,541 @@
+package com.madeby.JAI
+
+import android.content.Context
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+data class TimelineEntry(
+    val timestamp: Long,
+    val state: String,
+    val id: String? = null,
+    val subId: String? = null,
+    val subName: String? = null,
+    val subColor: String? = null
+)
+
+object TimelineLogger {
+
+    private const val KEY = "focus_timeline"
+    private const val FILE_NAME = "focus_timeline.json"
+
+    @Volatile
+    private var cache: List<TimelineEntry>? = null
+
+    fun invalidate() {
+        cache = null
+    }
+
+    fun record(
+        context: Context,
+        state: TimerState,
+        id: String? = null,
+        subId: String? = null,
+        subName: String? = null,
+        subColor: String? = null
+    ) {
+        synchronized(this) {
+            val entries = load(context).toMutableList()
+            val entryId = id ?: java.util.UUID.randomUUID().toString()
+            entries.add(TimelineEntry(System.currentTimeMillis(), state.name, entryId, subId, subName, subColor))
+            persist(context, entries)
+        }
+    }
+
+    fun mergeAndDeduplicate(existing: List<TimelineEntry>, incoming: List<TimelineEntry>): List<TimelineEntry> {
+        val idSet = HashSet<String>()
+        val tsStateSet = HashSet<String>()
+        val result = mutableListOf<TimelineEntry>()
+
+        for (e in existing + incoming) {
+            val hasId = !e.id.isNullOrEmpty()
+            val keyId = e.id ?: ""
+            val keyTs = "${e.timestamp}_${e.state}_${e.subId ?: ""}"
+
+            if (hasId && idSet.contains(keyId)) continue
+            if (!hasId && tsStateSet.contains(keyTs)) continue
+
+            if (hasId) idSet.add(keyId)
+            tsStateSet.add(keyTs)
+            result.add(e)
+        }
+        return result.sortedBy { it.timestamp }
+    }
+
+
+    fun recordRaw(
+        context: Context,
+        state: String,
+        timestamp: Long = System.currentTimeMillis(),
+        id: String? = null,
+        subId: String? = null,
+        subName: String? = null,
+        subColor: String? = null
+    ) {
+        synchronized(this) {
+            val entries = insertEntrySorted(load(context), TimelineEntry(timestamp, state, id, subId, subName, subColor))
+            persist(context, entries)
+        }
+    }
+
+    fun load(context: Context): List<TimelineEntry> {
+        cache?.let { return it }
+        synchronized(this) {
+            cache?.let { return it }
+            val result = loadEntries(context)
+            cache = result
+            return result
+        }
+    }
+
+    fun addBlock(
+        context: Context,
+        startMs: Long,
+        endMs: Long,
+        state: String,
+        subId: String? = null,
+        subName: String? = null,
+        subColor: String? = null
+    ) {
+        if (endMs <= startMs) return
+        synchronized(this) {
+            val list = load(context).toMutableList()
+            list.removeAll { it.timestamp == startMs || it.timestamp == endMs }
+            var updated = insertEntrySorted(list, TimelineEntry(startMs, state, subId = subId, subName = subName, subColor = subColor))
+            updated = insertEntrySorted(updated, TimelineEntry(endMs, "IDLE"))
+            persist(context, updated)
+        }
+    }
+
+    fun replaceBlock(
+        context: Context,
+        oldStartMs: Long,
+        oldEndMs: Long,
+        newStartMs: Long,
+        newEndMs: Long,
+        state: String,
+        subId: String? = null,
+        subName: String? = null,
+        subColor: String? = null
+    ) {
+        if (newEndMs <= newStartMs) return
+        synchronized(this) {
+            val list = load(context).toMutableList()
+            val oldEntry = list.firstOrNull { it.timestamp == oldStartMs }
+            list.removeAll { it.timestamp == oldStartMs }
+            val atOldEnd = list.firstOrNull { it.timestamp == oldEndMs }
+            if (atOldEnd != null && atOldEnd.state == "IDLE") {
+                list.remove(atOldEnd)
+            }
+            list.removeAll { it.timestamp == newStartMs || it.timestamp == newEndMs }
+            val finalSubId = subId ?: oldEntry?.subId
+            val finalSubName = subName ?: oldEntry?.subName
+            val finalSubColor = subColor ?: oldEntry?.subColor
+            var updated = insertEntrySorted(list, TimelineEntry(newStartMs, state, subId = finalSubId, subName = finalSubName, subColor = finalSubColor))
+            updated = insertEntrySorted(updated, TimelineEntry(newEndMs, "IDLE"))
+            persist(context, updated)
+        }
+    }
+
+    fun deleteBlock(context: Context, startMs: Long, endMs: Long) {
+        synchronized(this) {
+            val list = load(context).toMutableList()
+            list.removeAll { it.timestamp == startMs }
+            val atEnd = list.firstOrNull { it.timestamp == endMs }
+            if (atEnd != null && atEnd.state == "IDLE") {
+                list.remove(atEnd)
+            }
+            persist(context, list)
+        }
+    }
+
+    fun appendBlockForDay(
+        context: Context,
+        dateStr: String,
+        durationSecs: Long,
+        state: String,
+        subId: String? = null,
+        subName: String? = null,
+        subColor: String? = null
+    ): Pair<Long, Long> {
+        if (durationSecs <= 0) return 0L to 0L
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
+        val startCal = java.util.Calendar.getInstance().apply {
+            time = parsed
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val dayStartMs = startCal.timeInMillis
+        val dayEndMs = dayStartMs + 24L * 3600_000L - 1000L
+        val durationMs = durationSecs * 1000L
+
+        synchronized(this) {
+            val entries = load(context)
+            val dayEntries = entries.filter { it.timestamp in dayStartMs..dayEndMs }.sortedBy { it.timestamp }
+            val maxTs = dayEntries.maxOfOrNull { it.timestamp }
+            val isToday = dateStr == sdf.format(Date())
+            val nowMs = System.currentTimeMillis()
+
+            var candidateStart = if (maxTs != null) {
+                maxOf(maxTs + 1000L, dayStartMs)
+            } else {
+                if (isToday) {
+                    val defaultStart = nowMs - durationMs
+                    defaultStart.coerceIn(dayStartMs, dayEndMs - durationMs)
+                } else {
+                    dayStartMs + 9L * 3600_000L
+                }
+            }
+
+            if (maxTs != null && candidateStart <= maxTs) {
+                candidateStart = maxTs + 1000L
+            }
+
+            if (candidateStart + durationMs > dayEndMs) {
+                candidateStart = (dayEndMs - durationMs).coerceAtLeast(dayStartMs)
+                if (maxTs != null && candidateStart <= maxTs) {
+                    candidateStart = maxTs + 1000L
+                }
+            }
+
+            val candidateEnd = candidateStart + durationMs
+            addBlock(context, candidateStart, candidateEnd, state, subId = subId, subName = subName, subColor = subColor)
+            return candidateStart to candidateEnd
+        }
+    }
+
+    fun deductDurationForDay(
+        context: Context,
+        dateStr: String,
+        deductSecs: Long,
+        isBreak: Boolean,
+        adjustSubjects: Boolean = true,
+        targetSubId: String? = null
+    ) {
+        if (deductSecs <= 0L) return
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
+        val startCal = java.util.Calendar.getInstance().apply {
+            time = parsed
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val dayStartMs = startCal.timeInMillis
+        val dayEndMs = dayStartMs + 24L * 3600_000L - 1000L
+
+        synchronized(this) {
+            val allEntries = load(context).toMutableList()
+            val parsedAll = parseDayBlocks(allEntries)
+            val allBlocks = if (isBreak) parsedAll.breaks else parsedAll.sessions
+            
+            // Filter by target subject if specified (treating null subjectId and "general" interchangeably for General Focus)
+            val dayBlocks = allBlocks.filter { b ->
+                val inDay = b.startMs in dayStartMs..dayEndMs
+                if (!inDay) return@filter false
+                if (isBreak || targetSubId == null) return@filter true
+                if (targetSubId == "general") {
+                    b.subjectId == null || b.subjectId == "general"
+                } else {
+                    b.subjectId == targetSubId
+                }
+            }
+
+            if (dayBlocks.isEmpty()) {
+                val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                val key = if (isBreak) "${dateStr}_break_total" else "${dateStr}_focus_total"
+                val currentStored = prefs.getLong(key, 0L)
+                val remaining = (currentStored - deductSecs).coerceAtLeast(0L)
+                if (remaining > 0L) {
+                    val state = if (isBreak) "MANUAL_BREAK" else "MANUAL_FOCUS"
+                    appendBlockForDay(context, dateStr, remaining, state, subId = targetSubId)
+                }
+                if (!isBreak && adjustSubjects && targetSubId != null) {
+                    SubjectTagManager.adjustSubjectStudyTime(context, targetSubId, -deductSecs, dateStr)
+                }
+                return
+            }
+
+            var remainingDeductSecs = deductSecs
+            var modifiedList = allEntries.toList()
+
+            for (block in dayBlocks.reversed()) {
+                if (remainingDeductSecs <= 0L) break
+                val blockSecs = block.secs
+                val effectiveSubId = block.subjectId ?: "general"
+                if (blockSecs <= remainingDeductSecs) {
+                    val list = modifiedList.toMutableList()
+                    list.removeAll { it.timestamp == block.startMs }
+                    val atEnd = list.firstOrNull { it.timestamp == block.endMs }
+                    if (atEnd != null && atEnd.state == "IDLE") {
+                        list.remove(atEnd)
+                    }
+                    modifiedList = list
+                    if (!isBreak && adjustSubjects) {
+                        SubjectTagManager.adjustSubjectStudyTime(context, effectiveSubId, -blockSecs, dateStr)
+                    }
+                    remainingDeductSecs -= blockSecs
+                } else {
+                    val newEndMs = block.endMs - (remainingDeductSecs * 1000L)
+                    val list = modifiedList.toMutableList()
+                    val oldEntry = list.firstOrNull { it.timestamp == block.startMs }
+                    list.removeAll { it.timestamp == block.startMs }
+                    val atOldEnd = list.firstOrNull { it.timestamp == block.endMs }
+                    if (atOldEnd != null && atOldEnd.state == "IDLE") {
+                        list.remove(atOldEnd)
+                    }
+                    list.removeAll { it.timestamp == newEndMs }
+                    val state = if (isBreak) "MANUAL_BREAK" else "MANUAL_FOCUS"
+                    val subId = block.subjectId ?: oldEntry?.subId
+                    val subName = block.subjectName ?: oldEntry?.subName
+                    val subColor = block.subjectColor ?: oldEntry?.subColor
+                    var updated = insertEntrySorted(list, TimelineEntry(block.startMs, state, subId = subId, subName = subName, subColor = subColor))
+                    updated = insertEntrySorted(updated, TimelineEntry(newEndMs, "IDLE"))
+                    modifiedList = updated
+                    if (!isBreak && adjustSubjects) {
+                        SubjectTagManager.adjustSubjectStudyTime(context, effectiveSubId, -remainingDeductSecs, dateStr)
+                    }
+                    remainingDeductSecs = 0L
+                }
+            }
+            persist(context, modifiedList)
+        }
+    }
+
+    /**
+     * Reconciles SubjectTagManager daily and global durations strictly from timeline blocks for a given date
+     * to eliminate any drift or discrepancy.
+     */
+    fun reconcileSubjectDurationsFromTimeline(context: Context, dateStr: String) {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
+        val startCal = java.util.Calendar.getInstance().apply {
+            time = parsed
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val dayStartMs = startCal.timeInMillis
+        val dayEndMs = dayStartMs + 24L * 3600_000L - 1000L
+
+        synchronized(this) {
+            val allEntries = load(context)
+            val parsedAll = parseDayBlocks(allEntries)
+            val daySessions = parsedAll.sessions.filter { it.startMs in dayStartMs..dayEndMs }
+            
+            val computedSubjectTotals = mutableMapOf<String, Long>()
+            for (s in daySessions) {
+                val subId = s.subjectId ?: "general"
+                computedSubjectTotals[subId] = (computedSubjectTotals[subId] ?: 0L) + s.secs
+            }
+            
+            // Merge daily subject durations safely without erasing live in-progress recordings
+            val subPrefs = context.getSharedPreferences("studytimer_subject_tags", Context.MODE_PRIVATE)
+            val dailyStr = subPrefs.getString("daily_subject_durations_json", "{}") ?: "{}"
+            try {
+                val dailyJson = org.json.JSONObject(dailyStr)
+                val existingDayObj = dailyJson.optJSONObject(dateStr) ?: org.json.JSONObject()
+                val dayObj = org.json.JSONObject()
+
+                val existingKeys = existingDayObj.keys()
+                while (existingKeys.hasNext()) {
+                    val k = existingKeys.next()
+                    val cur = existingDayObj.optLong(k, 0L)
+                    if (cur > 0L) dayObj.put(k, cur)
+                }
+
+                for ((subId, secs) in computedSubjectTotals) {
+                    val existing = dayObj.optLong(subId, 0L)
+                    val merged = maxOf(existing, secs)
+                    if (merged > 0L) {
+                        dayObj.put(subId, merged)
+                    }
+                }
+                dailyJson.put(dateStr, dayObj)
+
+                // Recompute global subject_durations_json across all days
+                val allDailyKeys = dailyJson.keys()
+                val globalTotals = mutableMapOf<String, Long>()
+                while (allDailyKeys.hasNext()) {
+                    val dKey = allDailyKeys.next()
+                    val dObj = dailyJson.optJSONObject(dKey)
+                    if (dObj != null) {
+                        val subKeys = dObj.keys()
+                        while (subKeys.hasNext()) {
+                            val sk = subKeys.next()
+                            globalTotals[sk] = (globalTotals[sk] ?: 0L) + dObj.optLong(sk, 0L)
+                        }
+                    }
+                }
+                val globalJson = org.json.JSONObject()
+                for ((subId, secs) in globalTotals) {
+                    if (secs > 0L) globalJson.put(subId, secs)
+                }
+
+                subPrefs.edit()
+                    .putString("daily_subject_durations_json", dailyJson.toString())
+                    .putString("subject_durations_json", globalJson.toString())
+                    .apply()
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun setTotalDurationForDay(
+        context: Context,
+        dateStr: String,
+        targetSecs: Long,
+        isBreak: Boolean,
+        subId: String? = null,
+        subName: String? = null,
+        subColor: String? = null
+    ) {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val parsed = runCatching { sdf.parse(dateStr) }.getOrNull() ?: Date()
+        val startCal = java.util.Calendar.getInstance().apply {
+            time = parsed
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val dayStartMs = startCal.timeInMillis
+        val dayEndMs = dayStartMs + 24L * 3600_000L - 1000L
+
+        synchronized(this) {
+            val entries = load(context)
+            val parsedAll = parseDayBlocks(entries)
+            val allBlocks = if (isBreak) parsedAll.breaks else parsedAll.sessions
+            val dayBlocks = allBlocks.filter { it.startMs in dayStartMs..dayEndMs }
+            val currentSum = dayBlocks.sumOf { it.secs }
+
+            if (targetSecs > currentSum) {
+                val delta = targetSecs - currentSum
+                val state = if (isBreak) "MANUAL_BREAK" else "MANUAL_FOCUS"
+                appendBlockForDay(context, dateStr, delta, state, subId = subId, subName = subName, subColor = subColor)
+            } else if (targetSecs < currentSum) {
+                val delta = currentSum - targetSecs
+                deductDurationForDay(context, dateStr, delta, isBreak)
+            }
+            Unit
+        }
+    }
+
+    fun deleteEntry(context: Context, startMs: Long) {
+        synchronized(this) {
+            persist(context, removeEntryWithTs(load(context), startMs))
+        }
+    }
+
+    fun moveEntry(context: Context, oldTs: Long, newTs: Long) {
+        synchronized(this) {
+            val entries = moveEntryInList(load(context), oldTs, newTs) ?: return
+            persist(context, entries)
+        }
+    }
+
+    fun deleteDay(context: Context, dateStr: String) {
+        synchronized(this) {
+            val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            persist(context, removeDayEntries(load(context), dateStr, fmt))
+        }
+    }
+
+    /**
+     * Replaces the entire timeline from an external source (backup restore).
+     * Passing null (or empty) clears the timeline.
+     */
+    fun importRaw(context: Context, raw: String?) {
+        synchronized(this) {
+            if (raw.isNullOrEmpty()) {
+                deleteStaleFile(context)
+                removeLegacyPref(context)
+                cache = emptyList()
+            } else {
+                val parsed = parseTimelineJson(raw)
+                if (writeFile(context, raw)) {
+                    removeLegacyPref(context)
+                } else {
+                    deleteStaleFile(context)
+                    writeLegacyPref(context, raw)
+                }
+                cache = parsed
+            }
+        }
+    }
+
+    private fun timelineFile(context: Context): File = File(context.filesDir, FILE_NAME)
+
+    private fun readFile(context: Context): String? {
+        val f = timelineFile(context)
+        if (!f.exists()) return null
+        return try { f.readText().takeIf { it.isNotEmpty() } } catch (_: Exception) { null }
+    }
+
+    private fun writeFile(context: Context, content: String): Boolean {
+        return try {
+            val f = timelineFile(context)
+            val tmp = File(context.filesDir, "$FILE_NAME.tmp")
+            tmp.writeText(content)
+            if (tmp.renameTo(f)) {
+                true
+            } else {
+                f.writeText(content)
+                tmp.delete()
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun deleteStaleFile(context: Context) {
+        try { timelineFile(context).delete() } catch (_: Exception) {}
+    }
+
+    private fun removeLegacyPref(context: Context) {
+        try {
+            context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                .edit().remove(KEY).apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun writeLegacyPref(context: Context, content: String) {
+        try {
+            context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                .edit().putString(KEY, content).apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun loadEntries(context: Context): List<TimelineEntry> {
+        val fileRaw = readFile(context)
+        if (fileRaw != null) {
+            val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+            if (prefs.contains(KEY)) removeLegacyPref(context)
+            return parseTimelineJson(fileRaw)
+        }
+        val legacy = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString(KEY, null)
+        if (!legacy.isNullOrEmpty()) {
+            if (writeFile(context, legacy)) removeLegacyPref(context)
+            return parseTimelineJson(legacy)
+        }
+        return emptyList()
+    }
+
+    private fun persist(context: Context, entries: List<TimelineEntry>) {
+        val content = timelineToJsonString(entries)
+        if (writeFile(context, content)) {
+            removeLegacyPref(context)
+        } else {
+            deleteStaleFile(context)
+            writeLegacyPref(context, content)
+        }
+        cache = entries
+        BackupManager(context).markDataModified()
+    }
+}
