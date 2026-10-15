@@ -30,11 +30,11 @@ enum class AppSettingsTab {
     THEME, 
     PROFILE, 
     DEVELOPER,
-    SIMPLE // backward compatibility alias
+    SIMPLE // Settings tab page & navigation target
 }
 
 data class PlannerGoal(
-    val id: String = java.util.UUID.randomUUID().toString(),
+    val id: String = UUID.randomUUID().toString(),
     val title: String,
     val note: String = "",
     val targetMinutes: Int = 0,
@@ -44,6 +44,11 @@ data class PlannerGoal(
     val subjectId: String? = null
 )
 
+/**
+ * Typealias representing an individual goal in active sessions and stats tracking.
+ * Intentionally aliases [PlannerGoal] so goal instances can seamlessly bridge planner,
+ * timeline, and session tracking pipelines without manual object conversion.
+ */
 typealias SessionGoal = PlannerGoal
 
 data class PlannerGoalSnapshot(
@@ -53,7 +58,8 @@ data class PlannerGoalSnapshot(
     val completed: Boolean,
     val checkedAt: Long = 0L,
     val isAchieved: Boolean = true,
-    val subjectId: String? = null
+    val subjectId: String? = null,
+    val note: String = ""
 )
 
 data class PlannerDayRecord(
@@ -62,7 +68,7 @@ data class PlannerDayRecord(
 )
 
 data class LectureScheduleItem(
-    val id: String = java.util.UUID.randomUUID().toString(),
+    val id: String = UUID.randomUUID().toString(),
     val title: String,
     val startTime: String, // "HH:mm" e.g. "10:00"
     val endTime: String,   // "HH:mm" e.g. "11:00"
@@ -77,8 +83,3 @@ data class AchievementBadge(
     val icon: String,
     val isUnlocked: Boolean
 )
-
-
-
-
-

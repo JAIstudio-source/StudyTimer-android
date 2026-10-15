@@ -12,6 +12,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -502,6 +503,119 @@ class SubjectDialogHelper(private val host: MainActivity) {
             container.addView(hueHeader)
             container.addView(hueSeekBar)
 
+            val weeklyHeader = TextView(host).apply {
+                text = "Weekly Goal Target (Hours / Week)"
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.6f
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setPadding(0, dp(12), 0, dp(4))
+            }
+            container.addView(weeklyHeader)
+
+            val currentWeeklyTarget = SubjectTagManager.getWeeklyTargetHours(host, subj.id)
+            val weeklyInput = android.widget.EditText(host).apply {
+                setText(if (currentWeeklyTarget > 0f) "${currentWeeklyTarget.toInt()}" else "")
+                hint = "e.g. 10 (Optional target in hours)"
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setHintTextColor(tintedColor(themeCoordinator.textColor, 120))
+                setTextColor(themeCoordinator.textColor)
+                textSize = 14f
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+            }
+            container.addView(weeklyInput)
+
+            val topicsHeader = TextView(host).apply {
+                text = "Chapters & Sub-Topics"
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.6f
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setPadding(0, dp(12), 0, dp(4))
+            }
+            container.addView(topicsHeader)
+
+            val topicsChipsLayout = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, dp(2), 0, dp(6))
+            }
+
+            val currentSubTopics = SubjectTagManager.getSubTopics(host, subj.id).toMutableList()
+            fun renderTopicChips() {
+                topicsChipsLayout.removeAllViews()
+                for (t in currentSubTopics) {
+                    val chip = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                        setPadding(dp(10), dp(4), dp(8), dp(4))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 0, dp(6), dp(4))
+                        }
+                    }
+                    chip.addView(TextView(host).apply {
+                        text = t
+                        textSize = 12f
+                        setTextColor(themeCoordinator.textColor)
+                    })
+                    chip.addView(TextView(host).apply {
+                        text = " ✕"
+                        textSize = 11f
+                        setTextColor(if (themeCoordinator.isDarkMode()) 0xFFEF4444.toInt() else 0xFFDC2626.toInt())
+                        setOnClickListener {
+                            currentSubTopics.remove(t)
+                            SubjectTagManager.removeSubTopic(host, subj.id, t)
+                            renderTopicChips()
+                        }
+                    })
+                    topicsChipsLayout.addView(chip)
+                }
+            }
+            renderTopicChips()
+            container.addView(topicsChipsLayout)
+
+            val addTopicRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(8))
+            }
+            val newTopicInput = android.widget.EditText(host).apply {
+                hint = "+ Add chapter or topic"
+                setHintTextColor(tintedColor(themeCoordinator.textColor, 120))
+                setTextColor(themeCoordinator.textColor)
+                textSize = 13f
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f)
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+            }
+            val addTopicBtn = TextView(host).apply {
+                text = "Add"
+                textSize = 12.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(themeCoordinator.primaryColor)
+                }
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                setOnClickListener {
+                    val tName = newTopicInput.text.toString().trim()
+                    if (tName.isNotEmpty()) {
+                        if (SubjectTagManager.addSubTopic(host, subj.id, tName)) {
+                            currentSubTopics.add(tName)
+                            newTopicInput.setText("")
+                            renderTopicChips()
+                        }
+                    }
+                }
+            }
+            addTopicRow.addView(newTopicInput)
+            addTopicRow.addView(addTopicBtn)
+            container.addView(addTopicRow)
+
             val saveBtn = Button(host).apply {
                 text = "Save Changes"
                 textSize = 14f
@@ -525,10 +639,15 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         Toast.makeText(host, check.reason ?: "Subject name contains inappropriate words 🛡️", Toast.LENGTH_SHORT).show()
                         return@setOnClickListener
                     }
+                    val weeklyHours = weeklyInput.text.toString().trim().toFloatOrNull() ?: 0f
+                    SubjectTagManager.setWeeklyTargetHours(host, subj.id, weeklyHours)
+
                     val updatedSubj = subj.copy(
                         name = check.sanitizedText,
                         iconEmoji = selectedEmoji,
-                        colorHex = selectedColorHex
+                        colorHex = selectedColorHex,
+                        subTopics = currentSubTopics,
+                        weeklyTargetHours = weeklyHours
                     )
                     SubjectTagManager.updateSubject(host, updatedSubj)
                     dialog.dismiss()
@@ -539,10 +658,14 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
             container.addView(saveBtn)
 
-            dialog.setContentView(container)
+            val dialogScroll = android.widget.ScrollView(host).apply {
+                isVerticalScrollBarEnabled = false
+                addView(container)
+            }
+            dialog.setContentView(dialogScroll)
             dialog.window?.setLayout(
                 (host.resources.displayMetrics.widthPixels * 0.88f).toInt().coerceAtMost(dp(380)),
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                (host.resources.displayMetrics.heightPixels * 0.85f).toInt()
             )
             dialog.show()
         } catch (_: Exception) {}
@@ -837,7 +960,10 @@ class SubjectDialogHelper(private val host: MainActivity) {
         } catch (_: Exception) {}
     }
 
-    fun showPieChartDetailsModal(initialDateKey: String = SubjectTagManager.getTodayKey()) {
+    fun showPieChartDetailsModal(
+        initialDateKey: String = SubjectTagManager.getTodayKey(),
+        initialPeriod: SubjectTagManager.SubjectStatsPeriod = SubjectTagManager.SubjectStatsPeriod.TODAY
+    ) {
         val dialog = Dialog(host, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         dialog.window?.apply {
@@ -861,9 +987,16 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 }
             } catch (_: Exception) {}
         }
+
+        var currentPeriod = initialPeriod
         var currentDateKey = initialDateKey
+        var currentWeekMonday = WeekHelper.mondayOf(Calendar.getInstance())
+        var currentMonthCal = Calendar.getInstance().apply { set(Calendar.DAY_OF_MONTH, 1) }
+
         val sdfKey = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val sdfDisplay = SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault())
+        val sdfWeekFmt = SimpleDateFormat("dd MMM", Locale.getDefault())
+        val sdfMonthFmt = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
         val todayKey = SubjectTagManager.getTodayKey()
 
         val rootLayout = LinearLayout(host).apply {
@@ -875,11 +1008,11 @@ class SubjectDialogHelper(private val host: MainActivity) {
         val headerRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(12))
+            setPadding(0, 0, 0, dp(10))
         }
 
         headerRow.addView(TextView(host).apply {
-            text = "Subject Details"
+            text = "Subject Breakdown"
             setTextColor(themeCoordinator.textColor)
             textSize = 20f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -898,11 +1031,27 @@ class SubjectDialogHelper(private val host: MainActivity) {
         headerRow.addView(closeBtn)
         rootLayout.addView(headerRow)
 
-        // Date Navigation Row (< 📅 16 Aug 2026 >)
+        // Segmented Period Selector [ Day | Week | Month | All Time ]
+        val periodTabsScroll = HorizontalScrollView(host).apply {
+            isFillViewport = true
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, dp(12)) }
+        }
+        val periodTabsRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        periodTabsScroll.addView(periodTabsRow)
+        rootLayout.addView(periodTabsScroll)
+
+        // Navigation Row (< 📅 16 Aug 2026 >)
         val dateNavRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(16))
+            setPadding(0, 0, 0, dp(14))
         }
 
         val prevBtn = TextView(host).apply {
@@ -917,7 +1066,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
         val dateTitleBtn = TextView(host).apply {
             gravity = Gravity.CENTER
             setTextColor(themeCoordinator.textColor)
-            textSize = 15f
+            textSize = 14.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(dp(12), dp(8), dp(12), dp(8))
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 16f)
@@ -951,13 +1100,46 @@ class SubjectDialogHelper(private val host: MainActivity) {
         rootLayout.addView(scrollView)
 
         fun updateDateView() {
-            val parsedDate = try { sdfKey.parse(currentDateKey) } catch (_: Exception) { Date() } ?: Date()
-            val formattedTitle = if (currentDateKey == todayKey) "Today (${sdfDisplay.format(parsedDate)})" else sdfDisplay.format(parsedDate)
-            dateTitleBtn.text = formattedTitle
+            // Update Title & Nav Buttons according to active period
+            when (currentPeriod) {
+                SubjectTagManager.SubjectStatsPeriod.TODAY -> {
+                    val parsedDate = try { sdfKey.parse(currentDateKey) } catch (_: Exception) { Date() } ?: Date()
+                    val formattedTitle = if (currentDateKey == todayKey) "Today (${sdfDisplay.format(parsedDate)})" else sdfDisplay.format(parsedDate)
+                    dateTitleBtn.text = formattedTitle
+                    val isToday = (currentDateKey == todayKey)
+                    prevBtn.visibility = View.VISIBLE
+                    nextBtn.visibility = View.VISIBLE
+                    nextBtn.alpha = if (isToday) 0.3f else 1.0f
+                    nextBtn.isEnabled = !isToday
+                }
+                SubjectTagManager.SubjectStatsPeriod.WEEK -> {
+                    val wCal = currentWeekMonday.clone() as Calendar
+                    val startStr = sdfWeekFmt.format(wCal.time)
+                    wCal.add(Calendar.DAY_OF_YEAR, 6)
+                    val endStr = "${sdfWeekFmt.format(wCal.time)} ${wCal.get(Calendar.YEAR)}"
+                    dateTitleBtn.text = "Week of $startStr – $endStr"
 
-            val isToday = (currentDateKey == todayKey)
-            nextBtn.alpha = if (isToday) 0.3f else 1.0f
-            nextBtn.isEnabled = !isToday
+                    val isCurrentWeek = WeekHelper.mondayOf(Calendar.getInstance()).timeInMillis <= currentWeekMonday.timeInMillis
+                    prevBtn.visibility = View.VISIBLE
+                    nextBtn.visibility = View.VISIBLE
+                    nextBtn.alpha = if (isCurrentWeek) 0.3f else 1.0f
+                    nextBtn.isEnabled = !isCurrentWeek
+                }
+                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
+                    dateTitleBtn.text = sdfMonthFmt.format(currentMonthCal.time)
+                    val nowCal = Calendar.getInstance()
+                    val isCurrentMonth = (nowCal.get(Calendar.YEAR) == currentMonthCal.get(Calendar.YEAR) && nowCal.get(Calendar.MONTH) <= currentMonthCal.get(Calendar.MONTH))
+                    prevBtn.visibility = View.VISIBLE
+                    nextBtn.visibility = View.VISIBLE
+                    nextBtn.alpha = if (isCurrentMonth) 0.3f else 1.0f
+                    nextBtn.isEnabled = !isCurrentMonth
+                }
+                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> {
+                    dateTitleBtn.text = "All-Time Study History"
+                    prevBtn.visibility = View.GONE
+                    nextBtn.visibility = View.GONE
+                }
+            }
 
             scrollContent.removeAllViews()
 
@@ -965,31 +1147,91 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 orientation = LinearLayout.VERTICAL
                 background = themeCoordinator.createCardBackground()
                 setPadding(dp(16), dp(16), dp(16), dp(16))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(20)) }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(16)) }
             }
 
-            val (daySessions, _) = StatsEngine(host).dayBlocks(currentDateKey)
-            val subjectMap = LinkedHashMap<String, Pair<SubjectTag, Long>>()
-
-            // Aggregate focus durations directly from unified session logs
-            for (s in daySessions) {
-                val effectiveSubId = s.subjectId ?: "general"
-                val subj = SubjectTagManager.resolveSubject(host, effectiveSubId, s.subjectName ?: "General", s.subjectColor)
-                val currentSecs = subjectMap[subj.id]?.second ?: 0L
-                subjectMap[subj.id] = subj to (currentSecs + s.secs)
-            }
-
-            // Fallback to legacy SubjectTagManager if daySessions is empty
-            if (subjectMap.isEmpty()) {
-                val legacy = SubjectTagManager.getSubjectDurationsForDate(host, currentDateKey)
-                for ((subId, secs) in legacy) {
-                    val subj = SubjectTagManager.resolveSubject(host, subId)
-                    val currentSecs = subjectMap[subj.id]?.second ?: 0L
-                    subjectMap[subj.id] = subj to (currentSecs + secs)
+            // Gather Data
+            val statsEngine = StatsEngine(host)
+            val subjectMap: Map<String, Pair<SubjectTag, Long>> = when (currentPeriod) {
+                SubjectTagManager.SubjectStatsPeriod.TODAY -> {
+                    val (daySessions, _) = statsEngine.dayBlocks(currentDateKey)
+                    val map = LinkedHashMap<String, Pair<SubjectTag, Long>>()
+                    for (s in daySessions) {
+                        val subId = s.subjectId ?: "general"
+                        val subj = SubjectTagManager.resolveSubject(host, subId, s.subjectName ?: "General", s.subjectColor)
+                        val currentSecs = map[subj.id]?.second ?: 0L
+                        map[subj.id] = subj to (currentSecs + s.secs)
+                    }
+                    if (map.isEmpty()) {
+                        val legacy = SubjectTagManager.getSubjectDurationsForDate(host, currentDateKey)
+                        for ((subId, secs) in legacy) {
+                            val subj = SubjectTagManager.resolveSubject(host, subId)
+                            val currentSecs = map[subj.id]?.second ?: 0L
+                            map[subj.id] = subj to (currentSecs + secs)
+                        }
+                    }
+                    map
+                }
+                SubjectTagManager.SubjectStatsPeriod.WEEK -> {
+                    statsEngine.getSubjectBreakdownForDates(SubjectTagManager.getDatesForWeek(currentWeekMonday))
+                }
+                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
+                    statsEngine.getSubjectBreakdownForDates(SubjectTagManager.getDatesForMonth(currentMonthCal.get(Calendar.YEAR), currentMonthCal.get(Calendar.MONTH)))
+                }
+                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> {
+                    statsEngine.getAllTimeSubjectBreakdown()
                 }
             }
 
             val totalSecsAllModal = subjectMap.values.sumOf { it.second }
+            val activeSubjectsSorted = subjectMap.values
+                .filter { it.second >= 60L }
+                .sortedByDescending { it.second }
+
+            // Period Summary Banner
+            val summaryRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(9), dp(12), dp(9))
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 30), 12f)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, dp(14))
+                }
+            }
+            summaryRow.addView(TextView(host).apply {
+                text = "🔥 ${formatDuration(totalSecsAllModal)}"
+                setTextColor(themeCoordinator.primaryColor)
+                textSize = 13f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            })
+            val dailyAvg = when (currentPeriod) {
+                SubjectTagManager.SubjectStatsPeriod.TODAY -> totalSecsAllModal
+                SubjectTagManager.SubjectStatsPeriod.WEEK -> (totalSecsAllModal / 7L).coerceAtLeast(0L)
+                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
+                    val dom = if (currentMonthCal.get(Calendar.MONTH) == Calendar.getInstance().get(Calendar.MONTH)) {
+                        Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
+                    } else {
+                        currentMonthCal.getActualMaximum(Calendar.DAY_OF_MONTH)
+                    }
+                    (totalSecsAllModal / dom.toLong().coerceAtLeast(1L)).coerceAtLeast(0L)
+                }
+                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> totalSecsAllModal
+            }
+            if (currentPeriod != SubjectTagManager.SubjectStatsPeriod.TODAY && totalSecsAllModal > 0L) {
+                summaryRow.addView(TextView(host).apply {
+                    text = "  •  ⚡ ~${formatDuration(dailyAvg)}/day"
+                    setTextColor(themeCoordinator.textColor)
+                    alpha = 0.8f
+                    textSize = 12f
+                })
+            }
+            summaryRow.addView(TextView(host).apply {
+                text = "  •  📚 ${activeSubjectsSorted.size} subjects"
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.65f
+                textSize = 12f
+            })
+            topChartCard.addView(summaryRow)
 
             val sharedPrefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
             val isDonut = sharedPrefs.safeBoolean("use_donut_chart", true)
@@ -1006,14 +1248,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 }
             }
 
-            val subjectBreakDurations = SubjectTagManager.getSubjectBreakDurationsForDate(host, currentDateKey)
-
-            val activeSubjectsSorted = subjectMap.values
-                .filter { it.second >= 60L }
-                .sortedByDescending { it.second }
-
             val slicesList = ArrayList<SubjectPieChartView.PieSlice>()
-
             for ((subj, secs) in activeSubjectsSorted) {
                 slicesList.add(SubjectPieChartView.PieSlice(subj.name, subj.iconEmoji, secs.toDouble(), subj.colorHex))
             }
@@ -1023,26 +1258,18 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 topChartCard.addView(largePieView)
             } else {
                 topChartCard.addView(TextView(host).apply {
-                    text = "No subject activity recorded for this day"
+                    text = "No subject activity recorded for this period"
                     setTextColor(themeCoordinator.textColor)
                     textSize = 15f
                     gravity = Gravity.CENTER
-                    setPadding(0, dp(40), 0, dp(40))
+                    setPadding(0, dp(30), 0, dp(30))
                 })
             }
 
             scrollContent.addView(topChartCard)
 
-            scrollContent.addView(TextView(host).apply {
-                text = "Today's Sessions ($currentDateKey)"
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 12f
-                letterSpacing = 0.15f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(dp(4), 0, 0, dp(12))
-            })
-
-            val totalSecsAll = subjectMap.values.sumOf { it.second }
+            val (daySessions, _) = if (currentPeriod == SubjectTagManager.SubjectStatsPeriod.TODAY) statsEngine.dayBlocks(currentDateKey) else emptyList<BlockInfo>() to emptyList<BlockInfo>()
+            val subjectBreakDurations = if (currentPeriod == SubjectTagManager.SubjectStatsPeriod.TODAY) SubjectTagManager.getSubjectBreakDurationsForDate(host, currentDateKey) else emptyMap()
 
             if (slicesList.isEmpty()) {
                 val emptyCard = LinearLayout(host).apply {
@@ -1058,7 +1285,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 })
                 emptyCard.addView(TextView(host).apply {
-                    text = "No study time with subject tags recorded for this day."
+                    text = "No study time with subject tags recorded for this period."
                     setTextColor(themeCoordinator.textColor)
                     alpha = 0.6f
                     textSize = 13f
@@ -1069,10 +1296,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             } else {
                 for (subjPair in activeSubjectsSorted) {
                     val (subj, secs) = subjPair
-                    val matchedSessions = daySessions.filter {
-                        (it.subjectId != null && it.subjectId == subj.id) ||
-                        (it.subjectId == null && subj.id == "general")
-                    }
+                    val subjColor = try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
 
                     val subjCard = LinearLayout(host).apply {
                         orientation = LinearLayout.VERTICAL
@@ -1087,7 +1311,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     }
 
                     val colorCircle = FrameLayout(host).apply {
-                        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }) }
+                        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(subjColor) }
                         layoutParams = LinearLayout.LayoutParams(dp(14), dp(14)).apply { setMargins(0, 0, dp(10), 0) }
                     }
 
@@ -1100,7 +1324,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     })
 
-                    val pct = if (totalSecsAll > 0) ((secs.toDouble() / totalSecsAll.toDouble()) * 100).toInt() else 0
+                    val pct = if (totalSecsAllModal > 0) ((secs.toDouble() / totalSecsAllModal.toDouble()) * 100).toInt() else 0
                     headerRowSubj.addView(TextView(host).apply {
                         text = "$pct% Share"
                         setTextColor(themeCoordinator.primaryColor)
@@ -1110,20 +1334,36 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
                     subjCard.addView(headerRowSubj)
 
-                    val validMatchedSessions = matchedSessions.filter { it.secs >= 60L }
-                    val timingStr = if (validMatchedSessions.isNotEmpty()) {
-                        val firstMs = validMatchedSessions.minOf { it.startMs }
-                        val lastMs = validMatchedSessions.maxOf { it.endMs }
-                        "${TimeFormat.formatWallClock(host, firstMs)} \u2013 ${TimeFormat.formatWallClock(host, lastMs)}"
-                    } else {
-                        val validDaySessions = daySessions.filter { it.secs >= 60L }
-                        if (validDaySessions.isNotEmpty()) {
-                            val firstMs = validDaySessions.minOf { it.startMs }
-                            val lastMs = validDaySessions.maxOf { it.endMs }
-                            "${TimeFormat.formatWallClock(host, firstMs)} \u2013 ${TimeFormat.formatWallClock(host, lastMs)}"
-                        } else {
-                            "N/A"
+                    // Weekly Target Quota (if set)
+                    if (subj.weeklyTargetHours > 0f) {
+                        val targetSecs = (subj.weeklyTargetHours * 3600f).toLong()
+                        val quotaPct = ((secs.toDouble() / targetSecs.toDouble()) * 100.0).toInt()
+                        val isReached = quotaPct >= 100
+
+                        val quotaTag = TextView(host).apply {
+                            text = if (isReached) {
+                                "🎯 Target Reached! ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%) 🎉"
+                            } else {
+                                "🎯 Weekly Goal: ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
+                            }
+                            setTextColor(if (isReached) Color.parseColor("#10B981") else themeCoordinator.primaryColor)
+                            textSize = 12f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            setPadding(0, dp(6), 0, 0)
                         }
+                        subjCard.addView(quotaTag)
+                    }
+
+                    // Sub-Topics list chips (if any)
+                    if (subj.subTopics.isNotEmpty()) {
+                        val subTopicsLabel = TextView(host).apply {
+                            text = "Chapters / Topics: " + subj.subTopics.joinToString(", ")
+                            setTextColor(themeCoordinator.textColor)
+                            alpha = 0.7f
+                            textSize = 12f
+                            setPadding(0, dp(4), 0, 0)
+                        }
+                        subjCard.addView(subTopicsLabel)
                     }
 
                     val hrs = secs / 3600L
@@ -1135,8 +1375,27 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     val bMins = (bSecs % 3600L) / 60L
                     val breakTimeStr = if (bHrs > 0) "${bHrs}h ${bMins}m" else "${bMins}m"
 
+                    val timingStr = if (currentPeriod == SubjectTagManager.SubjectStatsPeriod.TODAY) {
+                        val matchedSessions = daySessions.filter {
+                            (it.subjectId != null && it.subjectId == subj.id) ||
+                            (it.subjectId == null && subj.id == "general")
+                        }
+                        val validMatchedSessions = matchedSessions.filter { it.secs >= 60L }
+                        if (validMatchedSessions.isNotEmpty()) {
+                            val firstMs = validMatchedSessions.minOf { it.startMs }
+                            val lastMs = validMatchedSessions.maxOf { it.endMs }
+                            "${TimeFormat.formatWallClock(host, firstMs)} \u2013 ${TimeFormat.formatWallClock(host, lastMs)}"
+                        } else "N/A"
+                    } else {
+                        "Period Total"
+                    }
+
                     val detailsText = TextView(host).apply {
-                        text = "Study Duration: $focusTimeStr\nBreak Duration: $breakTimeStr\nTime Window: $timingStr"
+                        text = if (currentPeriod == SubjectTagManager.SubjectStatsPeriod.TODAY) {
+                            "Study Duration: $focusTimeStr\nBreak Duration: $breakTimeStr\nTime Window: $timingStr"
+                        } else {
+                            "Total Study Time: $focusTimeStr"
+                        }
                         setTextColor(themeCoordinator.textColor)
                         alpha = 0.75f
                         textSize = 13.5f
@@ -1150,37 +1409,107 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
         }
 
+        fun renderPeriodTabs() {
+            periodTabsRow.removeAllViews()
+            val periods = SubjectTagManager.SubjectStatsPeriod.values()
+            for (p in periods) {
+                val isSelected = (p == currentPeriod)
+                val tabBtn = TextView(host).apply {
+                    text = p.displayName
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+                    setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                    setPadding(dp(14), dp(7), dp(14), dp(7))
+                    background = if (isSelected) {
+                        GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setColor(themeCoordinator.primaryColor)
+                        }
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 16f)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { setMargins(0, 0, dp(8), 0) }
+                    setOnClickListener {
+                        if (currentPeriod != p) {
+                            HapticFeedbackHelper.performMicroHapticTick(host, this)
+                            currentPeriod = p
+                            renderPeriodTabs()
+                            updateDateView()
+                        }
+                    }
+                }
+                periodTabsRow.addView(tabBtn)
+            }
+        }
+        renderPeriodTabs()
+
         prevBtn.setOnClickListener {
-            val cal = Calendar.getInstance().apply { time = try { sdfKey.parse(currentDateKey) } catch(_: Exception) { Date() } ?: Date() }
-            cal.add(Calendar.DAY_OF_YEAR, -1)
-            currentDateKey = sdfKey.format(cal.time)
+            when (currentPeriod) {
+                SubjectTagManager.SubjectStatsPeriod.TODAY -> {
+                    val cal = Calendar.getInstance().apply { time = try { sdfKey.parse(currentDateKey) } catch(_: Exception) { Date() } ?: Date() }
+                    cal.add(Calendar.DAY_OF_YEAR, -1)
+                    currentDateKey = sdfKey.format(cal.time)
+                }
+                SubjectTagManager.SubjectStatsPeriod.WEEK -> {
+                    currentWeekMonday.add(Calendar.WEEK_OF_YEAR, -1)
+                }
+                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
+                    currentMonthCal.add(Calendar.MONTH, -1)
+                }
+                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> {}
+            }
             updateDateView()
         }
 
         nextBtn.setOnClickListener {
-            val cal = Calendar.getInstance().apply { time = try { sdfKey.parse(currentDateKey) } catch(_: Exception) { Date() } ?: Date() }
-            cal.add(Calendar.DAY_OF_YEAR, 1)
-            val newKey = sdfKey.format(cal.time)
-            if (newKey <= todayKey) {
-                currentDateKey = newKey
-                updateDateView()
+            when (currentPeriod) {
+                SubjectTagManager.SubjectStatsPeriod.TODAY -> {
+                    val cal = Calendar.getInstance().apply { time = try { sdfKey.parse(currentDateKey) } catch(_: Exception) { Date() } ?: Date() }
+                    cal.add(Calendar.DAY_OF_YEAR, 1)
+                    val newKey = sdfKey.format(cal.time)
+                    if (newKey <= todayKey) {
+                        currentDateKey = newKey
+                    }
+                }
+                SubjectTagManager.SubjectStatsPeriod.WEEK -> {
+                    val nextW = currentWeekMonday.clone() as Calendar
+                    nextW.add(Calendar.WEEK_OF_YEAR, 1)
+                    if (nextW.timeInMillis <= WeekHelper.mondayOf(Calendar.getInstance()).timeInMillis) {
+                        currentWeekMonday = nextW
+                    }
+                }
+                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
+                    val nowCal = Calendar.getInstance()
+                    val nextM = currentMonthCal.clone() as Calendar
+                    nextM.add(Calendar.MONTH, 1)
+                    if (nextM.get(Calendar.YEAR) < nowCal.get(Calendar.YEAR) || (nextM.get(Calendar.YEAR) == nowCal.get(Calendar.YEAR) && nextM.get(Calendar.MONTH) <= nowCal.get(Calendar.MONTH))) {
+                        currentMonthCal = nextM
+                    }
+                }
+                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> {}
             }
+            updateDateView()
         }
 
         dateTitleBtn.setOnClickListener {
-            val cal = Calendar.getInstance().apply { time = try { sdfKey.parse(currentDateKey) } catch(_: Exception) { Date() } ?: Date() }
-            DatePickerDialog(host, { _, y: Int, m: Int, d: Int ->
-                val selCal = Calendar.getInstance().apply {
-                    set(Calendar.YEAR, y)
-                    set(Calendar.MONTH, m)
-                    set(Calendar.DAY_OF_MONTH, d)
-                }
-                val selKey = sdfKey.format(selCal.time)
-                if (selKey <= todayKey) {
-                    currentDateKey = selKey
-                    updateDateView()
-                }
-            }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+            if (currentPeriod == SubjectTagManager.SubjectStatsPeriod.TODAY) {
+                val cal = Calendar.getInstance().apply { time = try { sdfKey.parse(currentDateKey) } catch(_: Exception) { Date() } ?: Date() }
+                DatePickerDialog(host, { _, y: Int, m: Int, d: Int ->
+                    val selCal = Calendar.getInstance().apply {
+                        set(Calendar.YEAR, y)
+                        set(Calendar.MONTH, m)
+                        set(Calendar.DAY_OF_MONTH, d)
+                    }
+                    val selKey = sdfKey.format(selCal.time)
+                    if (selKey <= todayKey) {
+                        currentDateKey = selKey
+                        updateDateView()
+                    }
+                }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH)).show()
+            }
         }
 
         updateDateView()
@@ -1425,5 +1754,127 @@ class SubjectDialogHelper(private val host: MainActivity) {
         } catch (e: Exception) {
             e.printStackTrace()
         }
+    }
+
+    private var pomoSubjectPromptShowing = false
+
+    fun checkPomoSubjectPrompt() {
+        if (host.isFinishing || host.isDestroyed || pomoSubjectPromptShowing) return
+        val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val hasFlag = prefs.getBoolean("pomo_prompt_subject_change", false)
+        val hasIntentExtra = host.intent?.getBooleanExtra("EXTRA_PROMPT_CHANGE_SUBJECT", false) == true
+        if (!hasFlag && !hasIntentExtra) return
+
+        prefs.edit().putBoolean("pomo_prompt_subject_change", false).apply()
+        host.intent?.removeExtra("EXTRA_PROMPT_CHANGE_SUBJECT")
+
+        val origSubId = prefs.getString("pomo_grace_orig_subject_id", null) ?: SubjectTagManager.getSelectedSubject(host).id
+        val curSub = SubjectTagManager.resolveSubject(host, origSubId)
+        val pomoCount = prefs.getInt("pomo_completed_count", 0) + 1
+
+        val startTime = prefs.getLong("pomo_prompt_start_time", System.currentTimeMillis() / 1000)
+        val now = System.currentTimeMillis() / 1000
+        val elapsed = (now - startTime).coerceAtLeast(0L)
+        val totalTimeout = 60L
+        val remainingSecs = (totalTimeout - elapsed).coerceAtLeast(0L)
+
+        if (remainingSecs <= 0L) {
+            SubjectTagManager.finalizePomoGraceReallocation(host, origSubId)
+            host.invalidateStatsCache()
+            return
+        }
+
+        pomoSubjectPromptShowing = true
+        val dialog = Dialog(host)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        var dismissedByAction = false
+        var countDownTimer: android.os.CountDownTimer? = null
+
+        dialog.setOnDismissListener {
+            countDownTimer?.cancel()
+            pomoSubjectPromptShowing = false
+            if (!dismissedByAction) {
+                if (prefs.getBoolean("pomo_grace_realloc_pending", false)) {
+                    SubjectTagManager.finalizePomoGraceReallocation(host, origSubId)
+                    host.invalidateStatsCache()
+                }
+            }
+        }
+
+        val root = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(20), dp(22), dp(20))
+            background = themeCoordinator.createDialogBackground(28f)
+        }
+
+        root.addView(TextView(host).apply {
+            text = "🍅 Break Finished"
+            setTextColor(themeCoordinator.primaryColor)
+            textSize = 18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+
+        root.addView(TextView(host).apply {
+            text = "Next Pomodoro session (#$pomoCount) has started.\n\nCurrent subject: ${curSub.iconEmoji} ${curSub.name}\n\nWould you like to keep this subject or switch to another?"
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.85f
+            textSize = 13.5f
+            setPadding(0, dp(10), 0, dp(18))
+        })
+
+        val btnRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+
+        val keepBtn = Button(host).apply {
+            text = "Keep (${curSub.name}) (${remainingSecs}s)"
+            setTextColor(themeCoordinator.textColor)
+            background = null
+            setOnClickListener {
+                dismissedByAction = true
+                dialog.dismiss()
+                SubjectTagManager.finalizePomoGraceReallocation(host, origSubId)
+                host.invalidateStatsCache()
+            }
+        }
+        btnRow.addView(keepBtn)
+
+        val switchBtn = Button(host).apply {
+            text = "Change Subject"
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(12).toFloat()
+                setColor(themeCoordinator.primaryColor)
+            }
+            setOnClickListener {
+                dismissedByAction = true
+                dialog.dismiss()
+                showSubjectPickerDialog(allowActiveSwitch = true)
+            }
+        }
+        btnRow.addView(switchBtn)
+        root.addView(btnRow)
+
+        dialog.setContentView(root)
+        dialog.show()
+        val width = (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380))
+        dialog.window?.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+
+        countDownTimer = object : android.os.CountDownTimer(remainingSecs * 1000L, 1000L) {
+            override fun onTick(millisUntilFinished: Long) {
+                val secLeft = (millisUntilFinished / 1000L).coerceAtLeast(1L)
+                keepBtn.text = "Keep (${curSub.name}) (${secLeft}s)"
+            }
+
+            override fun onFinish() {
+                if (dialog.isShowing) {
+                    dialog.dismiss()
+                }
+            }
+        }.start()
     }
 }

@@ -9,10 +9,6 @@ import androidx.appcompat.app.AppCompatActivity
 
 class SplashActivity : AppCompatActivity() {
 
-    companion object {
-        var isSplashShownThisSession = false
-    }
-
     private lateinit var videoView: VideoView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -20,13 +16,6 @@ class SplashActivity : AppCompatActivity() {
 
         // Verify installation / app update integrity and migrate if needed
         BackupManager(this).verifyAppVersionAndMigrate()
-
-        val shouldSkipLogin = AuthManager.isLoggedIn(this) || AuthManager.hasCompletedOnboarding(this)
-        if (isSplashShownThisSession && shouldSkipLogin) {
-            navigateToNextScreen()
-            return
-        }
-        isSplashShownThisSession = true
 
         setContentView(R.layout.activity_splash)
 

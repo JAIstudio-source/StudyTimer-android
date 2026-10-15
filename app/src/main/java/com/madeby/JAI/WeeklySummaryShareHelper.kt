@@ -118,6 +118,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
 
             // Streak as of the week's end (capped at today), counting back goal-qualifying days
             val streak = if (weekOffset == 0) {
+                val frozenDates = StreakCalculator.getFrozenDates(host)
                 StreakCalculator.currentStreak(
                     focusOn = { daysAgo ->
                         val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
@@ -127,7 +128,12 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
                     goalFor = if (streakGoalBased) ({ daysAgo ->
                         val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
                         host.resolveGoalFor(sdf.format(cal.time))
-                    }) else null
+                    }) else null,
+                    isFrozen = { daysAgo ->
+                        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -daysAgo) }
+                        val dKey = sdf.format(cal.time)
+                        frozenDates.contains(dKey)
+                    }
                 )
             } else {
                 var streakEnd = endCal.clone() as Calendar

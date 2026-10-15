@@ -1556,6 +1556,59 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     layout.addView(createSectionLabel("STUDY & BREAK TIMERS"))
                     val intervalCard = createSettingsCard()
 
+                    // Quick Interval Presets Row
+                    val presetsRow = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(dp(16), dp(14), dp(16), dp(10))
+                    }
+                    val presetPresets = listOf(
+                        Triple("25/5 Standard", 25L, 5L),
+                        Triple("50/10 Deep", 50L, 10L),
+                        Triple("90/20 Flow", 90L, 20L)
+                    )
+                    for ((pName, pFocus, pBreak) in presetPresets) {
+                        val curFocus = sharedPrefs.safeLong("study_interval_minutes", 25L)
+                        val isSelected = curFocus == pFocus
+                        val chip = TextView(this).apply {
+                            text = pName
+                            textSize = 12f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                            background = if (isSelected) {
+                                GradientDrawable().apply {
+                                    cornerRadius = dp(14).toFloat()
+                                    setColor(themeCoordinator.primaryColor)
+                                }
+                            } else {
+                                themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 14f)
+                            }
+                            setPadding(dp(8), dp(8), dp(8), dp(8))
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                                setMargins(dp(3), 0, dp(3), 0)
+                            }
+                            gravity = Gravity.CENTER
+                            setOnClickListener {
+                                sharedPrefs.edit()
+                                    .putLong("study_interval_minutes", pFocus)
+                                    .putLong("focus_countdown_secs", pFocus * 60L)
+                                    .putLong("break_interval_minutes", pBreak)
+                                    .putLong("break_countdown_secs", pBreak * 60L)
+                                    .apply()
+                                if (currentTimerState == TimerState.IDLE) {
+                                    focusCountdownSecs = pFocus * 60L
+                                    focusRemainingSecs = pFocus * 60L
+                                }
+                                try { performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
+                                tabPageCache.remove(settingsTabKey(AppSettingsTab.TIMER))
+                                navigateToPanel(AppPanel.SETTINGS)
+                            }
+                        }
+                        presetsRow.addView(chip)
+                    }
+                    intervalCard.addView(presetsRow)
+                    intervalCard.addView(createDivider())
+
                     val isFreedomMode = sharedPrefs.getBoolean("pomodoro_freedom_mode", false)
                     val freedomSwitch = SwitchMaterial(this).apply {
                         isChecked = isFreedomMode
@@ -1709,6 +1762,37 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     intervalCard.addView(createDivider())
                     intervalCard.addView(makeIntervalStepper("Sessions Until Long Break", if (isFreedomMode) "Cycle limit (uncapped in Freedom Mode)" else "Number of study sessions before a longer rest", "long_break_interval", 4L, 2L, 10L, 1L, "sessions"))
                     intervalCard.addView(createDivider())
+
+                    val isOvertime = sharedPrefs.getBoolean("pomodoro_overtime_enabled", true)
+                    val overtimeSwitch = SwitchMaterial(this).apply {
+                        isChecked = isOvertime
+                        setOnCheckedChangeListener { _, isChecked ->
+                            sharedPrefs.edit().putBoolean("pomodoro_overtime_enabled", isChecked).apply()
+                        }
+                    }
+                    intervalCard.addView(createSettingsRow("", "Overtime Flow", "Keep timer running past zero so your flow state is never interrupted", overtimeSwitch))
+                    intervalCard.addView(createDivider())
+
+                    val isAutoBreak = sharedPrefs.getBoolean("pomodoro_auto_break", true)
+                    val autoBreakSwitch = SwitchMaterial(this).apply {
+                        isChecked = isAutoBreak
+                        setOnCheckedChangeListener { _, isChecked ->
+                            sharedPrefs.edit().putBoolean("pomodoro_auto_break", isChecked).apply()
+                        }
+                    }
+                    intervalCard.addView(createSettingsRow("", "Auto-Start Breaks", "Automatically start rest countdown when focus session finishes", autoBreakSwitch))
+                    intervalCard.addView(createDivider())
+
+                    val isAutoFocus = sharedPrefs.getBoolean("pomo_auto_start_focus", true)
+                    val autoFocusSwitch = SwitchMaterial(this).apply {
+                        isChecked = isAutoFocus
+                        setOnCheckedChangeListener { _, isChecked ->
+                            sharedPrefs.edit().putBoolean("pomo_auto_start_focus", isChecked).apply()
+                        }
+                    }
+                    intervalCard.addView(createSettingsRow("", "Auto-Start Next Focus", "Automatically start next study interval when break ends", autoFocusSwitch))
+                    intervalCard.addView(createDivider())
+
                     val isPureWhitePomo = sharedPrefs.getBoolean("pomodoro_pure_white_theme", true)
                     val pureWhiteSwitch = SwitchMaterial(this).apply {
                         isChecked = isPureWhitePomo
@@ -1776,6 +1860,50 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 }
                 displayCard.addView(createSettingsRow("", "Pure White Clock", "Clean white timer digits instead of accent color", pureWhiteSwitch))
                 layout.addView(displayCard)
+
+                layout.addView(createSectionLabel("PHYSICAL GESTURES"))
+                val gestureCard = createSettingsCard()
+                val isFlipEnabled = FlipToFocusManager.isEnabled(this)
+                val flipSwitch = SwitchMaterial(this).apply {
+                    isChecked = isFlipEnabled
+                    setOnCheckedChangeListener { _, isChecked ->
+                        FlipToFocusManager.setEnabled(this@with, isChecked)
+                        if (isChecked) {
+                            FlipToFocusManager.setContext(this@with)
+                            FlipToFocusManager.start(
+                                context = this@with,
+                                onFaceDown = {
+                                    if (currentTimerState == TimerState.IDLE || currentTimerState == TimerState.PAUSED) {
+                                        handleStateToggle()
+                                    }
+                                },
+                                onFaceUp = {
+                                    if (FlipToFocusManager.isPauseOnFaceUp(this@with) && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK)) {
+                                        handleStateToggle()
+                                    }
+                                }
+                            )
+                        } else {
+                            FlipToFocusManager.stop()
+                        }
+                        tabPageCache.remove(settingsTabKey(AppSettingsTab.TIMER))
+                        navigateToPanel(AppPanel.SETTINGS)
+                    }
+                }
+                gestureCard.addView(createSettingsRow("", "Flip to Focus", "Turn phone face down on your desk to automatically start focusing", flipSwitch))
+
+                if (isFlipEnabled) {
+                    gestureCard.addView(createDivider())
+                    val isPauseFaceUp = FlipToFocusManager.isPauseOnFaceUp(this)
+                    val pauseFaceUpSwitch = SwitchMaterial(this).apply {
+                        isChecked = isPauseFaceUp
+                        setOnCheckedChangeListener { _, isChecked ->
+                            FlipToFocusManager.setPauseOnFaceUp(this@with, isChecked)
+                        }
+                    }
+                    gestureCard.addView(createSettingsRow("", "Auto-Pause on Face Up", "Pause the timer when picking up or turning the phone face up", pauseFaceUpSwitch))
+                }
+                layout.addView(gestureCard)
 
                 layout.addView(createSectionLabel("ADJUST STUDY TIME"))
                 val adjustCard = createSettingsCard()

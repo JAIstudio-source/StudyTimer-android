@@ -154,8 +154,6 @@ class MainActivity : AppCompatActivity() {
     internal var isAdjustingFocusMode = true
     internal var showFocusHueBar = false
     internal var showBreakHueBar = false
-    private var updateDialogRef: android.app.Dialog? = null
-    private var batteryOptDialogRef: android.app.Dialog? = null
     internal var settingsScrollViewRef: ScrollView? = null
     private var pendingSettingsScrollY = 0
 
@@ -208,81 +206,16 @@ class MainActivity : AppCompatActivity() {
         getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putString("session_goals_json", array.toString()).apply()
     }
 
-    internal fun resolvePlannerColors(): Pair<Int, Int> {
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        return when (prefs.getString("planner_theme_preset", "DEFAULT")) {
-            "EMERALD" -> Pair(0xFF10B981.toInt(), 0xFFF59E0B.toInt())
-            "VIOLET" -> Pair(0xFF8B5CF6.toInt(), 0xFF06B6D4.toInt())
-            "OCEAN" -> Pair(0xFF06B6D4.toInt(), 0xFFFF6B6B.toInt())
-            "SUNSET" -> Pair(0xFFF97316.toInt(), 0xFF10B981.toInt())
-            "MIDNIGHT" -> Pair(0xFFEAB308.toInt(), 0xFFEC4899.toInt())
-            else -> Pair(themeCoordinator.accentColor, themeCoordinator.secondaryColor)
-        }
-    }
+    internal fun resolvePlannerColors(): Pair<Int, Int> =
+        PlannerThemeHelper.resolvePlannerColors(this, themeCoordinator)
 
-    internal fun resolvePlannerAccentColor(): Int = resolvePlannerColors().first
+    internal fun resolvePlannerAccentColor(): Int =
+        PlannerThemeHelper.resolvePlannerAccentColor(this, themeCoordinator)
 
     internal fun showPlannerThemePickerDialog() {
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(24f)
-            setPadding(dp(22), dp(20), dp(22), dp(20))
+        PlannerThemeHelper.showPlannerThemePickerDialog(this, themeCoordinator) {
+            refreshStatsPanel()
         }
-
-        content.addView(TextView(this).apply {
-            text = "Planner Theme"
-            textSize = 18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(themeCoordinator.textColor)
-            setPadding(0, 0, 0, dp(14))
-        })
-
-        val presets = listOf(
-            "DEFAULT" to "Classic Theme",
-            "EMERALD" to "Emerald & Amber",
-            "VIOLET" to "Violet & Cyan",
-            "OCEAN" to "Ocean & Coral",
-            "SUNSET" to "Sunset & Mint",
-            "MIDNIGHT" to "Obsidian & Pink"
-        )
-
-        val currentPreset = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("planner_theme_preset", "DEFAULT")
-
-        for ((key, name) in presets) {
-            val isSel = (key == currentPreset)
-            val btn = TextView(this).apply {
-                text = if (isSel) "✓ $name" else name
-                textSize = 14f
-                typeface = Typeface.create("sans-serif-medium", if (isSel) Typeface.BOLD else Typeface.NORMAL)
-                setTextColor(if (isSel) Color.WHITE else themeCoordinator.textColor)
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(12).toFloat()
-                    if (isSel) {
-                        setColor(themeCoordinator.primaryColor)
-                    } else {
-                        setColor(tintedColor(themeCoordinator.textColor, 15))
-                    }
-                }
-                setPadding(dp(16), dp(12), dp(16), dp(12))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(0, 0, 0, dp(8)) }
-                setOnClickListener {
-                    getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putString("planner_theme_preset", key).apply()
-                    dialog.dismiss()
-                    refreshStatsPanel()
-                }
-            }
-            content.addView(btn)
-        }
-
-        dialog.setContentView(content)
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        dialog.show()
     }
 
     private val pickAvatarLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: Uri? ->
@@ -333,21 +266,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    internal val accountDialogHelper by lazy { AccountDialogHelper(this) }
+    internal val systemDialogHelper by lazy { SystemDialogHelper(this) }
+
     internal fun showSignOutConfirmDialog(onConfirmed: (() -> Unit)? = null) {
-        DeveloperToolsHelper.showThemedConfirmDialog(
-            activity = this,
-            themeCoordinator = themeCoordinator,
-            title = "Sign Out?",
-            message = "Your local study records will remain on this device, but cloud sync will pause until you sign in again.",
-            confirmText = "Sign Out",
-            isDestructive = true
-        ) {
-            AuthManager.logout(this)
-            onConfirmed?.invoke() ?: run {
-                Toast.makeText(this, "Signed out successfully", Toast.LENGTH_SHORT).show()
-                navigateToPanel(AppPanel.SETTINGS)
-            }
-        }
+        accountDialogHelper.showSignOutConfirmDialog(onConfirmed)
     }
 
     internal var statsSnapshotCache: StatsSnapshot? = null
@@ -412,473 +335,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun showEditNameDialog() {
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(22), dp(22), dp(22), dp(18))
-        }
-
-        content.addView(TextView(this).apply {
-            text = "PROFILE"
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 11f
-            letterSpacing = 0.18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
-
-        content.addView(TextView(this).apply {
-            text = "Change Account Name"
-            setTextColor(themeCoordinator.textColor)
-            textSize = 18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, dp(6), 0, dp(14))
-        })
-
-        val currentName = AuthManager.getUserName(this) ?: ""
-        val inputEdit = android.widget.EditText(this).apply {
-            setText(currentName)
-            hint = "Enter your name"
-            setHintTextColor(tintedColor(themeCoordinator.textColor, 100))
-            setTextColor(themeCoordinator.textColor)
-            textSize = 15f
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
-            setPadding(dp(16), dp(12), dp(16), dp(12))
-        }
-        content.addView(inputEdit)
-
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(18), 0, 0)
-        }
-        val cancelBtn = Button(this).apply {
-            text = getString(R.string.btn_cancel_upper)
-            setTextColor(themeCoordinator.textColor)
-            textSize = 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 50f)
-            setOnClickListener { dialog.dismiss() }
-            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { setMargins(0, 0, dp(8), 0) }
-        }
-        val saveBtn = Button(this).apply {
-            text = "SAVE"
-            setTextColor(Color.WHITE)
-            textSize = 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply { cornerRadius = 50f; setColor(themeCoordinator.primaryColor) }
-            setOnClickListener {
-                val newName = inputEdit.text.toString().trim()
-                if (newName.isNotEmpty()) {
-                    AuthManager.updateUserName(this@MainActivity, newName)
-                    tabPageCache.remove(settingsTabKey(AppSettingsTab.PROFILE))
-                    navigateToPanel(AppPanel.SETTINGS)
-                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                        CloudSyncManager.syncDataToCloud(this@MainActivity)
-                    }
-                }
-                dialog.dismiss()
-            }
-            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { setMargins(dp(8), 0, 0, 0) }
-        }
-        buttonRow.addView(cancelBtn)
-        buttonRow.addView(saveBtn)
-        content.addView(buttonRow)
-
-        dialog.setContentView(content)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.88f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.show()
+        accountDialogHelper.showEditNameDialog()
     }
 
     internal fun showExpandedAvatarDialog() {
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-
-        val size = (resources.displayMetrics.widthPixels * 0.72f).toInt()
-        val userName = AuthManager.getUserName(this)
-        val userEmail = AuthManager.getUserEmail(this)
-        val avatarBitmap = LocalAvatarManager.getCircularAvatarBitmap(this, size)
-
-        val frame = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(size, size)
-        }
-
-        if (avatarBitmap != null) {
-            val imgView = android.widget.ImageView(this).apply {
-                setImageBitmap(avatarBitmap)
-                scaleType = android.widget.ImageView.ScaleType.CENTER_CROP
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(themeCoordinator.primaryColor)
-                }
-                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            }
-            frame.addView(imgView)
-        } else {
-            val textView = TextView(this).apply {
-                text = if (!userName.isNullOrBlank()) userName.take(1).uppercase() else if (!userEmail.isNullOrBlank()) userEmail.take(1).uppercase() else "G"
-                textSize = 90f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(themeCoordinator.primaryColor)
-                }
-                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            }
-            frame.addView(textView)
-        }
-
-        frame.setOnClickListener { dialog.dismiss() }
-
-        dialog.setContentView(frame)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.setLayout(size, size)
-        dialog.show()
+        accountDialogHelper.showExpandedAvatarDialog()
     }
 
     internal fun showDeleteAccountDialog() {
-        val dialog = Dialog(this)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(22), dp(22), dp(22), dp(18))
-        }
-
-        content.addView(TextView(this).apply {
-            text = "SEVERE WARNING • PERMANENT DELETION"
-            setTextColor(Color.parseColor("#EF4444"))
-            textSize = 11.5f
-            letterSpacing = 0.18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
-
-        content.addView(TextView(this).apply {
-            text = "Delete Account & All Data"
-            setTextColor(themeCoordinator.textColor)
-            textSize = 19f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, dp(6), 0, 0)
-        })
-
-        content.addView(TextView(this).apply {
-            text = "This action is permanent and will instantly erase all your focus history, subjects, cloud sync documents, and settings. Type 'DELETE' below to confirm."
-            setTextColor(themeCoordinator.textColor)
-            alpha = 0.8f
-            textSize = 13.5f
-            setPadding(0, dp(8), 0, dp(12))
-        })
-
-        val confirmInput = EditText(this).apply {
-            hint = "Type DELETE to confirm"
-            setTextColor(themeCoordinator.textColor)
-            setHintTextColor(tintedColor(themeCoordinator.textColor, 90))
-            textSize = 14f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#EF4444"), 40), 12f)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-        content.addView(confirmInput)
-
-        val webInfoText = TextView(this).apply {
-            text = "Web Deletion Portal: https://get-studytimer.vercel.app/delete-account.html"
-            setTextColor(themeCoordinator.primaryColor)
-            alpha = 0.8f
-            textSize = 11.5f
-            setPadding(0, dp(10), 0, dp(14))
-            setOnClickListener {
-                try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://get-studytimer.vercel.app/delete-account.html")))
-                } catch (_: Exception) {}
-            }
-        }
-        content.addView(webInfoText)
-
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(6), 0, 0)
-        }
-        val cancelBtn = Button(this).apply {
-            text = getString(R.string.btn_cancel_upper)
-            setTextColor(themeCoordinator.textColor)
-            textSize = 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 50f)
-            setOnClickListener { dialog.dismiss() }
-            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { setMargins(0, 0, dp(8), 0) }
-        }
-        val deleteBtn = Button(this).apply {
-            text = "PERMANENTLY DELETE"
-            setTextColor(Color.WHITE)
-            textSize = 11f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply {
-                cornerRadius = 50f
-                setColor(Color.parseColor("#DC2626"))
-            }
-            setOnClickListener {
-                val inputStr = confirmInput.text.toString().trim()
-                if (inputStr != "DELETE") {
-                    Toast.makeText(this@MainActivity, "Please type 'DELETE' exactly to confirm deletion", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                try {
-                    rootLayout.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                } catch (_: Exception) {}
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        CloudSyncManager.deleteUserCloudData(this@MainActivity)
-                    }
-                    AuthManager.deleteLocalUserData(this@MainActivity)
-                    Toast.makeText(this@MainActivity, "Account & all data permanently erased.", Toast.LENGTH_LONG).show()
-                    val intent = Intent(this@MainActivity, LoginActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                    startActivity(intent)
-                    finish()
-                }
-            }
-            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1.2f).apply { setMargins(dp(8), 0, 0, 0) }
-        }
-        buttonRow.addView(cancelBtn)
-        buttonRow.addView(deleteBtn)
-        content.addView(buttonRow)
-
-        dialog.setContentView(content)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.90f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.show()
+        accountDialogHelper.showDeleteAccountDialog()
     }
 
-    private fun showRestoreConfirmDialog(uri: Uri) {
-        val meta = backupManager.inspectBackupMetadata(uri)
-        val currentLocalTs = backupManager.getLastModifiedTimestamp()
-        val isOlderThanLocal = meta != null && meta.lastModifiedTimestamp > 0L && meta.lastModifiedTimestamp < currentLocalTs - 60000L
-        val backupDateStr = if (meta != null && meta.backupCreatedAt > 0L) {
-            val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
-            sdf.format(Date(meta.backupCreatedAt))
-        } else "Unknown Date"
-
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(22), dp(22), dp(22), dp(18))
-        }
-        content.addView(TextView(this).apply {
-            text = if (isOlderThanLocal) "STALE BACKUP WARNING" else getString(R.string.restore_backup)
-            setTextColor(if (isOlderThanLocal) Color.parseColor("#F59E0B") else themeCoordinator.primaryColor)
-            textSize = 11f
-            letterSpacing = 0.18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
-        content.addView(TextView(this).apply {
-            text = if (isOlderThanLocal) "Import Older Backup?" else getString(R.string.restore_backup_title)
-            setTextColor(themeCoordinator.textColor)
-            textSize = 18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, dp(8), 0, 0)
-        })
-        content.addView(TextView(this).apply {
-            text = if (isOlderThanLocal) {
-                "Warning: This backup file was created on $backupDateStr, which is OLDER than your current study data. Importing this will revert recent local progress."
-            } else {
-                "Backup from: $backupDateStr\n${getString(R.string.restore_backup_message)}"
-            }
-            setTextColor(themeCoordinator.textColor)
-            alpha = if (isOlderThanLocal) 0.9f else 0.6f
-            textSize = 13f
-            setPadding(0, dp(8), 0, 0)
-        })
-
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(18), 0, 0)
-        }
-        val cancelBtn = Button(this).apply {
-            text = getString(R.string.btn_cancel_upper)
-            setTextColor(themeCoordinator.textColor)
-            textSize = 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 50f)
-            setOnClickListener { dialog.dismiss() }
-            layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply { setMargins(0, 0, dp(8), 0) }
-        }
-        val restoreBtn = Button(this).apply {
-            text = if (isOlderThanLocal) "REVERT & RESTORE" else getString(R.string.btn_restore)
-            setTextColor(themeCoordinator.bgColor)
-            textSize = 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = rippleBackground(if (isOlderThanLocal) Color.parseColor("#F59E0B") else themeCoordinator.primaryColor)
-            setOnClickListener {
-                dialog.dismiss()
-                performImportWithCloudConflictCheck(uri)
-            }
-            layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply { setMargins(dp(8), 0, 0, 0) }
-        }
-        buttonRow.addView(cancelBtn)
-        buttonRow.addView(restoreBtn)
-        content.addView(buttonRow)
-
-        dialog.setContentView(content)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.88f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.show()
-    }
-
-    private fun performImportWithCloudConflictCheck(uri: Uri) {
-        val success = backupManager.importDataFromJSON(uri, allowCloudSync = false)
-        if (!success) {
-            Toast.makeText(this, getString(R.string.toast_backup_parse_failed), Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        Toast.makeText(this, getString(R.string.toast_logs_restored), Toast.LENGTH_SHORT).show()
-        themeCoordinator.applyThemeCoordinates()
-        tabPageCache.clear()
-
-        if (!AuthManager.isLoggedIn(this)) {
-            recreate()
-            return
-        }
-
-        // Check if there is a conflict with existing cloud data
-        lifecycleScope.launch {
-            val syncResult = withContext(Dispatchers.IO) {
-                CloudSyncManager.syncWithConflictCheck(this@MainActivity)
-            }
-            when (syncResult) {
-                is CloudSyncManager.SyncCheckResult.Conflict -> {
-                    showSyncConflictDialog(syncResult.localTimestamp, syncResult.cloudTimestamp, syncResult.cloudRecord)
-                }
-                is CloudSyncManager.SyncCheckResult.Success -> {
-                    Toast.makeText(this@MainActivity, "Cloud sync updated successfully", Toast.LENGTH_SHORT).show()
-                    recreate()
-                }
-                else -> {
-                    recreate()
-                }
-            }
-        }
+    internal fun showRestoreConfirmDialog(uri: Uri) {
+        accountDialogHelper.showRestoreConfirmDialog(uri)
     }
 
     internal fun showSyncConflictDialog(localTs: Long, cloudTs: Long, cloudRecord: org.json.JSONObject) {
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(22), dp(22), dp(22), dp(18))
-        }
-
-        val sdf = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault())
-        val cloudDateStr = if (cloudTs > 0L) sdf.format(Date(cloudTs)) else "Recent Cloud State"
-        val localDateStr = if (localTs > 0L) sdf.format(Date(localTs)) else "Imported Backup"
-
-        content.addView(TextView(this).apply {
-            text = "SYNC CONFLICT DETECTED"
-            setTextColor(Color.parseColor("#EF4444"))
-            textSize = 11f
-            letterSpacing = 0.18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
-        content.addView(TextView(this).apply {
-            text = "Cloud Has Newer Data"
-            setTextColor(themeCoordinator.textColor)
-            textSize = 18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, dp(6), 0, 0)
-        })
-        content.addView(TextView(this).apply {
-            text = "Your Google/Cloud backup ($cloudDateStr) is newer than the imported data ($localDateStr).\n\nChoose how you want to resolve this:"
-            setTextColor(themeCoordinator.textColor)
-            alpha = 0.75f
-            textSize = 13f
-            setPadding(0, dp(8), 0, dp(14))
-        })
-
-        // Option 1: Keep Newer Cloud Data (Recommended)
-        val keepCloudBtn = Button(this).apply {
-            text = "Keep Newer Cloud Data (Recommended)"
-            setTextColor(Color.WHITE)
-            textSize = 12.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(themeCoordinator.primaryColor)
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
-                setMargins(0, 0, 0, dp(8))
-            }
-            setOnClickListener {
-                dialog.dismiss()
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        CloudSyncManager.restoreDataFromCloud(this@MainActivity)
-                    }
-                    Toast.makeText(this@MainActivity, "Restored newer cloud data", Toast.LENGTH_SHORT).show()
-                    tabPageCache.clear()
-                    recreate()
-                }
-            }
-        }
-        content.addView(keepCloudBtn)
-
-        // Option 2: Merge Both
-        val mergeBtn = Button(this).apply {
-            text = "Merge Both (Combine Records)"
-            setTextColor(themeCoordinator.textColor)
-            textSize = 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 90), 12f)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
-                setMargins(0, 0, 0, dp(8))
-            }
-            setOnClickListener {
-                dialog.dismiss()
-                lifecycleScope.launch {
-                    val merged = withContext(Dispatchers.IO) {
-                        CloudSyncManager.mergeCloudAndLocalData(this@MainActivity, cloudRecord)
-                    }
-                    if (merged) {
-                        Toast.makeText(this@MainActivity, "Merged local and cloud data", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(this@MainActivity, "Merge failed, keeping local state", Toast.LENGTH_SHORT).show()
-                    }
-                    tabPageCache.clear()
-                    recreate()
-                }
-            }
-        }
-        content.addView(mergeBtn)
-
-        // Option 3: Overwrite Cloud with Local
-        val overwriteBtn = Button(this).apply {
-            text = "Overwrite Cloud with Local Data"
-            setTextColor(Color.parseColor("#EF4444"))
-            textSize = 11.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            background = themeCoordinator.createGlassChip(0x33EF4444.toInt(), 12f)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(40))
-            setOnClickListener {
-                dialog.dismiss()
-                lifecycleScope.launch {
-                    withContext(Dispatchers.IO) {
-                        CloudSyncManager.syncDataToCloud(this@MainActivity, force = true)
-                    }
-                    Toast.makeText(this@MainActivity, "Cloud overwritten with local backup", Toast.LENGTH_SHORT).show()
-                    recreate()
-                }
-            }
-        }
-        content.addView(overwriteBtn)
-
-        dialog.setContentView(content)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.90f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.show()
+        accountDialogHelper.showSyncConflictDialog(localTs, cloudTs, cloudRecord)
     }
 
     internal val exportLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -917,46 +390,15 @@ class MainActivity : AppCompatActivity() {
     internal var lastHoldHapticMs = 0L
 
     internal fun performMicroHaptic(view: View? = null) {
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("haptics_enabled", true)) return
-        try {
-            if (view != null) {
-                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            } else {
-                window.decorView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-            }
-        } catch (_: Exception) {}
+        HapticFeedbackHelper.performMicroHaptic(this, view ?: window.decorView)
     }
 
-    internal fun performMicroHapticTick(view: View? = null) {
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("haptics_enabled", true)) return
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as? android.os.Vibrator
-                if (vibrator?.hasVibrator() == true) {
-                    vibrator.vibrate(android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_TICK))
-                    return
-                }
-            }
-            if (view != null) {
-                view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-            } else {
-                window.decorView.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-            }
-        } catch (_: Exception) {}
+    internal fun performMicroHapticTick(view: View? = null, progressFraction: Float = 0f) {
+        HapticFeedbackHelper.performMicroHapticTick(this, view ?: window.decorView, progressFraction)
     }
 
     internal fun performHapticConfirm(view: View? = null) {
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("haptics_enabled", true)) return
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                view?.performHapticFeedback(HapticFeedbackConstants.CONFIRM) ?: window.decorView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-            } else {
-                view?.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) ?: window.decorView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-            }
-        } catch (_: Exception) {}
+        HapticFeedbackHelper.performHapticConfirm(this, view ?: window.decorView)
     }
 
     internal fun resetHoldToEnd() {
@@ -983,10 +425,10 @@ class MainActivity : AppCompatActivity() {
             stopBtn.progress = progress
 
             val now = SystemClock.uptimeMillis()
-            val hapticInterval = (120L - (progress * 85L)).toLong().coerceAtLeast(30L)
+            val hapticInterval = (140L - (progress * 105L)).toLong().coerceAtLeast(28L)
             if (now - lastHoldHapticMs >= hapticInterval) {
                 lastHoldHapticMs = now
-                performMicroHapticTick(stopBtn)
+                performMicroHapticTick(stopBtn, progress)
             }
 
             if (progress >= 1f) {
@@ -1043,316 +485,41 @@ class MainActivity : AppCompatActivity() {
         negativeText: String? = null,
         onNegative: (() -> Unit)? = null
     ) {
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(22), dp(22), dp(22), dp(18))
-        }
-        if (!badge.isNullOrEmpty()) {
-            content.addView(TextView(this).apply {
-                text = badge.uppercase()
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 12f
-                letterSpacing = 0.18f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            })
-        }
-        content.addView(TextView(this).apply {
-            text = title
-            setTextColor(themeCoordinator.textColor)
-            textSize = 18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, if (badge.isNullOrEmpty()) 0 else dp(6), 0, 0)
-        })
-        content.addView(TextView(this).apply {
-            text = message
-            setTextColor(themeCoordinator.textColor)
-            alpha = 0.7f
-            textSize = 13f
-            setPadding(0, dp(10), 0, 0)
-        })
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-            setPadding(0, dp(20), 0, 0)
-        }
-        if (!negativeText.isNullOrEmpty()) {
-            buttonRow.addView(TextView(this).apply {
-                text = negativeText
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
-                textSize = 13f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(dp(16), dp(10), dp(16), dp(10))
-                setOnClickListener {
-                    dialog.dismiss()
-                    onNegative?.invoke()
-                }
-            })
-        }
-        buttonRow.addView(TextView(this).apply {
-            text = positiveText
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 13f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(16), dp(10), dp(16), dp(10))
-            setOnClickListener {
-                dialog.dismiss()
-                onPositive.invoke()
-            }
-        })
-        content.addView(buttonRow)
-        dialog.setContentView(content)
-        dialog.window?.let {
-            it.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-            it.setLayout((resources.displayMetrics.widthPixels * 0.88).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        dialog.show()
+        systemDialogHelper.showCustomDialog(badge, title, message, positiveText, onPositive, negativeText, onNegative)
     }
 
-    private fun maybePromptBatteryOptimization() {
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (pm.isIgnoringBatteryOptimizations(packageName)) return
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val opens = prefs.safeInt("battery_opt_opens", 0) + 1
-        prefs.edit().putInt("battery_opt_opens", opens).apply()
-        if (opens % 3 != 0) return
-        showBatteryOptimizationDialog()
+    internal fun maybePromptBatteryOptimization() {
+        systemDialogHelper.maybePromptBatteryOptimization()
     }
 
-    private fun showBatteryOptimizationDialog() {
-        if (batteryOptDialogRef?.isShowing == true) return
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(22), dp(22), dp(22), dp(18))
-        }
-        content.addView(TextView(this).apply {
-            text = getString(R.string.btn_run_in_background)
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 12f
-            letterSpacing = 0.18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
-        content.addView(TextView(this).apply {
-            text = getString(R.string.battery_title)
-            setTextColor(themeCoordinator.textColor)
-            textSize = 18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, dp(6), 0, 0)
-        })
-        content.addView(TextView(this).apply {
-            text = getString(R.string.battery_message)
-            setTextColor(themeCoordinator.textColor)
-            alpha = 0.6f
-            textSize = 13f
-            setPadding(0, dp(10), 0, 0)
-        })
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(18), 0, 0)
-        }
-        val laterBtn = TextView(this).apply {
-            text = getString(R.string.btn_later)
-            gravity = Gravity.CENTER
-            setTextColor(themeCoordinator.textColor)
-            textSize = 13f
-            letterSpacing = 0.12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply { cornerRadius = 22f; setColor(tintedColor(themeCoordinator.textColor, 18)) }
-            setPadding(dp(18), dp(12), dp(18), dp(12))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dp(12), 0) }
-            setOnClickListener { dialog.dismiss() }
-        }
-        val allowBtn = TextView(this).apply {
-            text = getString(R.string.btn_allow)
-            gravity = Gravity.CENTER
-            setTextColor(themeCoordinator.bgColor)
-            textSize = 13f
-            letterSpacing = 0.12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply { cornerRadius = 22f; setColor(themeCoordinator.primaryColor) }
-            setPadding(dp(18), dp(12), dp(18), dp(12))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener {
-                dialog.dismiss()
-                try {
-                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
-                } catch (_: Exception) {
-                    openBatterySettings()
-                }
-            }
-        }
-        buttonRow.addView(laterBtn)
-        buttonRow.addView(allowBtn)
-        content.addView(buttonRow)
-        dialog.setContentView(content)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.85f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        batteryOptDialogRef = dialog
-        dialog.show()
+    internal fun showBatteryOptimizationDialog() {
+        systemDialogHelper.showBatteryOptimizationDialog()
     }
 
-    private fun openBatterySettings() {
-        try {
-            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-        } catch (_: Exception) {
-            startActivity(Intent(Settings.ACTION_SETTINGS))
-        }
+    internal fun openBatterySettings() {
+        systemDialogHelper.openBatterySettings()
     }
 
-    private fun openNotificationSettings() {
-        try {
-            startActivity(
-                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-            )
-        } catch (_: Exception) {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).setData(Uri.parse("package:$packageName")))
-        }
+    internal fun openNotificationSettings() {
+        systemDialogHelper.openNotificationSettings()
     }
 
     @Suppress("DEPRECATION")
-    internal fun currentVersionCodeLong(): Long =
-        runCatching { PackageInfoCompat.getLongVersionCode(packageManager.getPackageInfo(packageName, 0)) }.getOrDefault(0L)
+    internal fun currentVersionCodeLong(): Long = systemDialogHelper.currentVersionCodeLong()
 
     @Suppress("DEPRECATION")
-    internal fun currentVersionName(): String =
-        runCatching { packageManager.getPackageInfo(packageName, 0).versionName }.getOrNull() ?: "1.0.0"
+    internal fun currentVersionName(): String = systemDialogHelper.currentVersionName()
 
-    private fun openUpdateUrl(url: String) {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        } catch (_: Exception) {
-            Toast.makeText(this, getString(R.string.toast_update_page_failed), Toast.LENGTH_SHORT).show()
-        }
+    internal fun openUpdateUrl(url: String) {
+        systemDialogHelper.openUpdateUrl(url)
     }
 
     internal fun checkForUpdates(manual: Boolean) {
-        if (!AppConfig.ENABLE_GITHUB_UPDATE_CHECK) {
-            if (manual) {
-                Toast.makeText(this, getString(R.string.toast_up_to_date, currentVersionName()), Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        if (!manual) {
-            val launches = prefs.safeInt("update_launch_count", 0) + 1
-            prefs.edit().putInt("update_launch_count", launches).apply()
-            if (launches % 5 != 0) return
-        }
-        if (manual) {
-            Toast.makeText(this, getString(R.string.toast_checking_updates), Toast.LENGTH_SHORT).show()
-        }
-        UpdateChecker.check(this) { info ->
-            if (isDestroyed || isFinishing) return@check
-            if (info == null) {
-                if (manual) {
-                    Toast.makeText(this, getString(R.string.toast_update_check_failed), Toast.LENGTH_SHORT).show()
-                }
-                return@check
-            }
-            if (info.versionCode <= currentVersionCodeLong()) {
-                if (manual) {
-                    Toast.makeText(this, getString(R.string.toast_up_to_date, currentVersionName()), Toast.LENGTH_SHORT).show()
-                }
-                return@check
-            }
-            if (!manual && prefs.safeInt("update_dismissed_version", -1) == info.versionCode) {
-                return@check
-            }
-            showUpdateAvailableDialog(info)
-        }
+        systemDialogHelper.checkForUpdates(manual)
     }
 
-    private fun showUpdateAvailableDialog(info: UpdateInfo) {
-        if (updateDialogRef?.isShowing == true) return
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val dialog = android.app.Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(22), dp(22), dp(22), dp(18))
-        }
-        content.addView(TextView(this).apply {
-            text = getString(R.string.update_available)
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 12f
-            letterSpacing = 0.18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
-        content.addView(TextView(this).apply {
-            text = getString(R.string.update_version_ready, info.versionName)
-            setTextColor(themeCoordinator.textColor)
-            textSize = 20f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, dp(6), 0, 0)
-        })
-        if (info.hasReleaseNotes) {
-            content.addView(TextView(this).apply {
-                text = info.releaseNotes
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
-                textSize = 13f
-                setPadding(0, dp(10), 0, 0)
-            })
-        }
-        content.addView(TextView(this).apply {
-            text = getString(R.string.update_message)
-            setTextColor(themeCoordinator.textColor)
-            alpha = 0.45f
-            textSize = 12f
-            setPadding(0, dp(10), 0, 0)
-        })
-        val buttonRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, dp(18), 0, 0)
-        }
-        val laterBtn = TextView(this).apply {
-            text = getString(R.string.btn_later)
-            gravity = Gravity.CENTER
-            setTextColor(themeCoordinator.textColor)
-            textSize = 13f
-            letterSpacing = 0.12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply { cornerRadius = 22f; setColor(tintedColor(themeCoordinator.textColor, 18)) }
-            setPadding(dp(18), dp(12), dp(18), dp(12))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(0, 0, dp(12), 0) }
-            setOnClickListener {
-                prefs.edit().putInt("update_dismissed_version", info.versionCode).apply()
-                dialog.dismiss()
-            }
-        }
-        val updateBtn = TextView(this).apply {
-            text = getString(R.string.btn_update)
-            gravity = Gravity.CENTER
-            setTextColor(themeCoordinator.bgColor)
-            textSize = 13f
-            letterSpacing = 0.12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply { cornerRadius = 22f; setColor(themeCoordinator.primaryColor) }
-            setPadding(dp(18), dp(12), dp(18), dp(12))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener {
-                prefs.edit().remove("update_dismissed_version").apply()
-                dialog.dismiss()
-                openUpdateUrl(info.apkUrl?.takeIf { it.isNotBlank() } ?: info.url)
-            }
-        }
-        buttonRow.addView(laterBtn)
-        buttonRow.addView(updateBtn)
-        content.addView(buttonRow)
-        dialog.setContentView(content)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.85f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        dialog.setOnCancelListener { prefs.edit().putInt("update_dismissed_version", info.versionCode).apply() }
-        updateDialogRef = dialog
-        dialog.show()
+    internal fun showUpdateAvailableDialog(info: UpdateInfo) {
+        systemDialogHelper.showUpdateAvailableDialog(info)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -1564,7 +731,6 @@ class MainActivity : AppCompatActivity() {
         Thread {
             try {
                 AppAnalytics.init(this)
-                CrashReporter.init(this)
                 backupManager.triggerAutoRestoreIfPresent()
                 createNotificationChannel()
                 GoalReminderScheduler.schedule(this)
@@ -2673,6 +1839,41 @@ class MainActivity : AppCompatActivity() {
         WeeklySummaryShareHelper(this).showAvgSessionDetailDialog(snap)
     }
 
+    internal fun startFocusForGoal(goal: SessionGoal) {
+        val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        sp.edit()
+            .putString("active_planner_goal_id", goal.id)
+            .putString("active_planner_goal_title", goal.title)
+            .putString("active_planner_goal_subject_id", goal.subjectId ?: "")
+            .putInt("active_planner_goal_target_mins", goal.targetMinutes)
+            .apply()
+
+        if (!goal.subjectId.isNullOrBlank() && goal.subjectId != "all") {
+            SubjectTagManager.setSelectedSubject(this, goal.subjectId)
+        }
+
+        navigateToPanel(AppPanel.FOCUS)
+        Toast.makeText(this, "Focusing on: ${goal.title}", Toast.LENGTH_SHORT).show()
+    }
+
+    internal fun clearActivePlannerGoal() {
+        val isRunning = currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK
+        if (isRunning) {
+            Toast.makeText(this, "Pause or stop timer to remove active task", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        sp.edit()
+            .remove("active_planner_goal_id")
+            .remove("active_planner_goal_title")
+            .remove("active_planner_goal_subject_id")
+            .remove("active_planner_goal_target_mins")
+            .apply()
+        if (currentPanel == AppPanel.FOCUS) {
+            buildCurrentPanel()
+        }
+    }
+
     internal fun renderViewToBitmap(view: View): android.graphics.Bitmap {
         return WeeklySummaryShareHelper(this).renderViewToBitmap(view)
     }
@@ -2931,7 +2132,13 @@ class MainActivity : AppCompatActivity() {
                 val showCountdown = (timerMode == "COUNTDOWN" || isLectureModeActive) && isStudying
 
                 val nextStudyText = when {
-                    showCountdown -> formatCountdown(if (accumulatedStudy == 0L && focusRemainingSecs == 0L) focusCountdownSecs else focusRemainingSecs.coerceAtLeast(0L))
+                    showCountdown -> {
+                        if (focusRemainingSecs < 0L) {
+                            "+${formatCountdown(-focusRemainingSecs)}"
+                        } else {
+                            formatCountdown(if (accumulatedStudy == 0L && focusRemainingSecs == 0L) focusCountdownSecs else focusRemainingSecs.coerceAtLeast(0L))
+                        }
+                    }
                     timerMode == "COUNTDOWN" && currentTimerState == TimerState.IDLE -> formatCountdown(pomodoroConfiguredSecs)
                     else -> formatTime(accumulatedStudy)
                 }
@@ -3011,9 +2218,10 @@ class MainActivity : AppCompatActivity() {
         when (currentStatsTab) {
             AppStatsTab.PLANNER -> {
                 val dailySubjectDurations = SubjectTagManager.getSubjectDurationsForDate(this, todayStr)
+                val dailyGoalDurations = PlannerHistoryManager.getDailyGoalDurations(this, todayStr)
                 val goalsJson = appPrefs.getString("session_goals_json", "[]") ?: "[]"
                 val goalsList = loadSessionGoalsFromJson(goalsJson)
-                val progressMap = PlannerHistoryManager.calculateGoalProgress(goalsList, snap.todayFocus, dailySubjectDurations)
+                val progressMap = PlannerHistoryManager.calculateGoalProgress(goalsList, snap.todayFocus, dailySubjectDurations, dailyGoalDurations)
 
                 val trulyAchievedIds = mutableSetOf<String>()
                 for (goal in goalsList) {
@@ -3312,7 +2520,12 @@ class MainActivity : AppCompatActivity() {
 
         when {
             studying && showCountdown && focusCountdownSecs > 0 -> {
-                timerRing.setProgress((focusRemainingSecs.toFloat() / focusCountdownSecs).coerceIn(0f, 1f), primaryRingColor, track)
+                if (focusRemainingSecs < 0L) {
+                    val overtimeRingColor = if (isPomoWhite) 0xFF000000.toInt() else Color.parseColor("#F59E0B")
+                    timerRing.setProgress(1f, overtimeRingColor, track)
+                } else {
+                    timerRing.setProgress((focusRemainingSecs.toFloat() / focusCountdownSecs).coerceIn(0f, 1f), primaryRingColor, track)
+                }
             }
             breaking && timerMode == "COUNTDOWN" && breakCountdownSecs > 0L -> {
                 timerRing.setProgress((breakRemainingSecs.toFloat() / breakCountdownSecs).coerceIn(0f, 1f), breakRingColor, track)
@@ -3368,8 +2581,28 @@ class MainActivity : AppCompatActivity() {
         lectureEndDialog?.dismiss()
         lectureEndDialog = null
         val savedStudy = accumulatedStudy
+        val savedBreak = currentBreakSeconds
+
+        // Safely update today's focus and break totals in SharedPreferences immediately,
+        // ensuring Today's Focus in Insights never drops or starts from zero.
+        val todayStr = dateKeyFmt.format(Date())
+        val sp = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
+        val curFocus = sp.getLong("${todayStr}_focus_total", 0L)
+        val curBreak = sp.getLong("${todayStr}_break_total", 0L)
+        if (savedStudy > 0L || savedBreak > 0L) {
+            sp.edit()
+                .putLong("${todayStr}_focus_total", curFocus + savedStudy)
+                .putLong("${todayStr}_break_total", curBreak + savedBreak)
+                .apply()
+        }
+
+        TimelineLogger.record(this, TimerState.IDLE)
+
         val intent = Intent(this, TimerService::class.java).apply {
             action = if (silent) TimerService.ACTION_STOP_SILENT else TimerService.ACTION_STOP
+            putExtra("EXTRA_STUDY_SECS", savedStudy)
+            putExtra("EXTRA_BREAK_SECS", savedBreak)
+            putExtra("EXTRA_ALREADY_FINALIZED", true)
         }
         try {
             startService(intent)
@@ -3381,7 +2614,7 @@ class MainActivity : AppCompatActivity() {
         focusRemainingSecs = 0L
         focusCountdownSecs = 0L
 
-        getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE).edit()
+        sp.edit()
             .putString("timerState", TimerState.IDLE.name)
             .putLong("accumulatedStudy", 0L)
             .putLong("currentBreakSeconds", 0L)
@@ -3396,6 +2629,9 @@ class MainActivity : AppCompatActivity() {
             .apply()
 
         statsDirty = true
+        statsSnapshotCache = null
+        tabPageCache.clear()
+        invalidateStatsCache()
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             backupManager.runSilentAutoBackup()
             if (AuthManager.isLoggedIn(this@MainActivity)) {
@@ -3606,13 +2842,22 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             TimerState.STUDYING -> {
-                statusBadge.text = if (timerMode == "LECTURE") "LECTURE IN PROGRESS" else getString(R.string.learning_time)
+                val isOvertime = timerMode == "COUNTDOWN" && focusRemainingSecs < 0L
+                statusBadge.text = when {
+                    timerMode == "LECTURE" -> "LECTURE IN PROGRESS"
+                    isOvertime -> "🔥 OVERTIME FLOW"
+                    else -> getString(R.string.learning_time)
+                }
                 if (isPomoWhite) {
                     statusBadge.setTextColor(0xFF0F172A.toInt())
                     statusBadge.background = android.graphics.drawable.GradientDrawable().apply {
                         cornerRadius = dp(20).toFloat()
                         setColor(0xFFF1F5F9.toInt())
                     }
+                } else if (isOvertime) {
+                    val amber = Color.parseColor("#F59E0B")
+                    statusBadge.setTextColor(amber)
+                    statusBadge.background = themeCoordinator.createGlassChip(amber, 30f)
                 } else {
                     statusBadge.setTextColor(if (themeCoordinator.isBubbleStyle()) 0xFFFFFFFF.toInt() else themeCoordinator.primaryColor)
                     statusBadge.background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 30f)
@@ -3869,6 +3114,22 @@ class MainActivity : AppCompatActivity() {
         checkPomoSubjectPrompt()
         checkCelebration()
         triggerAutoSyncIfEligible()
+        if (FlipToFocusManager.isEnabled(this)) {
+            FlipToFocusManager.setContext(this)
+            FlipToFocusManager.start(
+                context = this,
+                onFaceDown = {
+                    if (currentTimerState == TimerState.IDLE || currentTimerState == TimerState.PAUSED) {
+                        handleStateToggle()
+                    }
+                },
+                onFaceUp = {
+                    if (FlipToFocusManager.isPauseOnFaceUp(this) && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK)) {
+                        handleStateToggle()
+                    }
+                }
+            )
+        }
         val oldProfile = ProfileManager.getProfile(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val updated = ProfileSyncService.refreshProfileStatus(this@MainActivity)
@@ -3896,6 +3157,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        FlipToFocusManager.stop()
         if (::updateRunnable.isInitialized) {
             handler.removeCallbacks(updateRunnable)
         }
@@ -3983,10 +3245,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        try {
-            if (updateDialogRef?.isShowing == true) updateDialogRef?.dismiss()
-            if (batteryOptDialogRef?.isShowing == true) batteryOptDialogRef?.dismiss()
-        } catch (_: Exception) {}
+        systemDialogHelper.dismissDialogs()
         handler.removeCallbacks(holdToEndRunnable)
         pauseBlinkAnimator?.cancel()
         pauseBlinkAnimator = null
@@ -4288,127 +3547,8 @@ class MainActivity : AppCompatActivity() {
         SubjectDialogHelper(this).showSubjectPickerDialog(allowActiveSwitch)
     }
 
-    private var pomoSubjectPromptShowing = false
-
     internal fun checkPomoSubjectPrompt() {
-        if (isFinishing || isDestroyed || pomoSubjectPromptShowing) return
-        val prefs = appPrefs
-        val hasFlag = prefs.getBoolean("pomo_prompt_subject_change", false)
-        val hasIntentExtra = intent?.getBooleanExtra("EXTRA_PROMPT_CHANGE_SUBJECT", false) == true
-        if (!hasFlag && !hasIntentExtra) return
-
-        prefs.edit().putBoolean("pomo_prompt_subject_change", false).apply()
-        intent?.removeExtra("EXTRA_PROMPT_CHANGE_SUBJECT")
-
-        val origSubId = prefs.getString("pomo_grace_orig_subject_id", null) ?: SubjectTagManager.getSelectedSubject(this).id
-        val curSub = SubjectTagManager.resolveSubject(this, origSubId)
-        val pomoCount = prefs.safeInt("pomo_completed_count", 0) + 1
-
-        val startTime = prefs.getLong("pomo_prompt_start_time", System.currentTimeMillis() / 1000)
-        val now = System.currentTimeMillis() / 1000
-        val elapsed = (now - startTime).coerceAtLeast(0L)
-        val totalTimeout = 60L
-        val remainingSecs = (totalTimeout - elapsed).coerceAtLeast(0L)
-
-        // If prompt already expired, finalize to origSubId and do not show
-        if (remainingSecs <= 0L) {
-            SubjectTagManager.finalizePomoGraceReallocation(this, origSubId)
-            invalidateStatsCache()
-            return
-        }
-
-        pomoSubjectPromptShowing = true
-        val dialog = Dialog(this)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-
-        var dismissedByAction = false
-        var countDownTimer: android.os.CountDownTimer? = null
-
-        dialog.setOnDismissListener {
-            countDownTimer?.cancel()
-            pomoSubjectPromptShowing = false
-            if (!dismissedByAction) {
-                if (prefs.getBoolean("pomo_grace_realloc_pending", false)) {
-                    SubjectTagManager.finalizePomoGraceReallocation(this, origSubId)
-                    invalidateStatsCache()
-                }
-            }
-        }
-
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(20), dp(22), dp(20))
-            background = themeCoordinator.createDialogBackground(28f)
-        }
-
-        root.addView(TextView(this).apply {
-            text = "🍅 Break Finished"
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
-
-        root.addView(TextView(this).apply {
-            text = "Next Pomodoro session (#$pomoCount) has started.\n\nCurrent subject: ${curSub.iconEmoji} ${curSub.name}\n\nWould you like to keep this subject or switch to another?"
-            setTextColor(themeCoordinator.textColor)
-            alpha = 0.85f
-            textSize = 13.5f
-            setPadding(0, dp(10), 0, dp(18))
-        })
-
-        val btnRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-        }
-
-        val keepBtn = Button(this).apply {
-            text = "Keep (${curSub.name}) (${remainingSecs}s)"
-            setTextColor(themeCoordinator.textColor)
-            background = null
-            setOnClickListener {
-                dismissedByAction = true
-                dialog.dismiss()
-                SubjectTagManager.finalizePomoGraceReallocation(this@MainActivity, origSubId)
-                invalidateStatsCache()
-            }
-        }
-        btnRow.addView(keepBtn)
-
-        val switchBtn = Button(this).apply {
-            text = "Change Subject"
-            setTextColor(Color.WHITE)
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(themeCoordinator.primaryColor)
-            }
-            setOnClickListener {
-                dismissedByAction = true
-                dialog.dismiss()
-                showSubjectPickerDialog(allowActiveSwitch = true)
-            }
-        }
-        btnRow.addView(switchBtn)
-        root.addView(btnRow)
-
-        dialog.setContentView(root)
-        dialog.show()
-        val width = (resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380))
-        dialog.window?.setLayout(width, android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-
-        countDownTimer = object : android.os.CountDownTimer(remainingSecs * 1000L, 1000L) {
-            override fun onTick(millisUntilFinished: Long) {
-                val secLeft = (millisUntilFinished / 1000L).coerceAtLeast(1L)
-                keepBtn.text = "Keep (${curSub.name}) (${secLeft}s)"
-            }
-
-            override fun onFinish() {
-                if (dialog.isShowing) {
-                    dialog.dismiss()
-                }
-            }
-        }.start()
+        SubjectDialogHelper(this).checkPomoSubjectPrompt()
     }
 
     internal fun showDeleteSubjectConfirmDialog(subj: SubjectTag) {
@@ -4419,8 +3559,11 @@ class MainActivity : AppCompatActivity() {
         SubjectDialogHelper(this).showAddCustomSubjectDialog(onSubjectCreated)
     }
 
-    internal fun showPieChartDetailsModal(initialDateKey: String = SubjectTagManager.getTodayKey()) {
-        SubjectDialogHelper(this).showPieChartDetailsModal(initialDateKey)
+    internal fun showPieChartDetailsModal(
+        initialDateKey: String = SubjectTagManager.getTodayKey(),
+        initialPeriod: SubjectTagManager.SubjectStatsPeriod = SubjectTagManager.SubjectStatsPeriod.TODAY
+    ) {
+        SubjectDialogHelper(this).showPieChartDetailsModal(initialDateKey, initialPeriod)
     }
 
     private var lastForegroundSyncCheckTime = 0L

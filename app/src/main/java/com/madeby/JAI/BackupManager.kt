@@ -49,7 +49,6 @@ class BackupManager(private val context: Context) {
                 }
             }
             json.put("subject_tags_data", subjectJson)
-            json.put("__subject_tags_data__", subjectJson.toString())
         } catch (_: Exception) {}
     }
 

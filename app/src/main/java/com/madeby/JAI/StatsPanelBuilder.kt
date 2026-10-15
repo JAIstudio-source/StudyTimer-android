@@ -19,6 +19,7 @@ import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
@@ -86,7 +87,10 @@ class StatsPanelBuilder(private val host: MainActivity) {
     private fun lightenColor(color: Int, amount: Float): Int = host.lightenColor(color, amount)
     private fun showDayDialog(dateStr: String, label: String) = host.showDayDialog(dateStr, label)
     private fun showMonthDialog(mName: String, focusSecs: Long, breakSecs: Long) = host.showMonthDialog(mName, focusSecs, breakSecs)
-    private fun showPieChartDetailsModal(initialDateKey: String = SubjectTagManager.getTodayKey()) = host.showPieChartDetailsModal(initialDateKey)
+    private fun showPieChartDetailsModal(
+        initialDateKey: String = SubjectTagManager.getTodayKey(),
+        initialPeriod: SubjectTagManager.SubjectStatsPeriod = SubjectTagManager.SubjectStatsPeriod.TODAY
+    ) = host.showPieChartDetailsModal(initialDateKey, initialPeriod)
     private fun dayBlocks(dateStr: String): Pair<List<BlockInfo>, List<BlockInfo>> = host.dayBlocks(dateStr)
     private fun focusBlockLabels(): Array<String> = host.focusBlockLabels()
     private fun focusBlockStartLabels(): Array<String> = host.focusBlockStartLabels()
@@ -312,6 +316,227 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 }
             }
         )
+    }
+
+    internal fun showStreakFreezeDialog() {
+        val dialog = Dialog(host)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+
+        val isDark = themeCoordinator.isDarkMode()
+        val primary = themeCoordinator.primaryColor
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val today = Date()
+        val todayStr = sdf.format(today)
+        val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+        val yesterdayStr = sdf.format(cal.time)
+        val monthKey = todayStr.substring(0, 7)
+
+        val availableFreezes = StreakCalculator.getAvailableFreezesThisMonth(host, today)
+        val frozenDates = StreakCalculator.getFrozenDates(host)
+        val frozenThisMonth = StreakCalculator.getUsedFreezesForMonth(host, monthKey)
+
+        val content = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(28f)
+            setPadding(dp(22), dp(20), dp(22), dp(20))
+        }
+
+        // Header Row
+        val headerRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(4))
+        }
+        headerRow.addView(TextView(host).apply {
+            text = "❄️ BURNOUT PREVENTION"
+            textSize = 11.5f
+            letterSpacing = 0.12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(if (isDark) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt())
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        content.addView(headerRow)
+
+        content.addView(TextView(host).apply {
+            text = "Streak Freeze Protection"
+            textSize = 20f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+            setPadding(0, dp(2), 0, dp(8))
+        })
+
+        content.addView(TextView(host).apply {
+            text = "Protect your hard-earned study streak on sick days, travel, or scheduled rest days. You get 2 free streak freezes every calendar month."
+            textSize = 13f
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.75f
+            setLineSpacing(dp(2).toFloat(), 1.15f)
+            setPadding(0, 0, 0, dp(14))
+        })
+
+        // Status Card
+        val statusCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = if (isDark) {
+                themeCoordinator.createGlassChip(0x330284C7.toInt(), 16f)
+            } else {
+                GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(0xFFF0F9FF.toInt())
+                    setStroke(dp(1), 0xFFBAE6FD.toInt())
+                }
+            }
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(14))
+            }
+        }
+        val statusRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        statusRow.addView(TextView(host).apply {
+            text = "Available This Month"
+            textSize = 13f
+            setTextColor(themeCoordinator.textColor)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        statusRow.addView(TextView(host).apply {
+            text = "$availableFreezes / ${StreakCalculator.MAX_FREEZES_PER_MONTH} Left"
+            textSize = 14f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(if (isDark) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt())
+        })
+        statusCard.addView(statusRow)
+        content.addView(statusCard)
+
+        // Actions
+        if (availableFreezes > 0) {
+            val yesterdayFrozen = frozenDates.contains(yesterdayStr)
+            if (!yesterdayFrozen) {
+                val freezeYesterdayBtn = TextView(host).apply {
+                    text = "❄️ Protect Yesterday ($yesterdayStr)"
+                    textSize = 13f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(Color.WHITE)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(if (isDark) 0xFF0284C7.toInt() else 0xFF0369A1.toInt())
+                    }
+                    gravity = Gravity.CENTER
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, 0, 0, dp(8))
+                    }
+                    setOnClickListener {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        StreakCalculator.applyStreakFreeze(host, yesterdayStr)
+                        host.statsEngine.recalculateStreak()
+                        Toast.makeText(host, "❄️ Yesterday protected! Streak preserved.", Toast.LENGTH_SHORT).show()
+                        dialog.dismiss()
+                        host.navigateToPanel(AppPanel.STATS)
+                    }
+                }
+                content.addView(freezeYesterdayBtn)
+            }
+
+            val todayFrozen = frozenDates.contains(todayStr)
+            if (!todayFrozen) {
+                val freezeTodayBtn = TextView(host).apply {
+                    text = "❄️ Freeze Today as Rest Day"
+                    textSize = 13f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
+                    background = if (isDark) {
+                        themeCoordinator.createGlassChip(0x3338BDF8.toInt(), 14f)
+                    } else {
+                        GradientDrawable().apply {
+                            cornerRadius = dp(14).toFloat()
+                            setColor(0xFFE0F2FE.toInt())
+                            setStroke(dp(1), 0xFF0284C7.toInt())
+                        }
+                    }
+                    gravity = Gravity.CENTER
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, 0, 0, dp(12))
+                    }
+                    setOnClickListener {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        StreakCalculator.applyStreakFreeze(host, todayStr)
+                        host.statsEngine.recalculateStreak()
+                        Toast.makeText(host, "❄️ Today set as rest day! Streak preserved.", Toast.LENGTH_SHORT).show()
+                        dialog.dismiss()
+                        host.navigateToPanel(AppPanel.STATS)
+                    }
+                }
+                content.addView(freezeTodayBtn)
+            }
+        }
+
+        // List of frozen dates this month if any
+        if (frozenThisMonth.isNotEmpty()) {
+            content.addView(TextView(host).apply {
+                text = "FROZEN DATES THIS MONTH"
+                textSize = 11f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(if (isDark) 0x88FFFFFF.toInt() else 0xFF64748B.toInt())
+                setPadding(0, dp(4), 0, dp(6))
+            })
+            val chipsRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(14))
+            }
+            for (fDate in frozenThisMonth) {
+                chipsRow.addView(TextView(host).apply {
+                    text = "❄️ $fDate"
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(if (isDark) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt())
+                    background = if (isDark) {
+                        themeCoordinator.createGlassChip(0x2238BDF8.toInt(), 12f)
+                    } else {
+                        GradientDrawable().apply {
+                            cornerRadius = dp(12).toFloat()
+                            setColor(0xFFF0F9FF.toInt())
+                            setStroke(dp(1), 0xFFBAE6FD.toInt())
+                        }
+                    }
+                    setPadding(dp(10), dp(4), dp(10), dp(4))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, 0, dp(6), 0)
+                    }
+                })
+            }
+            content.addView(chipsRow)
+        }
+
+        // Close button
+        val closeBtn = TextView(host).apply {
+            text = "Done"
+            textSize = 14f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(primary)
+            }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
+            setOnClickListener { dialog.dismiss() }
+        }
+        content.addView(closeBtn)
+
+        dialog.setContentView(content)
+        dialog.window?.let { win ->
+            win.setLayout(
+                (host.resources.displayMetrics.widthPixels * 0.90f).toInt(),
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        }
+        dialog.show()
     }
 
     private var insightsPillBarRef: InsightsPillNavBar? = null
@@ -615,6 +840,11 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 setStroke(dp(1), tintedColor(themeCoordinator.primaryColor, if (themeCoordinator.isDarkMode()) 60 else 90))
             }
             setPadding(dp(10), dp(4), dp(10), dp(4))
+            isClickable = true
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                showStreakFreezeDialog()
+            }
         }
         streakChip.addView(ImageView(host).apply {
             setImageResource(R.drawable.ic_flame)
@@ -630,6 +860,33 @@ class StatsPanelBuilder(private val host: MainActivity) {
             setPadding(dp(4), 0, 0, 0)
         })
         heroTopRow.addView(streakChip)
+
+        val availableFreezes = StreakCalculator.getAvailableFreezesThisMonth(host)
+        val freezeChip = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(if (themeCoordinator.isDarkMode()) 0x2238BDF8.toInt() else 0x1A0284C7.toInt())
+                setStroke(dp(1), if (themeCoordinator.isDarkMode()) 0x6638BDF8.toInt() else 0x4D0284C7.toInt())
+            }
+            setPadding(dp(8), dp(4), dp(8), dp(4))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(dp(6), 0, 0, 0)
+            }
+            isClickable = true
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                showStreakFreezeDialog()
+            }
+        }
+        freezeChip.addView(TextView(host).apply {
+            text = "❄️ $availableFreezes/2"
+            setTextColor(if (themeCoordinator.isDarkMode()) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt())
+            textSize = 11.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+        heroTopRow.addView(freezeChip)
         heroCard.addView(heroTopRow)
 
         // Main Counter paired with Circular Progress Ring
@@ -982,6 +1239,8 @@ class StatsPanelBuilder(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(14)) }
         }
 
+        var activePiePeriod = SubjectTagManager.SubjectStatsPeriod.TODAY
+
         val pieHeaderRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1012,73 +1271,137 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     setStroke(dp(1), 0xFFCBD5E1.toInt())
                 }
             }
-            setOnClickListener { showPieChartDetailsModal() }
+            setOnClickListener { showPieChartDetailsModal(initialPeriod = activePiePeriod) }
         }
 
         pieHeaderRow.addView(tapDetailsBtn)
         pieCard.addView(pieHeaderRow)
+
+        // Sleek horizontal period switcher [ Today | This Week | This Month | All Time ]
+        val periodTabsScroll = HorizontalScrollView(host).apply {
+            isFillViewport = true
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(0, 0, 0, dp(12)) }
+        }
+
+        val periodTabsRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        periodTabsScroll.addView(periodTabsRow)
+        pieCard.addView(periodTabsScroll)
 
         val pieContentContainer = LinearLayout(host).apply { orientation = LinearLayout.VERTICAL }
 
         fun updatePieChartContent(container: LinearLayout) {
             container.removeAllViews()
 
-            val slicesList = ArrayList<SubjectPieChartView.PieSlice>()
-
-            // Subject Sessions Breakdown derived from unified daily session logs
-            val (allDaySessions, _) = dayBlocks(todayStr)
-
-            // Group unified sessions by subject (aggregating duration + resolved SubjectTag)
-            val subjectMap = LinkedHashMap<String, Pair<SubjectTag, Long>>()
-            for (s in allDaySessions) {
-                val subId = s.subjectId ?: "general"
-                val subj = SubjectTagManager.resolveSubject(host, subId, s.subjectName, s.subjectColor)
-                val currentSecs = subjectMap[subj.id]?.second ?: 0L
-                subjectMap[subj.id] = subj to (currentSecs + s.secs)
-            }
-
-            // Fallback to SubjectTagManager durations if no unified timeline entries yet
-            if (subjectMap.isEmpty()) {
-                val legacyDurations = SubjectTagManager.getSubjectDurationsForDate(host, todayStr)
-                for ((subId, secs) in legacyDurations) {
-                    val subj = SubjectTagManager.resolveSubject(host, subId)
-                    val currentSecs = subjectMap[subj.id]?.second ?: 0L
-                    subjectMap[subj.id] = subj to (currentSecs + secs)
+            val subjectMap = when (activePiePeriod) {
+                SubjectTagManager.SubjectStatsPeriod.TODAY -> {
+                    val (allDaySessions, _) = dayBlocks(todayStr)
+                    val map = LinkedHashMap<String, Pair<SubjectTag, Long>>()
+                    for (s in allDaySessions) {
+                        val subId = s.subjectId ?: "general"
+                        val subj = SubjectTagManager.resolveSubject(host, subId, s.subjectName, s.subjectColor)
+                        val currentSecs = map[subj.id]?.second ?: 0L
+                        map[subj.id] = subj to (currentSecs + s.secs)
+                    }
+                    if (map.isEmpty()) {
+                        val legacy = SubjectTagManager.getSubjectDurationsForDate(host, todayStr)
+                        for ((subId, secs) in legacy) {
+                            val subj = SubjectTagManager.resolveSubject(host, subId)
+                            val currentSecs = map[subj.id]?.second ?: 0L
+                            map[subj.id] = subj to (currentSecs + secs)
+                        }
+                    }
+                    map
+                }
+                SubjectTagManager.SubjectStatsPeriod.WEEK -> {
+                    statsEngine.getSubjectBreakdownForDates(SubjectTagManager.getDatesForWeek())
+                }
+                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
+                    val cal = Calendar.getInstance()
+                    statsEngine.getSubjectBreakdownForDates(SubjectTagManager.getDatesForMonth(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH)))
+                }
+                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> {
+                    statsEngine.getAllTimeSubjectBreakdown()
                 }
             }
 
             val totalSecsAll = subjectMap.values.sumOf { it.second }
+            val sortedSubjects = subjectMap.values
+                .filter { it.second > 0L }
+                .sortedByDescending { it.second }
 
-            val isDonut = sharedPrefs.safeBoolean("use_donut_chart", true)
-            val pieView = SubjectPieChartView(host).apply {
-                primaryColor = themeCoordinator.primaryColor
-                textColor = themeCoordinator.textColor
-                isDonutMode = isDonut
-                boxColor = if (themeCoordinator.isDarkMode()) (if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF111625.toInt()) else 0xFFFFFFFF.toInt()
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(340))
-                setOnClickListener { showPieChartDetailsModal() }
-                onSliceSelectedListener = { slice, _ ->
-                    if (slice != null && (slice.label == "Others" || slice.bundledSlices.isNotEmpty())) {
-                        SubjectDialogHelper(host).showOthersBreakdownDialog(slice, totalSecsAll.toDouble())
-                    }
+            // Period Daily Average
+            val dailyAvg = when (activePiePeriod) {
+                SubjectTagManager.SubjectStatsPeriod.TODAY -> totalSecsAll
+                SubjectTagManager.SubjectStatsPeriod.WEEK -> (totalSecsAll / 7L).coerceAtLeast(0L)
+                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
+                    val dom = Calendar.getInstance().get(Calendar.DAY_OF_MONTH).coerceAtLeast(1)
+                    (totalSecsAll / dom.toLong()).coerceAtLeast(0L)
+                }
+                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> {
+                    (totalSecsAll / snap.activeDays.coerceAtLeast(1).toLong()).coerceAtLeast(0L)
                 }
             }
 
-            if (subjectMap.isEmpty() || totalSecsAll < 60L) {
+            // Summary Header Pill
+            val summaryRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(9), dp(12), dp(9))
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 30), 12f)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, dp(12))
+                }
+            }
+
+            summaryRow.addView(TextView(host).apply {
+                text = "🔥 ${formatDuration(totalSecsAll)}"
+                setTextColor(themeCoordinator.primaryColor)
+                textSize = 12.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            })
+
+            if (activePiePeriod != SubjectTagManager.SubjectStatsPeriod.TODAY && totalSecsAll > 0L) {
+                summaryRow.addView(TextView(host).apply {
+                    text = "  •  ⚡ ~${formatDuration(dailyAvg)}/day"
+                    setTextColor(themeCoordinator.textColor)
+                    alpha = 0.8f
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                })
+            }
+
+            summaryRow.addView(TextView(host).apply {
+                text = "  •  📚 ${sortedSubjects.size} subjects"
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.65f
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            })
+
+            container.addView(summaryRow)
+
+            if (sortedSubjects.isEmpty() || totalSecsAll < 60L) {
                 val emptyBox = LinearLayout(host).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
                     setPadding(0, dp(24), 0, dp(24))
                 }
                 emptyBox.addView(TextView(host).apply {
-                    text = "No Study Time Today"
+                    text = "No Study Time (${activePiePeriod.displayName})"
                     setTextColor(themeCoordinator.textColor)
                     textSize = 15f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     gravity = Gravity.CENTER
                 })
                 emptyBox.addView(TextView(host).apply {
-                    text = "Study for at least 1 minute to see your subject breakdown."
+                    text = "Study sessions tagged with subjects will automatically show here."
                     setTextColor(themeCoordinator.textColor)
                     alpha = 0.55f
                     textSize = 12.5f
@@ -1087,34 +1410,189 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 })
                 container.addView(emptyBox)
             } else {
-                val sortedSubjects = subjectMap.values
-                    .filter { it.second > 0L }
-                    .sortedByDescending { it.second }
-
+                val slicesList = ArrayList<SubjectPieChartView.PieSlice>()
                 for ((subj, secs) in sortedSubjects) {
                     slicesList.add(SubjectPieChartView.PieSlice(subj.name, subj.iconEmoji, secs.toDouble(), subj.colorHex))
                 }
 
-                if (slicesList.isEmpty()) {
-                    val emptyBox = LinearLayout(host).apply {
-                        orientation = LinearLayout.VERTICAL
-                        gravity = Gravity.CENTER
-                        setPadding(0, dp(24), 0, dp(24))
+                val isDonut = sharedPrefs.safeBoolean("use_donut_chart", true)
+                val pieView = SubjectPieChartView(host).apply {
+                    primaryColor = themeCoordinator.primaryColor
+                    textColor = themeCoordinator.textColor
+                    isDonutMode = isDonut
+                    boxColor = if (themeCoordinator.isDarkMode()) (if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF111625.toInt()) else 0xFFFFFFFF.toInt()
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(340))
+                    setOnClickListener { showPieChartDetailsModal(initialPeriod = activePiePeriod) }
+                    onSliceSelectedListener = { slice, _ ->
+                        if (slice != null && (slice.label == "Others" || slice.bundledSlices.isNotEmpty())) {
+                            SubjectDialogHelper(host).showOthersBreakdownDialog(slice, totalSecsAll.toDouble())
+                        }
                     }
-                    emptyBox.addView(TextView(host).apply {
-                        text = "More Data Needed"
-                        setTextColor(themeCoordinator.textColor)
-                        textSize = 15f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        gravity = Gravity.CENTER
-                    })
-                    container.addView(emptyBox)
-                } else {
-                    pieView.setData(slicesList)
-                    container.addView(pieView)
                 }
+                pieView.setData(slicesList)
+                container.addView(pieView)
+
+                // Detailed Subject List with Progress Bars & Quota Badges
+                val listCard = LinearLayout(host).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(0, dp(14), 0, 0)
+                }
+
+                listCard.addView(TextView(host).apply {
+                    text = "SUBJECT BREAKDOWN"
+                    setTextColor(themeCoordinator.primaryColor)
+                    textSize = 11f
+                    letterSpacing = 0.15f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setPadding(0, 0, 0, dp(8))
+                })
+
+                for ((subj, secs) in sortedSubjects) {
+                    val percent = if (totalSecsAll > 0L) (secs.toDouble() / totalSecsAll.toDouble() * 100.0) else 0.0
+                    val subjColor = try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+
+                    val itemCol = LinearLayout(host).apply {
+                        orientation = LinearLayout.VERTICAL
+                        background = themeCoordinator.createGlassChip(tintedColor(subjColor, 18), 12f)
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { setMargins(0, 0, 0, dp(8)) }
+                    }
+
+                    // Row: Icon + Name + Time + %
+                    val topRow = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                    }
+
+                    val colorDot = View(host).apply {
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(subjColor)
+                        }
+                        layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { setMargins(0, 0, dp(8), 0) }
+                    }
+                    topRow.addView(colorDot)
+
+                    topRow.addView(TextView(host).apply {
+                        text = "${subj.iconEmoji} ${subj.name}"
+                        setTextColor(themeCoordinator.textColor)
+                        textSize = 13.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+
+                    topRow.addView(TextView(host).apply {
+                        text = formatDuration(secs)
+                        setTextColor(themeCoordinator.textColor)
+                        textSize = 13f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    })
+
+                    topRow.addView(TextView(host).apply {
+                        text = " (${String.format(Locale.US, "%.1f", percent)}%)"
+                        setTextColor(themeCoordinator.primaryColor)
+                        textSize = 12f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    })
+
+                    itemCol.addView(topRow)
+
+                    // Mini Progress Bar
+                    val barTrack = FrameLayout(host).apply {
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(3).toFloat()
+                            setColor(tintedColor(themeCoordinator.textColor, 25))
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            dp(5)
+                        ).apply { setMargins(0, dp(7), 0, 0) }
+                    }
+
+                    val fillRatio = (percent / 100.0).toFloat().coerceIn(0f, 1f)
+                    val fillBar = View(host).apply {
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(3).toFloat()
+                            setColor(subjColor)
+                        }
+                        layoutParams = FrameLayout.LayoutParams(0, FrameLayout.LayoutParams.MATCH_PARENT)
+                    }
+                    barTrack.addView(fillBar)
+
+                    barTrack.post {
+                        val w = (barTrack.width * fillRatio).toInt()
+                        fillBar.layoutParams = FrameLayout.LayoutParams(w, FrameLayout.LayoutParams.MATCH_PARENT)
+                    }
+
+                    itemCol.addView(barTrack)
+
+                    // Weekly Target Quota pill if configured and in WEEK mode
+                    if (activePiePeriod == SubjectTagManager.SubjectStatsPeriod.WEEK && subj.weeklyTargetHours > 0f) {
+                        val targetSecs = (subj.weeklyTargetHours * 3600f).toLong()
+                        val quotaPct = ((secs.toDouble() / targetSecs.toDouble()) * 100.0).toInt()
+                        val isReached = quotaPct >= 100
+
+                        val quotaRow = TextView(host).apply {
+                            text = if (isReached) {
+                                "🎯 Target Reached! ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%) 🎉"
+                            } else {
+                                "🎯 Weekly Quota: ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
+                            }
+                            setTextColor(if (isReached) Color.parseColor("#10B981") else themeCoordinator.textColor)
+                            alpha = if (isReached) 1f else 0.75f
+                            textSize = 11f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            setPadding(0, dp(6), 0, 0)
+                        }
+                        itemCol.addView(quotaRow)
+                    }
+
+                    listCard.addView(itemCol)
+                }
+
+                container.addView(listCard)
             }
         }
+
+        fun renderPeriodTabs() {
+            periodTabsRow.removeAllViews()
+            val periods = SubjectTagManager.SubjectStatsPeriod.values()
+            for (p in periods) {
+                val isSelected = (p == activePiePeriod)
+                val tabBtn = TextView(host).apply {
+                    text = p.displayName
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+                    setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                    setPadding(dp(14), dp(7), dp(14), dp(7))
+                    background = if (isSelected) {
+                        GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setColor(themeCoordinator.primaryColor)
+                        }
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 16f)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { setMargins(0, 0, dp(8), 0) }
+                    setOnClickListener {
+                        if (activePiePeriod != p) {
+                            HapticFeedbackHelper.performMicroHapticTick(host, this)
+                            activePiePeriod = p
+                            renderPeriodTabs()
+                            updatePieChartContent(pieContentContainer)
+                        }
+                    }
+                }
+                periodTabsRow.addView(tabBtn)
+            }
+        }
+        renderPeriodTabs()
 
         pieCard.addView(pieContentContainer)
         updatePieChartContent(pieContentContainer)

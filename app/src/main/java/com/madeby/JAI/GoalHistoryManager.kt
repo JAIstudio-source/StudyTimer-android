@@ -37,10 +37,34 @@ object GoalHistoryManager {
                     list.add(GoalHistoryEntry(d, g, ts))
                 }
             }
-            list.sortedBy { it.date }
-        } catch (_: Exception) {
-            emptyList()
+            if (list.isEmpty() && raw.trim().startsWith("[")) {
+                parseHistoryFallback(raw)
+            } else {
+                list.sortedBy { it.date }
+            }
+        } catch (_: Throwable) {
+            parseHistoryFallback(raw)
         }
+    }
+
+    internal fun parseHistoryFallback(raw: String): List<GoalHistoryEntry> {
+        if (!raw.trim().startsWith("[")) return emptyList()
+        val list = mutableListOf<GoalHistoryEntry>()
+        val objectRegex = Regex("""\{([^}]+)\}""")
+        val dateRegex = Regex(""""date"\s*:\s*"([^"]+)"""")
+        val goalRegex = Regex(""""goalSecs"\s*:\s*(-?\d+)""")
+        val tsRegex = Regex(""""timestamp"\s*:\s*(\d+)""")
+
+        for (match in objectRegex.findAll(raw)) {
+            val body = match.groupValues[1]
+            val date = dateRegex.find(body)?.groupValues?.get(1) ?: continue
+            val goal = goalRegex.find(body)?.groupValues?.get(1)?.toLongOrNull() ?: 2700L
+            val ts = tsRegex.find(body)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+            if (date.isNotBlank() && goal > 0L) {
+                list.add(GoalHistoryEntry(date, goal, ts))
+            }
+        }
+        return list.sortedBy { it.date }
     }
 
     fun recordGoalChange(context: Context, dateStr: String, goalSecs: Long) {

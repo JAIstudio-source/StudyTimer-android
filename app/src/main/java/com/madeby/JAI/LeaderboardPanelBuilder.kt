@@ -217,6 +217,26 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             }
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
         }
+
+        val roomsBtn = TextView(host).apply {
+            text = "👥 Rooms"
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(host.themeCoordinator.primaryColor)
+            background = host.themeCoordinator.createGlassChip(
+                host.tintedColor(host.themeCoordinator.primaryColor, 35), 14f
+            )
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            gravity = Gravity.CENTER
+            setOnClickListener {
+                it.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                StudyRoomManager.showStudyRoomsDialog(host, host.themeCoordinator)
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40)).apply {
+                setMargins(0, 0, dp(6), 0)
+            }
+        }
+        header.addView(roomsBtn)
         header.addView(refreshBtn)
 
         val settingsBtn = ImageView(host).apply {

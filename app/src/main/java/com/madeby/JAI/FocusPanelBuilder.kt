@@ -295,6 +295,59 @@ class FocusPanelBuilder(private val host: MainActivity) {
             extraControlsContainer.addView(subjectTagBtn)
         }
 
+        val activeGoalTitle = sharedPrefs.getString("active_planner_goal_title", null)
+        if (!activeGoalTitle.isNullOrBlank()) {
+            val goalBadge = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                if (isPomoWhite) {
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = dp(18).toFloat()
+                        setColor(0xFFF1F5F9.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                    }
+                } else {
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, if (themeCoordinator.isDarkMode()) 90 else 180), 18f)
+                }
+                setPadding(dp(12), dp(6), dp(10), dp(6))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(dp(6), 0, dp(6), 0)
+                }
+            }
+
+            val goalText = TextView(this).apply {
+                val displayTitle = if (activeGoalTitle.length > 22) activeGoalTitle.take(20) + "…" else activeGoalTitle
+                text = displayTitle
+                textSize = 12.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(if (isPomoWhite) 0xFF0F172A.toInt() else themeCoordinator.textColor)
+                setSingleLine(true)
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setOnClickListener {
+                    currentStatsTab = AppStatsTab.PLANNER
+                    navigateToPanel(AppPanel.STATS)
+                }
+            }
+            goalBadge.addView(goalText)
+
+            val clearGoalBtn = TextView(this).apply {
+                text = " ✕"
+                textSize = 12f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(if (isPomoWhite) 0xFF64748B.toInt() else tintedColor(themeCoordinator.textColor, 140))
+                setPadding(dp(6), 0, dp(2), 0)
+                setOnClickListener {
+                    if (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK) {
+                        Toast.makeText(host, "Pause or stop timer to remove active task", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    host.clearActivePlannerGoal()
+                }
+            }
+            goalBadge.addView(clearGoalBtn)
+            extraControlsContainer.addView(goalBadge)
+        }
+
         controlActionContainer = LinearLayout(this).apply {
             orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
             gravity = Gravity.CENTER
@@ -353,7 +406,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                         progress = 0f
                         handler.removeCallbacks(holdToEndRunnable)
                         handler.post(holdToEndRunnable)
-                        v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        performMicroHapticTick(v, 0f)
                         true
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {

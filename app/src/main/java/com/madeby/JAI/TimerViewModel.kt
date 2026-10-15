@@ -22,6 +22,15 @@ data class TimerUiState(
     val prePauseState: TimerState = TimerState.STUDYING
 )
 
+/**
+ * Bridges SharedPreferences state written by [TimerService] into reactive [StateFlow] for UI consumers.
+ *
+ * **State Architecture Note**:
+ * [TimerService] acts as the authoritative engine for active session timing, state transitions,
+ * and background persistence. The mutator methods in this ViewModel provide optimistic UI updates
+ * and persist direct UI overrides to [SharedPreferences], while [preferenceChangeListener] ensures
+ * service-driven changes are immediately propagated back to [uiState].
+ */
 class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefs = application.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)

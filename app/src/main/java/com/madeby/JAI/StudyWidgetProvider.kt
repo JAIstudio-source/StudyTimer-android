@@ -96,6 +96,10 @@ class StudyWidgetProvider : AppWidgetProvider() {
             schedulePeriodicRefresh(context)
         }
 
+        /**
+         * Throttled periodic loop for ambient widget updates.
+         * Explicit state updates bypass this via [refresh], rendering immediately.
+         */
         private fun schedulePeriodicRefresh(context: Context) {
             if (refreshScheduled) return
             refreshScheduled = true

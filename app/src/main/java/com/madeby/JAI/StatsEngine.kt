@@ -24,6 +24,7 @@ class StatsEngine(private val context: Context) {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
         val streakGoalBased = prefs.getBoolean("streak_uses_daily_goal", false)
+        val frozenDates = StreakCalculator.getFrozenDates(context)
 
         val streak = StreakCalculator.currentStreak(
             todayExtra = todayExtra,
@@ -36,7 +37,13 @@ class StatsEngine(private val context: Context) {
                 val cal = Calendar.getInstance()
                 cal.add(Calendar.DAY_OF_YEAR, -daysAgo)
                 resolveGoalFor(sdf.format(cal.time))
-            }) else null
+            }) else null,
+            isFrozen = { daysAgo ->
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.DAY_OF_YEAR, -daysAgo)
+                val dKey = sdf.format(cal.time)
+                frozenDates.contains(dKey)
+            }
         )
 
         if (streak == prefs.safeInt("current_streak", 0) && prefs.getString("streak_last_calculated", null) == todayStr) return
@@ -141,6 +148,98 @@ class StatsEngine(private val context: Context) {
             }
         }
         return sessions to breaks
+    }
+
+    fun getSubjectBreakdownForDates(dates: List<String>): Map<String, Pair<SubjectTag, Long>> {
+        val result = LinkedHashMap<String, Pair<SubjectTag, Long>>()
+        if (dates.isEmpty()) return result
+
+        val entries = TimelineLogger.load(context)
+        val parsed = parseDayBlocks(entries)
+
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val dateSet = dates.toSet()
+        val todayStr = sdf.format(Date())
+        val timerState = prefs.safeString("timerState", "IDLE") ?: "IDLE"
+        val timerRunning = timerState == "STUDYING" || timerState == "BREAK"
+
+        val ranges = dates.mapNotNull { dStr ->
+            val t = runCatching { sdf.parse(dStr)?.time }.getOrNull() ?: return@mapNotNull null
+            val c = Calendar.getInstance().apply {
+                timeInMillis = t
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }
+            val s = c.timeInMillis
+            c.add(Calendar.DAY_OF_YEAR, 1)
+            val e = c.timeInMillis
+            dStr to (s until e)
+        }
+
+        val matchedDatesWithSessions = HashSet<String>()
+
+        for (s in parsed.sessions) {
+            for ((dStr, range) in ranges) {
+                if (s.startMs in range) {
+                    matchedDatesWithSessions.add(dStr)
+                    val subId = s.subjectId ?: "general"
+                    val subj = SubjectTagManager.resolveSubject(context, subId, s.subjectName, s.subjectColor)
+                    val curr = result[subj.id]?.second ?: 0L
+                    result[subj.id] = subj to (curr + s.secs)
+                    break
+                }
+            }
+        }
+
+        if (todayStr in dateSet && parsed.openFocusStart != null) {
+            val fs = parsed.openFocusStart
+            val endTs = if (timerRunning) System.currentTimeMillis() else (entries.lastOrNull()?.timestamp ?: fs)
+            val gapMs = (endTs - fs).coerceAtLeast(0L)
+            if (gapMs > 0L && gapMs <= 14400_000L) {
+                val subId = parsed.openFocusSubId ?: "general"
+                val subj = SubjectTagManager.resolveSubject(context, subId, parsed.openFocusSubName, parsed.openFocusSubColor)
+                val curr = result[subj.id]?.second ?: 0L
+                result[subj.id] = subj to (curr + (gapMs / 1000L))
+            }
+        }
+
+        for ((dStr, _) in ranges) {
+            if (!matchedDatesWithSessions.contains(dStr)) {
+                val legacy = SubjectTagManager.getSubjectDurationsForDate(context, dStr)
+                for ((subId, secs) in legacy) {
+                    if (secs > 0L) {
+                        val subj = SubjectTagManager.resolveSubject(context, subId)
+                        val curr = result[subj.id]?.second ?: 0L
+                        result[subj.id] = subj to (curr + secs)
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    fun getAllTimeSubjectBreakdown(): Map<String, Pair<SubjectTag, Long>> {
+        val result = LinkedHashMap<String, Pair<SubjectTag, Long>>()
+        val entries = TimelineLogger.load(context)
+        val parsed = parseDayBlocks(entries)
+        for (s in parsed.sessions) {
+            val subId = s.subjectId ?: "general"
+            val subj = SubjectTagManager.resolveSubject(context, subId, s.subjectName, s.subjectColor)
+            val curr = result[subj.id]?.second ?: 0L
+            result[subj.id] = subj to (curr + s.secs)
+        }
+
+        val allTimeLegacy = SubjectTagManager.getSubjectDurations(context)
+        for ((subId, secs) in allTimeLegacy) {
+            if (secs > 0L) {
+                val subj = SubjectTagManager.resolveSubject(context, subId)
+                val curr = result[subj.id]?.second ?: 0L
+                if (curr < secs) {
+                    result[subj.id] = subj to secs
+                }
+            }
+        }
+        return result
     }
 
     fun dayBlocks(dateStr: String, entries: List<TimelineEntry>): Pair<List<BlockInfo>, List<BlockInfo>> {
@@ -296,10 +395,14 @@ class StatsEngine(private val context: Context) {
         val breakSum = breaks.filter { !it.running }.sumOf { it.secs }
         val focusKey = "${dateStr}_focus_total"
         val breakKey = "${dateStr}_break_total"
-        if (prefs.safeLong(focusKey, 0L) != focusSum || prefs.safeLong(breakKey, 0L) != breakSum) {
+        val storedFocus = prefs.safeLong(focusKey, 0L)
+        val storedBreak = prefs.safeLong(breakKey, 0L)
+        val effectiveFocus = maxOf(storedFocus, focusSum)
+        val effectiveBreak = maxOf(storedBreak, breakSum)
+        if (storedFocus != effectiveFocus || storedBreak != effectiveBreak) {
             prefs.edit()
-                .putLong(focusKey, focusSum)
-                .putLong(breakKey, breakSum)
+                .putLong(focusKey, effectiveFocus)
+                .putLong(breakKey, effectiveBreak)
                 .apply()
         }
         TimelineLogger.reconcileSubjectDurationsFromTimeline(context, dateStr)

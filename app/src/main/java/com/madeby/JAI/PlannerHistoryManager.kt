@@ -40,23 +40,76 @@ object PlannerHistoryManager {
 
     private const val PREFS_NAME = "StudyTimerPrefs"
     private const val SNAPSHOT_KEY_SUFFIX = "_planner_snapshot"
+    private const val KEY_DAILY_GOAL_DURATIONS = "daily_goal_durations_json"
+
+    fun getTodayKey(): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    fun getDailyGoalDurations(context: Context, dateKey: String = getTodayKey()): Map<String, Long> {
+        val map = HashMap<String, Long>()
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dailyStr = prefs.getString(KEY_DAILY_GOAL_DURATIONS, "{}") ?: "{}"
+        try {
+            val dailyJson = JSONObject(dailyStr)
+            val dayObj = dailyJson.optJSONObject(dateKey)
+            if (dayObj != null) {
+                val keys = dayObj.keys()
+                while (keys.hasNext()) {
+                    val k = keys.next()
+                    map[k] = dayObj.optLong(k, 0L)
+                }
+            }
+        } catch (_: Exception) {}
+        return map
+    }
+
+    fun recordGoalStudyTime(context: Context, goalId: String, durationSecs: Long, dateKey: String = getTodayKey()) {
+        if (durationSecs <= 0L || goalId.isBlank()) return
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dailyStr = prefs.getString(KEY_DAILY_GOAL_DURATIONS, "{}") ?: "{}"
+        try {
+            val dailyJson = JSONObject(dailyStr)
+            val dayObj = dailyJson.optJSONObject(dateKey) ?: JSONObject()
+            val curSecs = dayObj.optLong(goalId, 0L)
+            dayObj.put(goalId, curSecs + durationSecs)
+            dailyJson.put(dateKey, dayObj)
+            prefs.edit().putString(KEY_DAILY_GOAL_DURATIONS, dailyJson.toString()).apply()
+        } catch (_: Exception) {}
+    }
 
     fun calculateGoalProgress(
         goals: List<PlannerGoal>,
         totalFocusSecs: Long,
-        dailySubjectDurations: Map<String, Long>
+        dailySubjectDurations: Map<String, Long>,
+        dailyGoalDurations: Map<String, Long> = emptyMap()
     ): Map<String, GoalProgress> {
         val totalFocusMins = (totalFocusSecs / 60).toInt()
         val result = mutableMapOf<String, GoalProgress>()
 
-        // 1. Separate subject-tagged goals and untagged goals
-        val subjectGoals = goals.filter { !it.subjectId.isNullOrBlank() && it.subjectId != "all" }
-        val untaggedGoals = goals.filter { it.subjectId.isNullOrBlank() || it.subjectId == "all" }
+        // 1. Process goals that have dedicated tracked study time (selected as active focus task)
+        val goalsWithDedicatedTime = mutableSetOf<String>()
+        for (g in goals) {
+            val dedicatedSecs = dailyGoalDurations[g.id] ?: 0L
+            if (dedicatedSecs > 0L) {
+                goalsWithDedicatedTime.add(g.id)
+                val dedicatedMins = (dedicatedSecs / 60).toInt()
+                val isAchieved = if (g.targetMinutes > 0) dedicatedMins >= g.targetMinutes else g.completed
+                result[g.id] = GoalProgress(g.id, actualMinutes = dedicatedMins, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
+            }
+        }
 
-        // 2. Process subject-tagged goals grouped by subjectId (isolated per subject)
-        val groupedSubjectGoals = subjectGoals.groupBy { it.subjectId!! }
+        // 2. Separate remaining subject-tagged goals and untagged goals
+        val remainingSubjectGoals = goals.filter { !goalsWithDedicatedTime.contains(it.id) && !it.subjectId.isNullOrBlank() && it.subjectId != "all" }
+        val remainingUntaggedGoals = goals.filter { !goalsWithDedicatedTime.contains(it.id) && (it.subjectId.isNullOrBlank() || it.subjectId == "all") }
+
+        // Process remaining subject-tagged goals grouped by subjectId (isolated per subject)
+        val groupedSubjectGoals = remainingSubjectGoals.groupBy { it.subjectId!! }
         for ((subId, subGoalsList) in groupedSubjectGoals) {
-            val availableSubjectMins = ((dailySubjectDurations[subId] ?: 0L) / 60).toInt()
+            val totalSubMins = ((dailySubjectDurations[subId] ?: 0L) / 60).toInt()
+            val dedicatedSubMins = goals.filter { it.subjectId == subId && goalsWithDedicatedTime.contains(it.id) }
+                .sumOf { ((dailyGoalDurations[it.id] ?: 0L) / 60).toInt() }
+            val availableSubjectMins = (totalSubMins - dedicatedSubMins).coerceAtLeast(0)
             var remainingSubjectMins = availableSubjectMins
 
             val goalsWithTarget = subGoalsList.filter { it.targetMinutes > 0 }
@@ -69,7 +122,7 @@ object PlannerHistoryManager {
                 } else {
                     val allocated: Int
                     if (g.id == lastTargetGoalId) {
-                        // Last goal with target gets all remaining time for this subject (e.g. 134/120)
+                        // Last goal with target gets all remaining time for this subject
                         allocated = remainingSubjectMins
                         remainingSubjectMins = (remainingSubjectMins - g.targetMinutes).coerceAtLeast(0)
                     } else {
@@ -82,21 +135,21 @@ object PlannerHistoryManager {
             }
         }
 
-        // 3. Compute untagged / all-subjects focus pool:
-        // Untagged and "all" goals represent general study time across the day
-        var untaggedPoolMins = totalFocusMins
+        // 3. Compute untagged / all-subjects focus pool
+        val dedicatedUntaggedMins = goals.filter { goalsWithDedicatedTime.contains(it.id) && (it.subjectId.isNullOrBlank() || it.subjectId == "all") }
+            .sumOf { ((dailyGoalDurations[it.id] ?: 0L) / 60).toInt() }
+        var untaggedPoolMins = (totalFocusMins - dedicatedUntaggedMins).coerceAtLeast(0)
 
-        val untaggedGoalsWithTarget = untaggedGoals.filter { it.targetMinutes > 0 }
+        val untaggedGoalsWithTarget = remainingUntaggedGoals.filter { it.targetMinutes > 0 }
         val lastUntaggedTargetGoalId = untaggedGoalsWithTarget.lastOrNull()?.id
 
-        for (g in untaggedGoals) {
+        for (g in remainingUntaggedGoals) {
             if (g.targetMinutes <= 0) {
                 val isAchieved = g.completed
-                result[g.id] = GoalProgress(g.id, actualMinutes = totalFocusMins, targetMinutes = 0, isAchieved = isAchieved)
+                result[g.id] = GoalProgress(g.id, actualMinutes = untaggedPoolMins, targetMinutes = 0, isAchieved = isAchieved)
             } else {
                 val allocated: Int
                 if (g.id == lastUntaggedTargetGoalId) {
-                    // Last untagged goal gets all remaining untagged focus time (e.g. 134/120)
                     allocated = untaggedPoolMins
                     untaggedPoolMins = (untaggedPoolMins - g.targetMinutes).coerceAtLeast(0)
                 } else {
@@ -120,8 +173,9 @@ object PlannerHistoryManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val dayFocusSecs = prefs.getLong("${dateStr}_focus_total", 0L)
         val dailySubjectDurations = SubjectTagManager.getSubjectDurationsForDate(context, dateStr)
+        val dailyGoalDurations = getDailyGoalDurations(context, dateStr)
 
-        val progressMap = calculateGoalProgress(goals, dayFocusSecs, dailySubjectDurations)
+        val progressMap = calculateGoalProgress(goals, dayFocusSecs, dailySubjectDurations, dailyGoalDurations)
 
         val array = JSONArray()
         for (g in goals) {
@@ -133,6 +187,7 @@ object PlannerHistoryManager {
             val obj = JSONObject().apply {
                 put("goalId", g.id)
                 put("title", g.title)
+                put("note", g.note)
                 put("targetMinutes", g.targetMinutes)
                 put("completed", isCompleted)
                 put("checkedAt", if (isCompleted && g.checkedAt == 0L) System.currentTimeMillis() else g.checkedAt)
@@ -169,7 +224,8 @@ object PlannerHistoryManager {
                         completed = completed,
                         checkedAt = obj.optLong("checkedAt", 0L),
                         isAchieved = isAchieved,
-                        subjectId = subId
+                        subjectId = subId,
+                        note = obj.optString("note", "")
                     )
                 )
             }
@@ -177,6 +233,24 @@ object PlannerHistoryManager {
         } catch (_: Exception) {
             emptyList()
         }
+    }
+
+    fun loadGoalSnapshotsMap(context: Context, goalId: String): Map<String, PlannerGoalSnapshot> {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val snapshotsMap = mutableMapOf<String, PlannerGoalSnapshot>()
+        val allKeys = prefs.all.keys
+        for (key in allKeys) {
+            if (key.endsWith(SNAPSHOT_KEY_SUFFIX)) {
+                val dateStr = key.removeSuffix(SNAPSHOT_KEY_SUFFIX)
+                val rawJson = prefs.getString(key, null) ?: continue
+                val snapshots = parseSnapshots(rawJson)
+                val match = snapshots.firstOrNull { it.goalId == goalId }
+                if (match != null) {
+                    snapshotsMap[dateStr] = match
+                }
+            }
+        }
+        return snapshotsMap
     }
 
     /**

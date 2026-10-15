@@ -5,6 +5,7 @@ import android.app.Application
 class StudyTimerApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        CrashReporter.init(this)
         AppAnalytics.init(this)
         NotificationHelper.createAllNotificationChannels(this)
     }

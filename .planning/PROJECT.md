@@ -10,7 +10,7 @@ StudyTimer is an Android study timer and habit analytics app (`com.madeby.JAI`) 
 ## App Specifications
 - **Application ID:** `com.madeby.JAI`
 - **Target SDK:** 34 (Android 14) | **Min SDK:** 28 (Android 9.0)
-- **Current Version:** `3.1.7` (Build `40`)
+- **Current Version:** `3.1.9` (Build `42`)
 - **Test Engine Endpoint:** `http://10.73.183.155:8080` (Debug builds only)
 
 ## Key Technical Components

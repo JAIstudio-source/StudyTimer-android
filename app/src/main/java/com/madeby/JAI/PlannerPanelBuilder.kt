@@ -86,9 +86,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         val todayStr = cachedTodayStr.ifEmpty { dateKeyFmt.format(Date()) }
         val dailySubjectDurations = SubjectTagManager.getSubjectDurationsForDate(host, todayStr)
+        val dailyGoalDurations = PlannerHistoryManager.getDailyGoalDurations(host, todayStr)
         val todayFocusSecs = snap.todayFocus
 
-        val progressMap = PlannerHistoryManager.calculateGoalProgress(goalsList, todayFocusSecs, dailySubjectDurations)
+        val progressMap = PlannerHistoryManager.calculateGoalProgress(goalsList, todayFocusSecs, dailySubjectDurations, dailyGoalDurations)
 
         fun reloadPlanner() {
             val curSnap = statsSnapshotCache ?: computeStatsSnapshot().also { statsSnapshotCache = it }
@@ -434,6 +435,27 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     true
                 }
 
+                // Focus / Start Timer directly for this goal
+                val focusActionBtn = TextView(host).apply {
+                    text = "▶"
+                    textSize = 12f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(Color.WHITE)
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(plannerPrimary)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                        setMargins(dp(6), 0, dp(4), 0)
+                    }
+                    contentDescription = "Start Focus on ${goal.title}"
+                    setOnClickListener {
+                        host.startFocusForGoal(goal)
+                    }
+                }
+                goalCard.addView(focusActionBtn)
+
                 // Hold & Drag Reorder Handle
                 if (activeGoalsList.size > 1) {
                     val gripBtn = TextView(host).apply {
@@ -628,6 +650,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val isDark = themeCoordinator.isDarkMode()
         val (plannerPrimary, plannerSecondary) = resolvePlannerColors()
         val historyDetailedMap = PlannerHistoryManager.loadGoalHistoryDetailed(host, goal.id)
+        val snapshotsMap = PlannerHistoryManager.loadGoalSnapshotsMap(host, goal.id)
         val insights = PlannerHistoryManager.computeGoalInsights(host, goal.id)
         var currentOffset = displayMonthOffset
 
@@ -742,6 +765,52 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val minOffset = (minCal.get(Calendar.YEAR) - todayCal.get(Calendar.YEAR)) * 12 + (minCal.get(Calendar.MONTH) - todayCal.get(Calendar.MONTH))
         val maxOffset = 0
 
+        val selectedDayNoteCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            background = if (isDark) {
+                themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 40), 16f)
+            } else {
+                GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(0xFFF8FAFC.toInt())
+                    setStroke(dp(1), 0xFFE2E8F0.toInt())
+                }
+            }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, dp(6), 0, dp(4))
+            }
+        }
+        val noteCardHeader = TextView(host).apply {
+            textSize = 12.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(plannerPrimary)
+        }
+        val noteCardContent = TextView(host).apply {
+            textSize = 12f
+            setTextColor(themeCoordinator.textColor)
+            setPadding(0, dp(3), 0, 0)
+            setLineSpacing(dp(2).toFloat(), 1.1f)
+        }
+        selectedDayNoteCard.addView(noteCardHeader)
+        selectedDayNoteCard.addView(noteCardContent)
+
+        var lastSelectedDateKey: String? = null
+        selectedDayNoteCard.isClickable = true
+        selectedDayNoteCard.setOnClickListener {
+            val dKey = lastSelectedDateKey ?: return@setOnClickListener
+            it.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+            showHistoricalGoalDetailDialog(
+                goalId = goal.id,
+                goalTitle = goal.title,
+                fallbackNote = goal.note,
+                subjectId = goal.subjectId,
+                dateStr = dKey,
+                targetMinutes = goal.targetMinutes
+            )
+        }
+
         fun updateCalendarView(offset: Int) {
             calendarContainer.removeAllViews()
             val cal = Calendar.getInstance().apply {
@@ -833,7 +902,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             val circle = View(host).apply {
                                 layoutParams = FrameLayout.LayoutParams(dp(25), dp(25), Gravity.CENTER)
                                 background = GradientDrawable().apply {
-                                    shape = GradientDrawable.OVAL
+                                shape = GradientDrawable.OVAL
                                     when (status) {
                                         GoalHistoryStatus.ACHIEVED -> {
                                             setColor(if (isDark) 0xFF22C55E.toInt() else 0xFF10B981.toInt())
@@ -875,6 +944,34 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                                 )
                                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
                             })
+
+                            isClickable = true
+                            setOnClickListener { view ->
+                                lastSelectedDateKey = dateKey
+                                val snapshot = snapshotsMap[dateKey]
+                                val statusLabel = when (status) {
+                                    GoalHistoryStatus.ACHIEVED -> "Goal Achieved (${snapshot?.targetMinutes ?: goal.targetMinutes}m target)"
+                                    GoalHistoryStatus.DEFICIT -> "Incomplete (${snapshot?.targetMinutes ?: goal.targetMinutes}m target)"
+                                    GoalHistoryStatus.NOT_COMPLETED -> "Missed Goal"
+                                    null -> if (isToday) "Today (In Progress)" else "No Session Recorded"
+                                }
+                                val displayDateSdf = SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault())
+                                val dateFormatted = runCatching { displayDateSdf.format(sdf.parse(dateKey)!!) }.getOrDefault(dateKey)
+                                noteCardHeader.text = "📅 $dateFormatted • $statusLabel"
+                                val dayNote = snapshot?.note?.takeIf { it.isNotBlank() } ?: goal.note.takeIf { it.isNotBlank() } ?: "No specific notes recorded for this date."
+                                noteCardContent.text = "📝 $dayNote"
+                                selectedDayNoteCard.visibility = View.VISIBLE
+                                view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+
+                                showHistoricalGoalDetailDialog(
+                                    goalId = goal.id,
+                                    goalTitle = goal.title,
+                                    fallbackNote = goal.note,
+                                    subjectId = goal.subjectId,
+                                    dateStr = dateKey,
+                                    targetMinutes = goal.targetMinutes
+                                )
+                            }
                         }
                         weekRow.addView(dayCell)
                         dayCounter++
@@ -886,15 +983,17 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         updateCalendarView(currentOffset)
         content.addView(calendarContainer)
+        content.addView(selectedDayNoteCard)
 
         // 4. FIXED Legend Row
         val legendRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, dp(10), 0, dp(8))
+            setPadding(0, dp(8), 0, dp(6))
         }
         legendRow.addView(TextView(host).apply {
-            text = "● Goal Met   ✕ Incomplete   ○ Missed"
+            text = "● Goal Met   ✕ Incomplete   ○ Missed\n(Tap marked date to view session notes)"
+            gravity = Gravity.CENTER
             setTextColor(if (isDark) 0x99FFFFFF.toInt() else 0xFF64748B.toInt())
             textSize = 11f
         })
@@ -1278,7 +1377,232 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         GoalHistoryManager.reconcileAllHistoricalGoals(context)
     }
 
-    internal data class MatrixGoalItem(val id: String, val title: String, val note: String = "", val targetMinutes: Int = 0, val isDeleted: Boolean = false)
+    internal fun showHistoricalGoalDetailDialog(
+        goalId: String,
+        goalTitle: String,
+        fallbackNote: String,
+        subjectId: String?,
+        dateStr: String,
+        targetMinutes: Int = 0
+    ) {
+        val dialog = Dialog(host)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+
+        val isDark = themeCoordinator.isDarkMode()
+        val (plannerPrimary, _) = resolvePlannerColors()
+        val daySnapshots = PlannerHistoryManager.loadDaySnapshot(host, dateStr)
+        val snapshot = daySnapshots.find { it.goalId == goalId }
+            ?: daySnapshots.find { it.title.equals(goalTitle, ignoreCase = true) }
+        val goalDurations = PlannerHistoryManager.getDailyGoalDurations(host, dateStr)
+        val dailySubjectDurations = SubjectTagManager.getSubjectDurationsForDate(host, dateStr)
+        val dayFocusSecs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getLong("${dateStr}_focus_total", 0L)
+
+        val goalSecs = goalDurations[goalId] ?: (if (snapshot != null) goalDurations[snapshot.goalId] ?: 0L else 0L)
+        val subId = snapshot?.subjectId ?: subjectId
+        val targetMins = snapshot?.targetMinutes?.takeIf { it > 0 } ?: targetMinutes
+
+        val actualMins = if (goalSecs > 0L) {
+            (goalSecs / 60).toInt()
+        } else if (!subId.isNullOrBlank() && subId != "all") {
+            ((dailySubjectDurations[subId] ?: 0L) / 60).toInt()
+        } else {
+            (dayFocusSecs / 60).toInt()
+        }
+
+        val isCompleted = snapshot?.completed ?: (targetMins > 0 && actualMins >= targetMins)
+        val isAchieved = snapshot?.isAchieved ?: (targetMins > 0 && actualMins >= targetMins)
+
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val prettyDateSdf = SimpleDateFormat("EEEE, MMMM d, yyyy", Locale.getDefault())
+        val dateFormatted = runCatching { prettyDateSdf.format(sdf.parse(dateStr)!!) }.getOrDefault(dateStr)
+
+        val resolvedSub = if (!subId.isNullOrBlank() && subId != "all") {
+            SubjectTagManager.resolveSubject(host, subId)
+        } else null
+
+        val noteText = snapshot?.note?.takeIf { it.isNotBlank() }
+            ?: fallbackNote.takeIf { it.isNotBlank() }
+            ?: "No note was recorded for this day."
+
+        val content = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(28f)
+            setPadding(dp(22), dp(20), dp(22), dp(20))
+        }
+
+        // Header Row
+        val headerRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(4))
+        }
+
+        val subBadge = TextView(host).apply {
+            if (resolvedSub != null) {
+                text = "${resolvedSub.iconEmoji} ${resolvedSub.name}"
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(runCatching { Color.parseColor(resolvedSub.colorHex) }.getOrDefault(plannerPrimary))
+                }
+            } else {
+                text = "📚 All Subjects"
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(tintedColor(plannerPrimary, 70))
+                }
+            }
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            setPadding(dp(10), dp(3), dp(10), dp(3))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, dp(8), 0)
+            }
+        }
+        headerRow.addView(subBadge)
+
+        headerRow.addView(TextView(host).apply {
+            text = dateFormatted
+            textSize = 12.5f
+            setTextColor(if (isDark) 0x99FFFFFF.toInt() else 0xFF64748B.toInt())
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        content.addView(headerRow)
+
+        // Goal Title
+        content.addView(TextView(host).apply {
+            text = goalTitle
+            setTextColor(plannerPrimary)
+            textSize = 18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(0, dp(6), 0, dp(12))
+        })
+
+        // Status & Metrics Row
+        val statsRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(14))
+        }
+
+        fun makeDetailChip(label: String, value: String, valueColor: Int? = null) {
+            val chip = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                background = if (isDark) {
+                    themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 70), 14f)
+                } else {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(0xFFF1F5F9.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                    }
+                }
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    setMargins(dp(3), 0, dp(3), 0)
+                }
+            }
+            chip.addView(TextView(host).apply {
+                text = label.uppercase(Locale.getDefault())
+                textSize = 10f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(if (isDark) 0x88FFFFFF.toInt() else 0xFF94A3B8.toInt())
+            })
+            chip.addView(TextView(host).apply {
+                text = value
+                textSize = 13.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(valueColor ?: if (isDark) Color.WHITE else 0xFF0F172A.toInt())
+                setPadding(0, dp(2), 0, 0)
+            })
+            statsRow.addView(chip)
+        }
+
+        val statusText = when {
+            isAchieved -> "✓ Achieved"
+            targetMins > 0 && actualMins < targetMins && actualMins > 0 -> "✕ Deficit"
+            isCompleted -> "✓ Completed"
+            else -> "○ Incomplete"
+        }
+        val statusColor = when {
+            isAchieved || isCompleted -> if (isDark) 0xFF22C55E.toInt() else 0xFF10B981.toInt()
+            else -> if (isDark) 0xFFEF4444.toInt() else 0xFFDC2626.toInt()
+        }
+
+        makeDetailChip("Focus Time", if (goalSecs > 0) "${goalSecs / 60}m ${goalSecs % 60}s" else "${actualMins}m")
+        makeDetailChip("Target", if (targetMins > 0) "${targetMins}m" else "Flexible")
+        makeDetailChip("Status", statusText, statusColor)
+        content.addView(statsRow)
+
+        // Session Note Box
+        val noteBox = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = if (isDark) {
+                themeCoordinator.createGlassChip(0x33000000.toInt(), 16f)
+            } else {
+                GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(0xFFF8FAFC.toInt())
+                    setStroke(dp(1), 0xFFE2E8F0.toInt())
+                }
+            }
+            setPadding(dp(16), dp(12), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(14))
+            }
+        }
+        noteBox.addView(TextView(host).apply {
+            text = "📝 SESSION NOTE"
+            textSize = 10.5f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(plannerPrimary)
+            setPadding(0, 0, 0, dp(4))
+        })
+        noteBox.addView(TextView(host).apply {
+            text = noteText
+            textSize = 13f
+            setTextColor(themeCoordinator.textColor)
+            setLineSpacing(dp(2).toFloat(), 1.15f)
+        })
+        content.addView(noteBox)
+
+        // Close Button
+        val closeBtn = TextView(host).apply {
+            text = "Close"
+            setTextColor(Color.WHITE)
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(plannerPrimary)
+            }
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
+            setOnClickListener { dialog.dismiss() }
+        }
+        content.addView(closeBtn)
+
+        dialog.setContentView(content)
+        dialog.window?.let { win ->
+            win.setLayout(
+                (host.resources.displayMetrics.widthPixels * 0.90f).toInt(),
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        }
+        dialog.show()
+    }
+
+    internal data class MatrixGoalItem(
+        val id: String,
+        val title: String,
+        val note: String = "",
+        val targetMinutes: Int = 0,
+        val isDeleted: Boolean = false,
+        val subjectId: String? = null
+    )
 
     internal fun showPlannerMatrixDialog(startFullscreen: Boolean = false) {
         val isFullscreen = startFullscreen
@@ -1361,7 +1685,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         // Add current active goals first
         for (g in goalsList) {
-            allGoalItemsMap[g.id] = MatrixGoalItem(g.id, g.title, note = g.note, targetMinutes = g.targetMinutes, isDeleted = false)
+            allGoalItemsMap[g.id] = MatrixGoalItem(g.id, g.title, note = g.note, targetMinutes = g.targetMinutes, isDeleted = false, subjectId = g.subjectId)
         }
 
         // Add past deleted goals from daily snapshots
@@ -1372,7 +1696,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val snapshots = PlannerHistoryManager.loadDaySnapshot(host, key.removeSuffix("_planner_snapshot"))
                 for (s in snapshots) {
                     if (s.goalId.isNotBlank() && !allGoalItemsMap.containsKey(s.goalId)) {
-                        allGoalItemsMap[s.goalId] = MatrixGoalItem(s.goalId, if (s.title.isNotBlank()) s.title else "Deleted Goal", isDeleted = true)
+                        allGoalItemsMap[s.goalId] = MatrixGoalItem(s.goalId, if (s.title.isNotBlank()) s.title else "Deleted Goal", note = s.note, targetMinutes = s.targetMinutes, isDeleted = true, subjectId = s.subjectId)
                     }
                 }
             }
@@ -1486,8 +1810,12 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             leftColumn.addView(createDivider())
 
             for (item in allGoalItems) {
+                val sub = if (!item.subjectId.isNullOrBlank() && item.subjectId != "all") {
+                    SubjectTagManager.resolveSubject(host, item.subjectId)
+                } else null
+                val prefix = if (sub != null) "${sub.iconEmoji} " else ""
                 leftColumn.addView(TextView(host).apply {
-                    text = if (item.isDeleted) "${item.title} (Old)" else item.title
+                    text = if (item.isDeleted) "$prefix${item.title} (Old)" else "$prefix${item.title}"
                     setTextColor(if (item.isDeleted) (if (isDark) tintedColor(themeCoordinator.textColor, 120) else 0xFF94A3B8.toInt()) else (if (isDark) themeCoordinator.textColor else 0xFF0F172A.toInt()))
                     textSize = 13f
                     maxLines = 1
@@ -1612,6 +1940,23 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             }
                         }
                         layoutParams = LinearLayout.LayoutParams(dp(54), LinearLayout.LayoutParams.MATCH_PARENT)
+                        isClickable = true
+                        isFocusable = true
+                        val typedValue = android.util.TypedValue()
+                        if (host.theme.resolveAttribute(android.R.attr.selectableItemBackground, typedValue, true)) {
+                            foreground = androidx.core.content.ContextCompat.getDrawable(host, typedValue.resourceId)
+                        }
+                        setOnClickListener {
+                            it.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                            showHistoricalGoalDetailDialog(
+                                goalId = item.id,
+                                goalTitle = item.title,
+                                fallbackNote = item.note,
+                                subjectId = item.subjectId,
+                                dateStr = dateKey,
+                                targetMinutes = item.targetMinutes
+                            )
+                        }
                     })
                 }
                 rightTable.addView(row)

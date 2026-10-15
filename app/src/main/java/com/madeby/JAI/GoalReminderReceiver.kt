@@ -13,7 +13,7 @@ class GoalReminderReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_DAILY_REMIND = "com.madeby.JAI.ACTION_DAILY_REMIND"
-        private const val NOTIFICATION_ID = 3001
+        private const val NOTIFICATION_ID = NotificationHelper.NOTIFICATION_ID_GOAL_REMINDER
     }
 
     override fun onReceive(context: Context, intent: Intent) {

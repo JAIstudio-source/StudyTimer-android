@@ -41,6 +41,14 @@ object LectureScheduleScheduler {
 
     private const val REQUEST_CODE = 4001
 
+    /**
+     * Schedules an AlarmManager alarm for the earliest upcoming enabled lecture.
+     *
+     * **Design note**: Uses a wake-up alarm chain. Rather than scheduling N separate alarms,
+     * this registers a single alarm for the earliest trigger. When fired, [LectureScheduleReceiver]
+     * processes matching items and re-calls [scheduleAll] to arm the next event in sequence,
+     * while the active timer service maintains per-second real-time verification.
+     */
     fun scheduleAll(context: Context) {
         val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val jsonStr = prefs.getString("lecture_schedules_json", "[]") ?: "[]"

@@ -13,7 +13,9 @@ data class SubjectTag(
     val name: String,
     val iconEmoji: String,
     val colorHex: String,
-    val isCustom: Boolean = false
+    val isCustom: Boolean = false,
+    val subTopics: List<String> = emptyList(),
+    val weeklyTargetHours: Float = 0f
 )
 
 object SubjectTagManager {
@@ -23,6 +25,8 @@ object SubjectTagManager {
     private const val KEY_CUSTOM_SUBJECTS_JSON = "custom_subjects_json"
     private const val KEY_HIDDEN_SUBJECTS = "hidden_subjects_set"
     private const val KEY_SUBJECT_DURATIONS = "subject_durations_json"
+    private const val KEY_SUBJECT_SUBTOPICS_JSON = "subject_subtopics_json"
+    private const val KEY_SUBJECT_WEEKLY_TARGETS_JSON = "subject_weekly_targets_json"
 
     val DEFAULT_SUBJECTS = listOf(
         SubjectTag("general", "General", "📖", "#6366F1"),
@@ -137,11 +141,18 @@ object SubjectTagManager {
                                 name = ov.optString("name", d.name),
                                 iconEmoji = ov.optString("iconEmoji", d.iconEmoji),
                                 colorHex = ov.optString("colorHex", d.colorHex),
-                                isCustom = false
+                                isCustom = false,
+                                subTopics = getSubTopics(context, d.id),
+                                weeklyTargetHours = getWeeklyTargetHours(context, d.id)
                             )
                         )
                     } else {
-                        list.add(d)
+                        list.add(
+                            d.copy(
+                                subTopics = getSubTopics(context, d.id),
+                                weeklyTargetHours = getWeeklyTargetHours(context, d.id)
+                            )
+                        )
                     }
                 }
             }
@@ -160,7 +171,9 @@ object SubjectTagManager {
                                 name = ov?.optString("name") ?: obj.getString("name"),
                                 iconEmoji = ov?.optString("iconEmoji") ?: obj.optString("iconEmoji", "📚"),
                                 colorHex = ov?.optString("colorHex") ?: obj.optString("colorHex", "#6366F1"),
-                                isCustom = true
+                                isCustom = true,
+                                subTopics = getSubTopics(context, id),
+                                weeklyTargetHours = getWeeklyTargetHours(context, id)
                             )
                         )
                     }
@@ -173,6 +186,133 @@ object SubjectTagManager {
             cachedSubjects = list
             return list
         }
+    }
+
+    fun getSubTopics(context: Context, subjectId: String): List<String> {
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SUBJECT_SUBTOPICS_JSON, "{}") ?: "{}"
+        return try {
+            val json = JSONObject(raw)
+            val arr = json.optJSONArray(subjectId) ?: return emptyList()
+            val list = mutableListOf<String>()
+            for (i in 0 until arr.length()) {
+                val item = arr.optString(i, "").trim()
+                if (item.isNotEmpty()) list.add(item)
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun addSubTopic(context: Context, subjectId: String, subTopic: String): Boolean {
+        val clean = subTopic.trim()
+        if (clean.isEmpty()) return false
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SUBJECT_SUBTOPICS_JSON, "{}") ?: "{}"
+        try {
+            val json = JSONObject(raw)
+            val arr = json.optJSONArray(subjectId) ?: JSONArray()
+            for (i in 0 until arr.length()) {
+                if (arr.optString(i).equals(clean, ignoreCase = true)) return false
+            }
+            arr.put(clean)
+            json.put(subjectId, arr)
+            prefs.edit().putString(KEY_SUBJECT_SUBTOPICS_JSON, json.toString()).apply()
+            invalidateCache()
+            return true
+        } catch (_: Exception) {
+            return false
+        }
+    }
+
+    fun removeSubTopic(context: Context, subjectId: String, subTopic: String) {
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SUBJECT_SUBTOPICS_JSON, "{}") ?: "{}"
+        try {
+            val json = JSONObject(raw)
+            val arr = json.optJSONArray(subjectId) ?: return
+            val newArr = JSONArray()
+            for (i in 0 until arr.length()) {
+                val item = arr.optString(i)
+                if (!item.equals(subTopic, ignoreCase = true)) {
+                    newArr.put(item)
+                }
+            }
+            json.put(subjectId, newArr)
+            prefs.edit().putString(KEY_SUBJECT_SUBTOPICS_JSON, json.toString()).apply()
+            invalidateCache()
+        } catch (_: Exception) {}
+    }
+
+    fun getWeeklyTargetHours(context: Context, subjectId: String): Float {
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SUBJECT_WEEKLY_TARGETS_JSON, "{}") ?: "{}"
+        return try {
+            val json = JSONObject(raw)
+            json.optDouble(subjectId, 0.0).toFloat()
+        } catch (_: Exception) {
+            0f
+        }
+    }
+
+    fun setWeeklyTargetHours(context: Context, subjectId: String, hours: Float) {
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SUBJECT_WEEKLY_TARGETS_JSON, "{}") ?: "{}"
+        try {
+            val json = JSONObject(raw)
+            json.put(subjectId, hours.toDouble())
+            prefs.edit().putString(KEY_SUBJECT_WEEKLY_TARGETS_JSON, json.toString()).apply()
+            invalidateCache()
+        } catch (_: Exception) {}
+    }
+
+    enum class SubjectStatsPeriod(val displayName: String) {
+        TODAY("Today"),
+        WEEK("This Week"),
+        MONTH("This Month"),
+        ALL_TIME("All Time")
+    }
+
+    fun getDatesForWeek(weekMonday: java.util.Calendar = WeekHelper.mondayOf(java.util.Calendar.getInstance())): List<String> {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val list = ArrayList<String>()
+        val cal = weekMonday.clone() as java.util.Calendar
+        for (i in 0..6) {
+            list.add(sdf.format(cal.time))
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 1)
+        }
+        return list
+    }
+
+    fun getDatesForMonth(year: Int, month: Int): List<String> {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val list = ArrayList<String>()
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.YEAR, year)
+            set(java.util.Calendar.MONTH, month)
+            set(java.util.Calendar.DAY_OF_MONTH, 1)
+        }
+        val maxDay = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+        for (d in 1..maxDay) {
+            cal.set(java.util.Calendar.DAY_OF_MONTH, d)
+            list.add(sdf.format(cal.time))
+        }
+        return list
+    }
+
+    fun getWeeklySubjectSeconds(context: Context, subjectId: String): Long {
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val mon = WeekHelper.mondayOf(java.util.Calendar.getInstance())
+        var total = 0L
+        for (i in 0..6) {
+            val dCal = mon.clone() as java.util.Calendar
+            dCal.add(java.util.Calendar.DAY_OF_YEAR, i)
+            val dStr = sdf.format(dCal.time)
+            val map = getSubjectDurationsForDate(context, dStr)
+            total += map[subjectId] ?: 0L
+        }
+        return total
     }
 
     fun getSelectedSubject(context: Context): SubjectTag {

@@ -16,6 +16,10 @@ object GoalReminderScheduler {
     private const val REMIND_HOUR = 20
     private const val REMIND_MINUTE = 0
 
+    /**
+     * Convenience delegation to [NotificationHelper.createAllNotificationChannels]. Kept for call-site
+     * backward compatibility across alarm scheduling triggers.
+     */
     fun ensureChannel(context: Context) {
         NotificationHelper.createAllNotificationChannels(context)
     }

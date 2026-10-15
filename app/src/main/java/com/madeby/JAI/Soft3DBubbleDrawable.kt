@@ -26,6 +26,8 @@ class Soft3DBubbleDrawable(
             }
         }
 
+    private var currentAlpha: Int = 255
+
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val topRimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -60,7 +62,8 @@ class Soft3DBubbleDrawable(
             bounds.right - 2f,
             bounds.bottom + currentElevation * 1.1f
         )
-        shadowPaint.color = Color.argb(if (isDarkBg) 70 else 30, 0, 0, 0)
+        val shadowBaseAlpha = if (isDarkBg) 70 else 30
+        shadowPaint.color = Color.argb((shadowBaseAlpha * currentAlpha) / 255, 0, 0, 0)
         canvas.drawRoundRect(shadowRect, r, r, shadowPaint)
 
         // 2. Main Soft Volumetric 3D Body
@@ -81,15 +84,18 @@ class Soft3DBubbleDrawable(
             floatArrayOf(0.0f, 0.5f, 1.0f),
             Shader.TileMode.CLAMP
         )
+        fillPaint.alpha = currentAlpha
         canvas.drawRoundRect(bodyRect, r, r, fillPaint)
 
         // 3. Subtle Ultra-Refined Top Highlight Stroke (No White Glare/Wash)
-        topRimPaint.color = Color.argb(if (isDarkBg) 40 else 25, 255, 255, 255)
+        val topRimBaseAlpha = if (isDarkBg) 40 else 25
+        topRimPaint.color = Color.argb((topRimBaseAlpha * currentAlpha) / 255, 255, 255, 255)
         val rimRect = RectF(bodyRect).apply { inset(1f, 1f) }
         canvas.drawRoundRect(rimRect, r, r, topRimPaint)
 
         // 4. Subtle Bottom Shadow Rim for Tangible 3D Border Definition
-        bottomRimPaint.color = Color.argb(if (isDarkBg) 50 else 20, 0, 0, 0)
+        val bottomRimBaseAlpha = if (isDarkBg) 50 else 20
+        bottomRimPaint.color = Color.argb((bottomRimBaseAlpha * currentAlpha) / 255, 0, 0, 0)
         val bottomRimRect = RectF(bodyRect).apply { inset(1.5f, 1.5f) }
         canvas.drawRoundRect(bottomRimRect, r, r, bottomRimPaint)
     }
@@ -102,12 +108,12 @@ class Soft3DBubbleDrawable(
     }
 
     override fun setAlpha(alpha: Int) {
-        fillPaint.alpha = alpha
-        shadowPaint.alpha = alpha
-        topRimPaint.alpha = alpha
-        bottomRimPaint.alpha = alpha
+        currentAlpha = alpha.coerceIn(0, 255)
+        fillPaint.alpha = currentAlpha
         invalidateSelf()
     }
+
+    override fun getAlpha(): Int = currentAlpha
 
     override fun setColorFilter(colorFilter: ColorFilter?) {
         fillPaint.colorFilter = colorFilter
