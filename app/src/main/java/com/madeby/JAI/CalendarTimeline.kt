@@ -946,7 +946,7 @@ class CalendarTimeline(private val host: MainActivity) {
                     activity.tabPageCache.remove(activity.statsTabKey(AppStatsTab.TIMELINE))
                     activity.refreshStatsPanel()
                     activity.navigateToPanel(AppPanel.STATS)
-                    Toast.makeText(activity, "Exam countdown removed", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Exam countdown removed")
                 }
             }
         }
@@ -1103,7 +1103,7 @@ class CalendarTimeline(private val host: MainActivity) {
             setOnClickListener {
                 val enteredTitle = titleInput.text.toString().trim()
                 if (enteredTitle.isEmpty()) {
-                    Toast.makeText(activity, "Please enter an exam title", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Please enter an exam title")
                     return@setOnClickListener
                 }
 
@@ -1122,7 +1122,7 @@ class CalendarTimeline(private val host: MainActivity) {
                         notes = notesText.ifEmpty { null }
                     )
                     ExamCountdownManager.updateExam(activity, updated)
-                    Toast.makeText(activity, "Exam countdown updated", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Exam countdown updated")
                 } else {
                     ExamCountdownManager.addExam(
                         context = activity,
@@ -1132,7 +1132,7 @@ class CalendarTimeline(private val host: MainActivity) {
                         colorHex = colorHex,
                         notes = notesText
                     )
-                    Toast.makeText(activity, "Exam countdown created", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Exam countdown created")
                 }
 
                 dialog.dismiss()

@@ -207,12 +207,12 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
         saveBtn.setOnClickListener {
             if (calEnd.timeInMillis <= calStart.timeInMillis) {
                 updateConflictState()
-                Toast.makeText(host, "End time must be after start time", Toast.LENGTH_SHORT).show()
+                AppToast.show(host, "End time must be after start time")
                 return@setOnClickListener
             }
             if (hasConflict()) {
                 updateConflictState()
-                Toast.makeText(host, "Cannot save: changed time conflicts with existing time", Toast.LENGTH_SHORT).show()
+                AppToast.show(host, "Cannot save: changed time conflicts with existing time")
                 return@setOnClickListener
             }
             applyBlockEdit(dateStr, block, isBreak, calStart.timeInMillis, calEnd.timeInMillis)
@@ -367,7 +367,7 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
             host.recalculateStreak()
             host.checkCelebration()
             StudyWidgetProvider.refresh(host)
-            Toast.makeText(host, "Interval deleted", Toast.LENGTH_SHORT).show()
+            AppToast.show(host, "Interval deleted")
             onDone()
         }
     }
@@ -393,7 +393,7 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
             host.invalidateStatsCache()
             host.refreshStatsPanel()
             host.recalculateStreak()
-            Toast.makeText(host, "Day records deleted", Toast.LENGTH_SHORT).show()
+            AppToast.show(host, "Day records deleted")
         }
     }
 

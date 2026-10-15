@@ -139,7 +139,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         }
                         dialog.dismiss()
                         host.navigateToPanel(AppPanel.FOCUS)
-                        Toast.makeText(host, "Subject selected: ${subj.name}", Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "Subject selected: ${subj.name}")
                     }
                     setOnLongClickListener {
                         dialog.dismiss()
@@ -631,12 +631,12 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 setOnClickListener {
                     val name = input.text.toString().trim()
                     if (name.isEmpty()) {
-                        Toast.makeText(host, "Please enter a subject name", Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "Please enter a subject name")
                         return@setOnClickListener
                     }
                     val check = ProfanityFilter.checkSubjectName(name)
                     if (!check.isClean) {
-                        Toast.makeText(host, check.reason ?: "Subject name contains inappropriate words 🛡️", Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, check.reason ?: "Subject name contains inappropriate words 🛡️")
                         return@setOnClickListener
                     }
                     val weeklyHours = weeklyInput.text.toString().trim().toFloatOrNull() ?: 0f
@@ -651,7 +651,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     )
                     SubjectTagManager.updateSubject(host, updatedSubj)
                     dialog.dismiss()
-                    Toast.makeText(host, "Subject updated across history! ✨", Toast.LENGTH_SHORT).show()
+                    AppToast.show(host, "Subject updated across history! ✨")
                     host.navigateToPanel(AppPanel.FOCUS)
                     onUpdated?.invoke()
                 }
@@ -935,12 +935,12 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 setOnClickListener {
                     val name = input.text.toString().trim()
                     if (name.isEmpty()) {
-                        Toast.makeText(host, "Please enter a subject name", Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "Please enter a subject name")
                         return@setOnClickListener
                     }
                     val check = ProfanityFilter.checkSubjectName(name)
                     if (!check.isClean) {
-                        Toast.makeText(host, check.reason ?: "Subject name contains inappropriate words 🛡️", Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, check.reason ?: "Subject name contains inappropriate words 🛡️")
                         return@setOnClickListener
                     }
                     val created = SubjectTagManager.addCustomSubject(host, check.sanitizedText, selectedEmoji, selectedColorHex)
@@ -1594,7 +1594,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         onEmojiSelected(emojiStr)
                         dialog.dismiss()
                     } else {
-                        Toast.makeText(host, "Please enter an emoji", Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "Please enter an emoji")
                     }
                 }
             }

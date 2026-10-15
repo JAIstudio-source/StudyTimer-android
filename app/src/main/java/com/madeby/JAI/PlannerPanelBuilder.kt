@@ -78,6 +78,176 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         DeveloperToolsHelper.showThemedConfirmDialog(host, themeCoordinator, title, message, confirmText, isDestructive, onConfirm = onConfirm)
     private fun getSystemService(name: String): Any? = host.getSystemService(name)
 
+    fun build(target: ViewGroup = host.panelContainer) {
+        val root = FrameLayout(host).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        }
+
+        val mainCol = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        }
+
+        val overflowBtn = TextView(host).apply {
+            text = "⋯"
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(themeCoordinator.textColor)
+            gravity = Gravity.CENTER
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 18f)
+            setPadding(dp(12), dp(2), dp(12), dp(6))
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+                setMargins(0, 0, dp(4), 0)
+            }
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                showPlannerOptionsMenu(target)
+            }
+        }
+
+        val header = UniversalHeaderHelper.createHeader(host, extraRightView = overflowBtn, title = "PLANNER")
+        mainCol.addView(header)
+
+        val scroll = ScrollView(host).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            isVerticalScrollBarEnabled = false
+        }
+        val content = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(84))
+        }
+        val snap = statsSnapshotCache ?: computeStatsSnapshot().also { statsSnapshotCache = it }
+        renderPlannerTabContent(content, snap)
+        scroll.addView(content)
+        mainCol.addView(scroll)
+        root.addView(mainCol)
+
+        val fab = TextView(host).apply {
+            text = "+"
+            textSize = 28f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                val (plannerPrimary, _) = resolvePlannerColors()
+                setColor(plannerPrimary)
+            }
+            elevation = dp(8).toFloat()
+            layoutParams = FrameLayout.LayoutParams(dp(54), dp(54), Gravity.BOTTOM or Gravity.END).apply {
+                setMargins(0, 0, dp(20), dp(80))
+            }
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                showAddSessionGoalDialog()
+            }
+        }
+        root.addView(fab)
+
+        target.removeAllViews()
+        target.addView(root)
+    }
+
+    private fun showPlannerOptionsMenu(target: ViewGroup) {
+        val dialog = Dialog(host)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+
+        val isDark = themeCoordinator.isDarkMode()
+        val (plannerPrimary, _) = resolvePlannerColors()
+        val textColor = themeCoordinator.textColor
+
+        val card = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                val cardBg = if (isDark) {
+                    if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF141724.toInt()
+                } else {
+                    0xFFFFFFFF.toInt()
+                }
+                setColor(cardBg)
+                setStroke(dp(1), tintedColor(plannerPrimary, if (isDark) 60 else 90))
+            }
+            setPadding(dp(18), dp(18), dp(18), dp(16))
+            layoutParams = FrameLayout.LayoutParams(dp(270), FrameLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        val titleView = TextView(host).apply {
+            text = "PLANNER OPTIONS"
+            textSize = 11.5f
+            letterSpacing = 0.12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(plannerPrimary)
+            setPadding(dp(6), 0, dp(6), dp(12))
+        }
+        card.addView(titleView)
+
+        fun createMenuItem(title: String, subtitle: String, onClick: () -> Unit): View {
+            val row = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, if (isDark) 24 else 18), 12f)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+                isClickable = true
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    dialog.dismiss()
+                    onClick()
+                }
+            }
+            row.addView(TextView(host).apply {
+                text = title
+                textSize = 13.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(textColor)
+            })
+            row.addView(TextView(host).apply {
+                text = subtitle
+                textSize = 11f
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                setTextColor(tintedColor(textColor, 170))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(2)
+                }
+            })
+            return row
+        }
+
+        card.addView(createMenuItem("Goal & Habit Grid", "Weekly matrix & consistency view") {
+            showPlannerMatrixDialog()
+        })
+        card.addView(createMenuItem("Yesterday's Goals", "Retroactive logger for previous tasks") {
+            showEditYesterdayGoalsDialog()
+        })
+        card.addView(createMenuItem("Planner Theme", "Customize planner palette & accent") {
+            showPlannerThemePickerDialog()
+        })
+        card.addView(createMenuItem("Clear Completed Goals", "Archive all marked check items") {
+            val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+            val goalsJson = prefs.getString("session_goals_json", "[]") ?: "[]"
+            val currentList = loadSessionGoalsFromJson(goalsJson)
+            val remaining = currentList.filter { !it.completed }
+            saveSessionGoalsToJson(remaining)
+            PlannerHistoryManager.snapshotToday(host, remaining)
+            build(target)
+            AppToast.show(host, "Cleared completed goals")
+        })
+
+        val wrapper = FrameLayout(host).apply {
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            addView(card)
+        }
+
+        dialog.setContentView(wrapper)
+        dialog.show()
+    }
+
     internal fun renderPlannerTabContent(parent: LinearLayout, snap: StatsSnapshot) {
         val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val goalsJson = prefs.getString("session_goals_json", "[]") ?: "[]"
@@ -191,39 +361,18 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
         summaryCard.addView(progressBar)
 
-        val actionsRow = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, 0)
-        }
-        val yesterdayActionBtn = TextView(host).apply {
-            text = "Yesterday's Goals"
-            setTextColor(themeCoordinator.textColor)
-            textSize = 13.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 35), 12f)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(0, 0, dp(4), 0)
-            }
-            setOnClickListener { showEditYesterdayGoalsDialog() }
-        }
         val gridBtn = TextView(host).apply {
             text = "Goal History Grid"
             setTextColor(plannerPrimary)
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 120), 12f)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            setPadding(dp(14), dp(9), dp(14), dp(9))
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(dp(4), 0, 0, 0)
-            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             setOnClickListener { showPlannerMatrixDialog() }
         }
-        actionsRow.addView(yesterdayActionBtn)
-        actionsRow.addView(gridBtn)
-        summaryCard.addView(actionsRow)
+        summaryCard.addView(gridBtn)
         parent.addView(summaryCard)
 
         if (activeGoalsList.isEmpty()) {
@@ -596,49 +745,6 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         insightsCard.addView(createDivider())
         addInsightRow("", "Most Consistent", if (overallInsights.mostConsistentPct > 0) "${overallInsights.mostConsistentPct}%" else "0%", if (overallInsights.mostConsistentPct > 0) overallInsights.mostConsistentGoalTitle else "No track yet")
         insightsCard.addView(createDivider())
-
-        val isDark = themeCoordinator.isDarkMode()
-        val matrixBtn = TextView(host).apply {
-            text = "Goal & Habit Grid"
-            setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
-            textSize = 14f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = if (isDark) {
-                themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 120), 14f)
-            } else {
-                GradientDrawable().apply {
-                    cornerRadius = dp(14).toFloat()
-                    setColor(0xFFF1F5F9.toInt())
-                    setStroke(dp(1), 0xFFCBD5E1.toInt())
-                }
-            }
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(8), 0, 0) }
-            setOnClickListener { showPlannerMatrixDialog() }
-        }
-        insightsCard.addView(matrixBtn)
-
-        val themeBtn = TextView(host).apply {
-            text = "Planner Theme"
-            setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
-            textSize = 14f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = if (isDark) {
-                themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 120), 14f)
-            } else {
-                GradientDrawable().apply {
-                    cornerRadius = dp(14).toFloat()
-                    setColor(0xFFF1F5F9.toInt())
-                    setStroke(dp(1), 0xFFCBD5E1.toInt())
-                }
-            }
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(8), 0, 0) }
-            setOnClickListener { showPlannerThemePickerDialog() }
-        }
-        insightsCard.addView(themeBtn)
 
         parent.addView(insightsCard)
     }
@@ -1361,7 +1467,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     CloudSyncManager.syncDataToCloud(host)
                 }
 
-                Toast.makeText(host, "Yesterday's goals updated!", Toast.LENGTH_SHORT).show()
+                AppToast.show(host, "Yesterday's goals updated!")
                 dialog.dismiss()
             }
         }
@@ -2323,7 +2429,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 } catch (_: Exception) {
                     val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                     clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Support Email", "studytimer737@gmail.com"))
-                    Toast.makeText(host, "Email copied to clipboard: studytimer737@gmail.com", Toast.LENGTH_LONG).show()
+                    AppToast.show(host, "Email copied to clipboard: studytimer737@gmail.com", Toast.LENGTH_LONG)
                 }
             }
         }
@@ -2379,7 +2485,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             if (!isDevBypass && remaining > 0) {
                 val mins = (remaining / 1000) / 60
                 val secs = (remaining / 1000) % 60
-                Toast.makeText(host, "Please wait ${mins}m ${secs}s before submitting another report.", Toast.LENGTH_SHORT).show()
+                AppToast.show(host, "Please wait ${mins}m ${secs}s before submitting another report.")
                 return@setOnClickListener
             }
 
@@ -2387,13 +2493,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
             val dailyCount = feedbackPrefs.getInt("submissions_count_$todayDateKey", 0)
             if (!isDevBypass && dailyCount >= 10) {
-                Toast.makeText(host, "Daily submission limit reached (10/day). Please try again tomorrow.", Toast.LENGTH_LONG).show()
+                AppToast.show(host, "Daily submission limit reached (10/day). Please try again tomorrow.", Toast.LENGTH_LONG)
                 return@setOnClickListener
             }
 
             val userFeedbackText = inputField.text.toString().trim().take(2000)
             if (userFeedbackText.length < 5) {
-                Toast.makeText(host, "Please enter at least 5 characters.", Toast.LENGTH_SHORT).show()
+                AppToast.show(host, "Please enter at least 5 characters.")
                 return@setOnClickListener
             }
 
@@ -2521,7 +2627,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             .putLong("last_feedback_submission_epoch", System.currentTimeMillis())
                             .putInt("submissions_count_$todayDateKey", dailyCount + 1)
                             .apply()
-                        Toast.makeText(host, "Report submitted successfully! Thank you for your feedback.", Toast.LENGTH_LONG).show()
+                        AppToast.show(host, "Report submitted successfully! Thank you for your feedback.", Toast.LENGTH_LONG)
                         dialog.dismiss()
                     } else {
                         sendBtn.isEnabled = true
@@ -2554,13 +2660,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         }
 
                         try {
-                            Toast.makeText(host, "Opening email client to send your feedback...", Toast.LENGTH_LONG).show()
+                            AppToast.show(host, "Opening email client to send your feedback...", Toast.LENGTH_LONG)
                             host.startActivity(Intent.createChooser(emailIntent, "Send Feedback via Email..."))
                             dialog.dismiss()
                         } catch (_: Exception) {
                             val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             clipboard.setPrimaryClip(android.content.ClipData.newPlainText("StudyTimer Feedback", "To: $devEmail\nSubject: $emailSubject\n\n$emailBody"))
-                            Toast.makeText(host, "Feedback copied to clipboard! Please email to studytimer737@gmail.com", Toast.LENGTH_LONG).show()
+                            AppToast.show(host, "Feedback copied to clipboard! Please email to studytimer737@gmail.com", Toast.LENGTH_LONG)
                             dialog.dismiss()
                         }
                     }
@@ -2989,7 +3095,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
                 PlannerHistoryManager.deleteGoalHistory(host, goalId)
 
-                Toast.makeText(host, "Deleted '$goalTitle' from grid history", Toast.LENGTH_SHORT).show()
+                AppToast.show(host, "Deleted '$goalTitle' from grid history")
                 onDeleted()
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                     CloudSyncManager.syncDataToCloud(host)
@@ -3977,13 +4083,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     val selectedSubjectId = chosenSubId
 
                     if (titleText.isBlank() || startText.isBlank() || endText.isBlank()) {
-                        android.widget.Toast.makeText(host, "Please fill all fields", android.widget.Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "Please fill all fields")
                         return@setOnClickListener
                     }
                     val sM = parseTimeToMinutes(startText)
                     val eM = parseTimeToMinutes(endText)
                     if (sM == null || eM == null || eM <= sM) {
-                        android.widget.Toast.makeText(host, "End time must be after start time", android.widget.Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "End time must be after start time")
                         return@setOnClickListener
                     }
 

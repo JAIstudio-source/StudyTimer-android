@@ -443,19 +443,28 @@ class TimerService : Service() {
             }
 
             TimelineLogger.record(this, currentTimerState, subId = sub.id, subName = sub.name, subColor = sub.colorHex)
-            serviceScope.launch {
-                LeaderboardManager.updateStudyPresence(this@TimerService, true, sub.name, sub.colorHex)
-            }
+            syncPresence(true, sub.name, sub.colorHex)
         } else {
             TimelineLogger.record(this, currentTimerState)
-            serviceScope.launch {
-                LeaderboardManager.updateStudyPresence(this@TimerService, false)
-            }
+            syncPresence(false)
         }
         saveState()
         updateForegroundNotification()
         StudyWidgetProvider.refresh(this)
         startBackgroundLoop()
+    }
+
+    private fun syncPresence(isStudying: Boolean, subName: String = "", subColor: String = "#3b82f6") {
+        serviceScope.launch {
+            LeaderboardManager.updateStudyPresence(this@TimerService, isStudying, subName, subColor)
+            StudyRoomManager.updateRoomPresenceIfActive(
+                this@TimerService,
+                isStudying,
+                subName,
+                subColor,
+                accumulatedStudy.toInt()
+            )
+        }
     }
 
     private fun handlePause() {
@@ -473,9 +482,7 @@ class TimerService : Service() {
                 LeaderboardManager.syncStudyProgress(this@TimerService, chunk, isStudying = false, sub.name, sub.colorHex)
             }
         } else {
-            serviceScope.launch {
-                LeaderboardManager.updateStudyPresence(this@TimerService, false)
-            }
+            syncPresence(false)
         }
         saveState()
         updateForegroundNotification()
@@ -499,6 +506,7 @@ class TimerService : Service() {
             } else {
                 LeaderboardManager.updateStudyPresence(this@TimerService, false)
             }
+            StudyRoomManager.updateRoomPresenceIfActive(this@TimerService, false, currentSub.name, currentSub.colorHex, accumulatedStudy.toInt())
         }
 
         sharedPrefs.edit().apply {
@@ -774,9 +782,7 @@ class TimerService : Service() {
         val lid = sp.getString("active_lecture_subject_id", null)
         val sub = if (lid != null) SubjectTagManager.resolveSubject(this, lid) else SubjectTagManager.getSelectedSubject(this)
         TimelineLogger.record(this, TimerState.STUDYING, subId = sub.id, subName = sub.name, subColor = sub.colorHex)
-        serviceScope.launch {
-            LeaderboardManager.updateStudyPresence(this@TimerService, true, sub.name, sub.colorHex)
-        }
+        syncPresence(true, sub.name, sub.colorHex)
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(COMPLETION_NOTIFICATION_ID)
         saveState()
         updateForegroundNotification()
@@ -822,9 +828,7 @@ class TimerService : Service() {
 
         val sub = SubjectTagManager.resolveSubject(this, effectiveSubId)
         TimelineLogger.record(this, TimerState.STUDYING, subId = sub.id, subName = sub.name, subColor = sub.colorHex)
-        serviceScope.launch {
-            LeaderboardManager.updateStudyPresence(this@TimerService, true, sub.name, sub.colorHex)
-        }
+        syncPresence(true, sub.name, sub.colorHex)
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(COMPLETION_NOTIFICATION_ID)
 
         triggerBreakEndVibration() // 1 single vibration pulse (500ms)
@@ -842,9 +846,7 @@ class TimerService : Service() {
         isPendingActivityConfirmation = false
         activityConfirmationPromptTime = 0L
         cancelInactivityCheckNotification()
-        serviceScope.launch {
-            LeaderboardManager.updateStudyPresence(this@TimerService, false)
-        }
+        syncPresence(false)
         val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         if (focusRemainingSecs <= 0L) {
             focusRemainingSecs = prefs.getLong("focus_remaining_secs", 0L)
@@ -936,9 +938,7 @@ class TimerService : Service() {
                                 postAutoPausedNotification()
                                 StudyWidgetProvider.refresh(this@TimerService)
                                 TimelineLogger.record(this@TimerService, TimerState.IDLE)
-                                serviceScope.launch {
-                                    LeaderboardManager.updateStudyPresence(this@TimerService, false)
-                                }
+                                syncPresence(false)
                             }
 
                             val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
@@ -1225,7 +1225,7 @@ class TimerService : Service() {
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(openPending)
-            .addAction(R.drawable.ic_flame, "✓ I'm Still Studying", confirmPending)
+            .addAction(R.drawable.ic_flame, "I'm Still Studying", confirmPending)
             .build()
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(INACTIVITY_CHECK_NOTIFICATION_ID, notification)
     }

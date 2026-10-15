@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS public.daily_leaderboard (
 
 -- 2. Fast Lookup & Ranking Indexes
 CREATE INDEX IF NOT EXISTS idx_leaderboard_date_seconds ON public.daily_leaderboard(study_date, total_seconds DESC);
+CREATE INDEX IF NOT EXISTS idx_leaderboard_date_seconds_unbanned 
+    ON public.daily_leaderboard(study_date, total_seconds DESC) 
+    WHERE is_banned IS NOT TRUE AND total_seconds > 0;
 CREATE INDEX IF NOT EXISTS idx_leaderboard_user_date ON public.daily_leaderboard(user_id, study_date);
 CREATE INDEX IF NOT EXISTS idx_leaderboard_active ON public.daily_leaderboard(is_studying, last_active_at);
 

@@ -186,7 +186,7 @@ class SystemDialogHelper(private val activity: MainActivity) {
                     try {
                         activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                     } catch (_: Exception) {
-                        Toast.makeText(activity, "Battery settings unavailable", Toast.LENGTH_SHORT).show()
+                        AppToast.show(activity, "Battery settings unavailable")
                     }
                 }
             }
@@ -208,7 +208,7 @@ class SystemDialogHelper(private val activity: MainActivity) {
         try {
             activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         } catch (_: Exception) {
-            Toast.makeText(activity, activity.getString(R.string.toast_update_page_failed), Toast.LENGTH_SHORT).show()
+            AppToast.show(activity, activity.getString(R.string.toast_update_page_failed))
         }
     }
 
@@ -221,7 +221,7 @@ class SystemDialogHelper(private val activity: MainActivity) {
     fun checkForUpdates(manual: Boolean) {
         if (!AppConfig.ENABLE_GITHUB_UPDATE_CHECK) {
             if (manual) {
-                Toast.makeText(activity, activity.getString(R.string.toast_up_to_date, currentVersionName()), Toast.LENGTH_SHORT).show()
+                AppToast.show(activity, activity.getString(R.string.toast_up_to_date, currentVersionName()))
             }
             return
         }
@@ -232,19 +232,19 @@ class SystemDialogHelper(private val activity: MainActivity) {
             if (launches % 5 != 0) return
         }
         if (manual) {
-            Toast.makeText(activity, activity.getString(R.string.toast_checking_updates), Toast.LENGTH_SHORT).show()
+            AppToast.show(activity, activity.getString(R.string.toast_checking_updates))
         }
         UpdateChecker.check(activity) { info ->
             if (activity.isDestroyed || activity.isFinishing) return@check
             if (info == null) {
                 if (manual) {
-                    Toast.makeText(activity, activity.getString(R.string.toast_update_check_failed), Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, activity.getString(R.string.toast_update_check_failed))
                 }
                 return@check
             }
             if (info.versionCode <= currentVersionCodeLong()) {
                 if (manual) {
-                    Toast.makeText(activity, activity.getString(R.string.toast_up_to_date, currentVersionName()), Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, activity.getString(R.string.toast_up_to_date, currentVersionName()))
                 }
                 return@check
             }
@@ -262,7 +262,7 @@ class SystemDialogHelper(private val activity: MainActivity) {
             try {
                 activity.startActivity(Intent(Settings.ACTION_SETTINGS))
             } catch (_: Exception) {
-                Toast.makeText(activity, "Battery settings unavailable", Toast.LENGTH_SHORT).show()
+                AppToast.show(activity, "Battery settings unavailable")
             }
         }
     }

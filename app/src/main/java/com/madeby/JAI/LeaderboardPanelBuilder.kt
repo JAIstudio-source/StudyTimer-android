@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -33,16 +34,15 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         if (!entry.isStudying) return "Resting"
         val subjectName = entry.currentSubject.trim()
         if (subjectName.isBlank() || subjectName.equals("General", ignoreCase = true)) {
-            return "⚡ Active Focus"
+            return "Studying"
         }
-        val tag = try {
-            SubjectTagManager.resolveSubject(host, subjectName, subjectName)
-        } catch (_: Throwable) { null }
-        val emoji = tag?.iconEmoji ?: "📖"
-        return "$emoji $subjectName"
+        return subjectName
     }
 
-    fun build(target: android.view.ViewGroup = host.panelContainer) {
+    private var showBackButton: Boolean = true
+
+    fun build(target: android.view.ViewGroup = host.panelContainer, showBackButton: Boolean = true) {
+        this.showBackButton = showBackButton
         val root = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
@@ -102,160 +102,36 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
     private fun renderLeaderboardUI(root: LinearLayout) {
         root.removeAllViews()
 
-        // 1. TOP HEADER (Back Button + Title + Live Subtitle Pill + Refresh & Settings)
-        val header = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(12))
-        }
-
-        val backBtn = ImageView(host).apply {
-            setImageResource(android.R.drawable.ic_menu_revert)
-            setColorFilter(host.themeCoordinator.textColor)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = host.themeCoordinator.createGlassIconBackground(
-                host.tintedColor(host.themeCoordinator.textColor, 25)
-            )
-            contentDescription = "Back to Timer"
-            setOnClickListener {
-                host.navigateToPanel(AppPanel.FOCUS)
+        // 1. Optional Compact Header (ONLY when opened standalone, not inside Community tab)
+        if (showBackButton) {
+            val standaloneHeader = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(10))
             }
-            layoutParams = LinearLayout.LayoutParams(dp(42), dp(42)).apply {
-                setMargins(0, 0, dp(10), 0)
+            val backBtn = ImageView(host).apply {
+                setImageResource(android.R.drawable.ic_menu_revert)
+                setColorFilter(host.themeCoordinator.textColor)
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                background = host.themeCoordinator.createGlassIconBackground(
+                    host.tintedColor(host.themeCoordinator.textColor, 25)
+                )
+                contentDescription = "Back"
+                setOnClickListener {
+                    host.navigateToPanel(AppPanel.FOCUS)
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
             }
-        }
-        header.addView(backBtn)
-
-        val titleCol = LinearLayout(host).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val title = TextView(host).apply {
-            text = "Leaderboard"
-            textSize = 21f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(host.themeCoordinator.textColor)
-        }
-        titleCol.addView(title)
-
-        val subtitleRow = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-
-        val subtitle = TextView(host).apply {
-            text = "Global Rankings"
-            textSize = 11.5f
-            alpha = 0.65f
-            setTextColor(host.themeCoordinator.textColor)
-        }
-        subtitleRow.addView(subtitle)
-
-        if (isLoading) {
-            val syncingPill = TextView(host).apply {
-                text = "● Syncing..."
-                textSize = 10.5f
+            standaloneHeader.addView(backBtn)
+            standaloneHeader.addView(TextView(host).apply {
+                text = "Leaderboard"
+                textSize = 19f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(host.themeCoordinator.primaryColor)
-                background = host.themeCoordinator.createGlassChip(host.tintedColor(host.themeCoordinator.primaryColor, 35), 10f)
-                setPadding(dp(6), dp(1), dp(6), dp(1))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(dp(6), 0, 0, 0) }
-            }
-            subtitleRow.addView(syncingPill)
-        } else {
-            val activeCount = currentEntries.count { it.isStudying }
-            if (activeCount > 0) {
-                val livePill = TextView(host).apply {
-                    text = "⚡ $activeCount Active"
-                    textSize = 10.5f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(Color.parseColor("#10B981"))
-                    background = host.themeCoordinator.createGlassChip(Color.argb(40, 16, 185, 129), 10f)
-                    setPadding(dp(6), dp(1), dp(6), dp(1))
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { setMargins(dp(6), 0, 0, 0) }
-                }
-                subtitleRow.addView(livePill)
-            }
+                setTextColor(host.themeCoordinator.textColor)
+                setPadding(dp(12), 0, 0, 0)
+            })
+            root.addView(standaloneHeader)
         }
-        titleCol.addView(subtitleRow)
-        header.addView(titleCol)
-
-        val refreshBtn = ImageView(host).apply {
-            setImageResource(R.drawable.ic_refresh)
-            setColorFilter(host.themeCoordinator.primaryColor)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = host.themeCoordinator.createGlassIconBackground(
-                host.tintedColor(host.themeCoordinator.primaryColor, 30)
-            )
-            contentDescription = "Refresh Leaderboard"
-            setOnClickListener {
-                val now = System.currentTimeMillis()
-                val elapsed = now - lastManualRefreshTimestamp
-                if (elapsed < MANUAL_REFRESH_COOLDOWN_MS) {
-                    val waitSecs = ((MANUAL_REFRESH_COOLDOWN_MS - elapsed) / 1000L).coerceAtLeast(1L)
-                    Toast.makeText(host, "Please wait ${waitSecs}s before refreshing again", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                val anim = android.view.animation.RotateAnimation(
-                    0f, 360f,
-                    android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f,
-                    android.view.animation.Animation.RELATIVE_TO_SELF, 0.5f
-                ).apply {
-                    duration = 500
-                    repeatCount = 0
-                }
-                startAnimation(anim)
-                lastManualRefreshTimestamp = now
-                loadLeaderboardData(root, forceRefresh = true)
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-        }
-
-        val roomsBtn = TextView(host).apply {
-            text = "👥 Rooms"
-            textSize = 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(host.themeCoordinator.primaryColor)
-            background = host.themeCoordinator.createGlassChip(
-                host.tintedColor(host.themeCoordinator.primaryColor, 35), 14f
-            )
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-            gravity = Gravity.CENTER
-            setOnClickListener {
-                it.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                StudyRoomManager.showStudyRoomsDialog(host, host.themeCoordinator)
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40)).apply {
-                setMargins(0, 0, dp(6), 0)
-            }
-        }
-        header.addView(roomsBtn)
-        header.addView(refreshBtn)
-
-        val settingsBtn = ImageView(host).apply {
-            setImageResource(R.drawable.ic_settings)
-            setColorFilter(host.themeCoordinator.textColor)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = host.themeCoordinator.createGlassIconBackground(
-                host.tintedColor(host.themeCoordinator.textColor, 25)
-            )
-            contentDescription = "Leaderboard Settings"
-            setOnClickListener {
-                showLeaderboardSettingsDialog(root)
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                setMargins(dp(6), 0, 0, 0)
-            }
-        }
-        header.addView(settingsBtn)
-        root.addView(header)
 
         // 2. PERIOD SELECTOR TABS (Today | This Week | This Month)
         val periodContainer = LinearLayout(host).apply {
@@ -314,12 +190,11 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         }
         root.addView(periodContainer)
 
-        // 3. SCROLLABLE CONTENT (Podium + Rankings List or Skeleton Shimmer)
+        // 3. SCROLLABLE CONTENT (Wrapped in SwipeRefreshLayout with 10s cooldown guard)
         val scrollWrapper = FrameLayout(host).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                0,
-                1f
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
 
@@ -389,7 +264,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                     setPadding(dp(12), dp(6), dp(12), dp(6))
                     setOnClickListener {
                         LeaderboardManager.setParticipating(host, true)
-                        android.widget.Toast.makeText(host, "Leaderboard participation enabled! 🚀", android.widget.Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "Leaderboard participation enabled! 🚀")
                         CoroutineScope(Dispatchers.IO).launch {
                             val todayKeyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
                             val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(host, todayKeyFmt).toInt()
@@ -461,14 +336,46 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             contentScroll.addView(scrollContent)
             scrollWrapper.addView(contentScroll)
         }
-        root.addView(scrollWrapper)
+
+        val swipeRefreshLayout = SwipeRefreshLayout(host).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+            setColorSchemeColors(host.themeCoordinator.primaryColor)
+            setProgressBackgroundColorSchemeColor(if (host.themeCoordinator.isDarkMode()) 0xFF1E293B.toInt() else 0xFFFFFFFF.toInt())
+            setOnRefreshListener {
+                val now = System.currentTimeMillis()
+                val elapsed = now - lastManualRefreshTimestamp
+                if (elapsed < MANUAL_REFRESH_COOLDOWN_MS) {
+                    // Dummy refreshing: spin for 700ms so user gets tactile visual feedback, zero server hit
+                    CoroutineScope(Dispatchers.Main).launch {
+                        kotlinx.coroutines.delay(700L)
+                        isRefreshing = false
+                    }
+                } else {
+                    lastManualRefreshTimestamp = now
+                    loadLeaderboardData(root, forceRefresh = true, isSilent = false) {
+                        isRefreshing = false
+                    }
+                }
+            }
+        }
+        swipeRefreshLayout.addView(scrollWrapper)
+        root.addView(swipeRefreshLayout)
 
         // 4. STICKY BOTTOM BAR (Personal User Card or Guest CTA)
         val bottomBar = buildBottomBar()
         root.addView(bottomBar)
     }
 
-    private fun loadLeaderboardData(root: LinearLayout, forceRefresh: Boolean, isSilent: Boolean = false) {
+    private fun loadLeaderboardData(
+        root: LinearLayout,
+        forceRefresh: Boolean,
+        isSilent: Boolean = false,
+        onComplete: (() -> Unit)? = null
+    ) {
         if (!isSilent) {
             isLoading = true
             renderLeaderboardUI(root)
@@ -478,7 +385,10 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             val result = withContext(Dispatchers.IO) {
                 LeaderboardManager.fetchLeaderboard(host, selectedPeriod, forceRefresh)
             }
-            if (!root.isAttachedToWindow) return@launch
+            if (!root.isAttachedToWindow) {
+                onComplete?.invoke()
+                return@launch
+            }
 
             skeletonShimmerAnimator?.cancel()
             skeletonShimmerAnimator = null
@@ -489,9 +399,10 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             if (result.isSuccess) {
                 currentEntries = result.getOrDefault(emptyList())
             } else if (!isSilent) {
-                Toast.makeText(host, "Could not refresh leaderboard. Check internet connection.", Toast.LENGTH_SHORT).show()
+                AppToast.show(host, "Could not refresh leaderboard. Check internet connection.")
             }
             renderLeaderboardUI(root)
+            onComplete?.invoke()
         }
     }
 
@@ -994,7 +905,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             text = formatStatusLabel(entry)
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(if (entry.isStudying) Color.parseColor("#4ADE80") else host.themeCoordinator.textColor)
+            setTextColor(if (entry.isStudying) host.themeCoordinator.primaryColor else host.themeCoordinator.textColor)
         })
         statsCard.addView(colStatus)
         dialogRoot.addView(statsCard)
@@ -1399,8 +1310,8 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 text = formatStatusLabel(entry)
                 textSize = 9.5f
                 maxLines = 1
-                setTextColor(if (entry.isStudying) Color.parseColor("#4ADE80") else host.themeCoordinator.textColor)
-                alpha = if (entry.isStudying) 1f else 0.5f
+                setTextColor(host.themeCoordinator.textColor)
+                alpha = if (entry.isStudying) 0.85f else 0.5f
                 setPadding(dp(4), dp(2), dp(4), dp(2))
                 gravity = Gravity.CENTER
             }
@@ -1545,8 +1456,8 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         val statusView = TextView(host).apply {
             text = formatStatusLabel(entry)
             textSize = 10.5f
-            setTextColor(if (entry.isStudying) Color.parseColor("#4ADE80") else host.themeCoordinator.textColor)
-            alpha = if (entry.isStudying) 1f else 0.55f
+            setTextColor(host.themeCoordinator.textColor)
+            alpha = if (entry.isStudying) 0.85f else 0.55f
         }
         userCol.addView(statusView)
         row.addView(userCol)
@@ -1756,220 +1667,8 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         }
     }
 
-    private fun showLeaderboardSettingsDialog(root: LinearLayout) {
-        val dialog = android.app.Dialog(host)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        val sharedPrefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-
-        val dialogRoot = LinearLayout(host).apply {
-            orientation = LinearLayout.VERTICAL
-            background = host.themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(22), dp(20), dp(22), dp(20))
-        }
-
-        val titleView = TextView(host).apply {
-            text = "Leaderboard Settings"
-            setTextColor(host.themeCoordinator.primaryColor)
-            textSize = 18f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, 0, 0, dp(4))
-        }
-        val subView = TextView(host).apply {
-            text = "Manage your global leaderboard participation and live visibility."
-            setTextColor(host.themeCoordinator.textColor)
-            alpha = 0.7f
-            textSize = 12.5f
-            setPadding(0, 0, 0, dp(16))
-        }
-        dialogRoot.addView(titleView)
-        dialogRoot.addView(subView)
-
-        val isParticipating = sharedPrefs.getBoolean("leaderboard_participate", true)
-        val isShareLive = sharedPrefs.getBoolean("leaderboard_share_live_status", true)
-
-        var participateSwitchRef: com.google.android.material.switchmaterial.SwitchMaterial? = null
-
-        fun resumeParticipation() {
-            sharedPrefs.edit().putBoolean("leaderboard_participate", true).apply()
-            participateSwitchRef?.isChecked = true
-            Toast.makeText(host, "Participating in Leaderboard! 🚀", Toast.LENGTH_SHORT).show()
-            CoroutineScope(Dispatchers.IO).launch {
-                val todayKeyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-                val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(host, todayKeyFmt).toInt()
-                LeaderboardManager.overrideLeaderboardDailyTotal(host, realSecs)
-                withContext(Dispatchers.Main) {
-                    loadLeaderboardData(root, forceRefresh = true)
-                }
-            }
-        }
-
-        fun promptTurnOffLeaderboard() {
-            DeveloperToolsHelper.showThemedConfirmDialog(
-                activity = host,
-                themeCoordinator = host.themeCoordinator,
-                title = "Pause Leaderboard Participation?",
-                message = "Turning this off stops your focus sessions from syncing to global student rankings and removes your live study presence.\n\nYour personal statistics, study logs, and streaks remain completely safe on your device.\n\nAre you sure you want to stop participating?",
-                confirmText = "Pause Participation",
-                isDestructive = true,
-                onCancel = {
-                    participateSwitchRef?.isChecked = true
-                }
-            ) {
-                sharedPrefs.edit().putBoolean("leaderboard_participate", false).apply()
-                participateSwitchRef?.isChecked = false
-                CoroutineScope(Dispatchers.IO).launch {
-                    LeaderboardManager.removeTodayLeaderboardEntry(host)
-                    withContext(Dispatchers.Main) {
-                        loadLeaderboardData(root, forceRefresh = true)
-                    }
-                }
-                Toast.makeText(host, "Leaderboard participation paused", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        // Row 1: Participate
-        val partSwitch = com.google.android.material.switchmaterial.SwitchMaterial(host).apply {
-            isChecked = isParticipating
-            setOnClickListener {
-                if (!isChecked) {
-                    isChecked = true
-                    promptTurnOffLeaderboard()
-                } else {
-                    resumeParticipation()
-                }
-            }
-        }
-        participateSwitchRef = partSwitch
-
-        val partRow = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(10), 0, dp(10))
-            setOnClickListener {
-                val cur = sharedPrefs.getBoolean("leaderboard_participate", true)
-                if (cur) {
-                    promptTurnOffLeaderboard()
-                } else {
-                    resumeParticipation()
-                }
-            }
-        }
-        val partIcon = TextView(host).apply { text = "🏆"; textSize = 20f; setPadding(0, 0, dp(12), 0) }
-        val partTextCol = LinearLayout(host).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        partTextCol.addView(TextView(host).apply {
-            text = "Participate in Leaderboard"
-            setTextColor(host.themeCoordinator.textColor)
-            textSize = 14.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        })
-        partTextCol.addView(TextView(host).apply {
-            text = "Sync focus hours and appear on global rankings (On by default)"
-            setTextColor(host.themeCoordinator.textColor)
-            alpha = 0.55f
-            textSize = 11.5f
-            setPadding(0, 2, 0, 0)
-        })
-        partRow.addView(partIcon)
-        partRow.addView(partTextCol)
-        partRow.addView(partSwitch)
-        dialogRoot.addView(partRow)
-
-        // Divider
-        dialogRoot.addView(View(host).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
-                setMargins(0, dp(6), 0, dp(6))
-            }
-            background = GradientDrawable().apply {
-                setColor(if (host.themeCoordinator.isDarkMode()) Color.parseColor("#22232B") else host.tintedColor(host.themeCoordinator.textColor, 25))
-            }
-        })
-
-        // Row 2: Live Status
-        val liveSwitch = com.google.android.material.switchmaterial.SwitchMaterial(host).apply {
-            isChecked = isShareLive
-            setOnClickListener {
-                val newState = isChecked
-                sharedPrefs.edit().putBoolean("leaderboard_share_live_status", newState).apply()
-                if (!newState) {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        LeaderboardManager.updateStudyPresence(host, false)
-                    }
-                    Toast.makeText(host, "Live study status hidden", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(host, "Live study status visible", Toast.LENGTH_SHORT).show()
-                }
-                loadLeaderboardData(root, forceRefresh = true)
-            }
-        }
-        val liveRow = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(10), 0, dp(10))
-            setOnClickListener {
-                val cur = sharedPrefs.getBoolean("leaderboard_share_live_status", true)
-                val next = !cur
-                sharedPrefs.edit().putBoolean("leaderboard_share_live_status", next).apply()
-                liveSwitch.isChecked = next
-                if (!next) {
-                    CoroutineScope(Dispatchers.IO).launch {
-                        LeaderboardManager.updateStudyPresence(host, false)
-                    }
-                    Toast.makeText(host, "Live study status hidden", Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(host, "Live study status visible", Toast.LENGTH_SHORT).show()
-                }
-                loadLeaderboardData(root, forceRefresh = true)
-            }
-        }
-        val liveIcon = TextView(host).apply { text = "🟢"; textSize = 20f; setPadding(0, 0, dp(12), 0) }
-        val liveTextCol = LinearLayout(host).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        liveTextCol.addView(TextView(host).apply {
-            text = "Share Live Study Status"
-            setTextColor(host.themeCoordinator.textColor)
-            textSize = 14.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        })
-        liveTextCol.addView(TextView(host).apply {
-            text = "Show green live indicator & active subject to others (On by default)"
-            setTextColor(host.themeCoordinator.textColor)
-            alpha = 0.55f
-            textSize = 11.5f
-            setPadding(0, 2, 0, 0)
-        })
-        liveRow.addView(liveIcon)
-        liveRow.addView(liveTextCol)
-        liveRow.addView(liveSwitch)
-        dialogRoot.addView(liveRow)
-
-        // Close button
-        val closeBtn = Button(host).apply {
-            text = "Done"
-            setTextColor(Color.WHITE)
-            textSize = 13f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setColor(host.themeCoordinator.primaryColor)
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
-                setMargins(0, dp(16), 0, 0)
-            }
-            setOnClickListener { dialog.dismiss() }
-        }
-        dialogRoot.addView(closeBtn)
-
-        dialog.setContentView(dialogRoot)
-        dialog.window?.apply {
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-            setGravity(Gravity.CENTER)
-            setLayout((host.resources.displayMetrics.widthPixels * 0.90f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-        }
-        dialog.show()
+    private fun showLeaderboardSettingsDialog(root: LinearLayout? = null) {
+        host.currentSettingsTab = AppSettingsTab.PROFILE
+        host.navigateToPanel(AppPanel.SETTINGS)
     }
 }

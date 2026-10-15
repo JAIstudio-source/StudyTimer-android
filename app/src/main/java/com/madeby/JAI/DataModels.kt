@@ -2,7 +2,7 @@ package com.madeby.JAI
 
 import java.util.UUID
 
-enum class AppPanel { FOCUS, STATS, SETTINGS, HEATMAP, LEADERBOARD }
+enum class AppPanel { FOCUS, PLANNER, STATS, COMMUNITY, SETTINGS, HEATMAP, LEADERBOARD }
 enum class TimerState { IDLE, STUDYING, BREAK, PAUSED, LECTURE_ENDED }
 enum class AppStatsTab { OVERVIEW, TIMELINE, PLANNER }
 enum class LeaderboardPeriod { DAILY, WEEKLY, MONTHLY }
@@ -26,9 +26,11 @@ enum class AppSettingsTab {
     TIMER, 
     AMBIENCE, 
     ANALYTICS, 
+    PLANNER,
     CLOUD, 
     THEME, 
     PROFILE, 
+    COMMUNITY,
     DEVELOPER,
     SIMPLE // Settings tab page & navigation target
 }

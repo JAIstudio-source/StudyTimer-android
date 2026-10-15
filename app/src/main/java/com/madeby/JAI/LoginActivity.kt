@@ -129,7 +129,7 @@ class LoginActivity : AppCompatActivity() {
 
         btnAgree.setOnClickListener {
             if (!cbAccept.isChecked) {
-                Toast.makeText(this, "Please check the box to accept the Terms & Privacy Policy.", Toast.LENGTH_SHORT).show()
+                AppToast.show(this, "Please check the box to accept the Terms & Privacy Policy.")
                 return@setOnClickListener
             }
             val epoch = System.currentTimeMillis()
@@ -189,7 +189,7 @@ class LoginActivity : AppCompatActivity() {
     private fun performGoogleSignIn() {
         val googleClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
         if (googleClientId.isBlank()) {
-            Toast.makeText(this, "Google Web Client ID missing in config.", Toast.LENGTH_LONG).show()
+            AppToast.show(this, "Google Web Client ID missing in config.", Toast.LENGTH_LONG)
             return
         }
 
@@ -226,7 +226,7 @@ class LoginActivity : AppCompatActivity() {
                 launchBrowserOAuth()
             } catch (e: Exception) {
                 Log.e("LoginActivity", "Google Sign-In failed", e)
-                Toast.makeText(this@LoginActivity, "Sign-In cancelled or failed: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                AppToast.show(this@LoginActivity, "Sign-In cancelled or failed: ${e.localizedMessage}")
             }
         }
     }
@@ -234,7 +234,7 @@ class LoginActivity : AppCompatActivity() {
     private fun launchBrowserOAuth() {
         val supabaseUrl = BuildConfig.SUPABASE_URL
         if (supabaseUrl.isBlank()) {
-            Toast.makeText(this, "Supabase URL is missing.", Toast.LENGTH_LONG).show()
+            AppToast.show(this, "Supabase URL is missing.", Toast.LENGTH_LONG)
             return
         }
         val redirectUri = "studytimer://login-callback"
@@ -289,7 +289,7 @@ class LoginActivity : AppCompatActivity() {
             }
 
             withContext(Dispatchers.Main) {
-                Toast.makeText(this@LoginActivity, "Welcome, $name!", Toast.LENGTH_SHORT).show()
+                AppToast.show(this@LoginActivity, "Welcome, $name!")
                 proceedToMain()
             }
         }
@@ -489,7 +489,7 @@ class LoginActivity : AppCompatActivity() {
             try {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
             } catch (_: Exception) {
-                Toast.makeText(this, "Could not open browser", Toast.LENGTH_SHORT).show()
+                AppToast.show(this, "Could not open browser")
             }
         }
     }

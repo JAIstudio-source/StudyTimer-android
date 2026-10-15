@@ -225,5 +225,33 @@ CREATE POLICY "Allow anon read for feedback" ON public.feedback_reports FOR SELE
 CREATE POLICY "Allow anon update for feedback" ON public.feedback_reports FOR UPDATE USING (true) WITH CHECK (true);
 CREATE POLICY "Allow anon delete for feedback" ON public.feedback_reports FOR DELETE USING (true);
 
+-- =========================================================================
+-- 4. 60-DAY ANALYTICS & CRASH RETENTION (Reduces Database Disk IOPS & Free Tier Storage)
+-- =========================================================================
+CREATE OR REPLACE FUNCTION public.prune_old_analytics_and_crashes(retention_days INT DEFAULT 60)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    deleted_events INT := 0;
+    deleted_crashes INT := 0;
+BEGIN
+    DELETE FROM public.app_analytics_events
+    WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL;
+    GET DIAGNOSTICS deleted_events = ROW_COUNT;
+
+    DELETE FROM public.app_crash_reports
+    WHERE created_at < NOW() - (retention_days || ' days')::INTERVAL;
+    GET DIAGNOSTICS deleted_crashes = ROW_COUNT;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'deleted_events', deleted_events,
+        'deleted_crashes', deleted_crashes
+    );
+END;
+$$;
+
 -- Reload PostgREST Schema Cache
 NOTIFY pgrst, 'reload schema';

@@ -40,7 +40,7 @@ class AccountDialogHelper(private val activity: MainActivity) {
         ) {
             AuthManager.logout(activity)
             onConfirmed?.invoke() ?: run {
-                Toast.makeText(activity, "Signed out successfully", Toast.LENGTH_SHORT).show()
+                AppToast.show(activity, "Signed out successfully")
                 activity.navigateToPanel(AppPanel.SETTINGS)
             }
         }
@@ -256,7 +256,7 @@ class AccountDialogHelper(private val activity: MainActivity) {
             setOnClickListener {
                 val inputStr = confirmInput.text.toString().trim()
                 if (inputStr != "DELETE") {
-                    Toast.makeText(activity, "Please type 'DELETE' exactly to confirm deletion", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Please type 'DELETE' exactly to confirm deletion")
                     return@setOnClickListener
                 }
                 HapticFeedbackHelper.performHapticConfirm(activity)
@@ -265,7 +265,7 @@ class AccountDialogHelper(private val activity: MainActivity) {
                         CloudSyncManager.deleteUserCloudData(activity)
                     }
                     AuthManager.deleteLocalUserData(activity)
-                    Toast.makeText(activity, "Account & all data permanently erased.", Toast.LENGTH_LONG).show()
+                    AppToast.show(activity, "Account & all data permanently erased.", Toast.LENGTH_LONG)
                     val intent = Intent(activity, LoginActivity::class.java)
                     intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                     activity.startActivity(intent)
@@ -364,11 +364,11 @@ class AccountDialogHelper(private val activity: MainActivity) {
     private fun performImportWithCloudConflictCheck(uri: Uri) {
         val success = backupManager.importDataFromJSON(uri, allowCloudSync = false)
         if (!success) {
-            Toast.makeText(activity, activity.getString(R.string.toast_backup_parse_failed), Toast.LENGTH_SHORT).show()
+            AppToast.show(activity, activity.getString(R.string.toast_backup_parse_failed))
             return
         }
 
-        Toast.makeText(activity, activity.getString(R.string.toast_logs_restored), Toast.LENGTH_SHORT).show()
+        AppToast.show(activity, activity.getString(R.string.toast_logs_restored))
         themeCoordinator.applyThemeCoordinates()
         activity.tabPageCache.clear()
 
@@ -386,7 +386,7 @@ class AccountDialogHelper(private val activity: MainActivity) {
                     showSyncConflictDialog(syncResult.localTimestamp, syncResult.cloudTimestamp, syncResult.cloudRecord)
                 }
                 is CloudSyncManager.SyncCheckResult.Success -> {
-                    Toast.makeText(activity, "Cloud sync updated successfully", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Cloud sync updated successfully")
                     activity.recreate()
                 }
                 else -> {
@@ -449,7 +449,7 @@ class AccountDialogHelper(private val activity: MainActivity) {
                     withContext(Dispatchers.IO) {
                         CloudSyncManager.restoreDataFromCloud(activity)
                     }
-                    Toast.makeText(activity, "Restored newer cloud data", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Restored newer cloud data")
                     activity.tabPageCache.clear()
                     activity.recreate()
                 }
@@ -473,9 +473,9 @@ class AccountDialogHelper(private val activity: MainActivity) {
                         CloudSyncManager.mergeCloudAndLocalData(activity, cloudRecord)
                     }
                     if (merged) {
-                        Toast.makeText(activity, "Merged local and cloud data", Toast.LENGTH_SHORT).show()
+                        AppToast.show(activity, "Merged local and cloud data")
                     } else {
-                        Toast.makeText(activity, "Merge failed, keeping local state", Toast.LENGTH_SHORT).show()
+                        AppToast.show(activity, "Merge failed, keeping local state")
                     }
                     activity.tabPageCache.clear()
                     activity.recreate()
@@ -497,7 +497,7 @@ class AccountDialogHelper(private val activity: MainActivity) {
                     withContext(Dispatchers.IO) {
                         CloudSyncManager.syncDataToCloud(activity, force = true)
                     }
-                    Toast.makeText(activity, "Cloud overwritten with local backup", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Cloud overwritten with local backup")
                     activity.recreate()
                 }
             }

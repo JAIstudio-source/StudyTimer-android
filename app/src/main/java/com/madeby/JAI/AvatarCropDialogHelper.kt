@@ -505,7 +505,7 @@ object AvatarCropDialogHelper {
                     dialog.dismiss()
                     onCropConfirmed(cropped)
                 } else {
-                    Toast.makeText(activity, "Failed to crop image", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Failed to crop image")
                 }
             }
         }
@@ -536,7 +536,7 @@ object AvatarCropDialogHelper {
                     cropView.setImageBitmap(loadedBitmap)
                     dialog.show()
                 } else {
-                    Toast.makeText(activity, "Could not open selected image", Toast.LENGTH_SHORT).show()
+                    AppToast.show(activity, "Could not open selected image")
                 }
             }
         }

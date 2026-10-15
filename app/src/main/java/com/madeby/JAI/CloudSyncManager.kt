@@ -391,8 +391,8 @@ object CloudSyncManager {
                         editor.putString(k, "IDLE")
                     } else if (k == "pre_pause_state" || k == "prePauseState") {
                         editor.putString("pre_pause_state", "STUDYING")
-                    } else if (k in listOf("accumulatedStudy", "currentBreakSeconds", "lastTimestamp", "focus_remaining_secs")) {
-                        // Keep current local in-flight session values, don't overwrite with old numbers
+                    } else if (k in listOf("accumulatedStudy", "currentBreakSeconds", "lastTimestamp", "focus_remaining_secs", "__subject_tags_data__", "__exam_countdowns_data__", "__user_profile__")) {
+                        // Keep current local in-flight session values and internal embedding keys (handled separately below)
                     } else if (k.endsWith("_focus_total") || k.endsWith("_break_total")) {
                         val localVal = sharedPrefs.safeLong(k, 0L)
                         val cloudVal = cloudPrefs.optLong(k, 0L)

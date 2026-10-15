@@ -310,7 +310,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 if (currentPanel == AppPanel.STATS || currentPanel == AppPanel.HEATMAP) {
                     navigateToPanel(currentPanel)
                 }
-                Toast.makeText(host, "Goal history deleted for $dateLabel", Toast.LENGTH_SHORT).show()
+                AppToast.show(host, "Goal history deleted for $dateLabel")
                 CoroutineScope(Dispatchers.IO).launch {
                     CloudSyncManager.syncDataToCloud(host)
                 }
@@ -432,7 +432,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         StreakCalculator.applyStreakFreeze(host, yesterdayStr)
                         host.statsEngine.recalculateStreak()
-                        Toast.makeText(host, "❄️ Yesterday protected! Streak preserved.", Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "❄️ Yesterday protected! Streak preserved.")
                         dialog.dismiss()
                         host.navigateToPanel(AppPanel.STATS)
                     }
@@ -465,7 +465,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         StreakCalculator.applyStreakFreeze(host, todayStr)
                         host.statsEngine.recalculateStreak()
-                        Toast.makeText(host, "❄️ Today set as rest day! Streak preserved.", Toast.LENGTH_SHORT).show()
+                        AppToast.show(host, "❄️ Today set as rest day! Streak preserved.")
                         dialog.dismiss()
                         host.navigateToPanel(AppPanel.STATS)
                     }
@@ -584,21 +584,9 @@ class StatsPanelBuilder(private val host: MainActivity) {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
 
-        // 1. FIXED TOP HEADER (Title & Quote ONLY - Placed OUTSIDE swipable tab area)
-        val headerRow = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), 0, dp(4), dp(4))
-        }
-        headerRow.addView(TextView(host).apply {
-            text = host.getString(R.string.insights_title)
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 24f
-            letterSpacing = -0.02f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        mainColumn.addView(headerRow)
+        // 1. Universal Top Header (Profile + Streak on left, Settings Gear on right)
+        val header = UniversalHeaderHelper.createHeader(host, extraRightView = null, title = "INSIGHTS")
+        mainColumn.addView(header)
 
         val isQuoteDismissed = sharedPrefs.getBoolean("quote_dismissed_today_${todayStr}", false)
         if (!isQuoteDismissed) {
@@ -651,127 +639,101 @@ class StatsPanelBuilder(private val host: MainActivity) {
             mainColumn.addView(quoteRibbon)
         }
 
-        // 2. ISOLATED TAB CONTENT CONTAINER (Takes only remaining space below header)
-        val isSwipeNavEnabled = sharedPrefs.getBoolean("swipe_insights_nav", true)
-        val tabHost = object : FrameLayout(host) {
-            var onSwipeLeft: (() -> Unit)? = null
-            var onSwipeRight: (() -> Unit)? = null
-            private var downX = 0f
-            private var downY = 0f
-            private var isHorizontalSwipe = false
-
-            override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
-                if (!isSwipeNavEnabled) return super.onInterceptTouchEvent(ev)
-                when (ev.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        downX = ev.x
-                        downY = ev.y
-                        isHorizontalSwipe = false
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dx = Math.abs(ev.x - downX)
-                        val dy = Math.abs(ev.y - downY)
-                        val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop * 2
-                        if (dx > slop && dx > dy * 2f) {
-                            isHorizontalSwipe = true
-                            parent?.requestDisallowInterceptTouchEvent(true)
-                            return true
-                        }
-                    }
-                }
-                return super.onInterceptTouchEvent(ev)
+        // 2. Sub-Tab Switcher: [ 📊 Overview | 📅 History Calendar ]
+        val switcherCard = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, dp(8))
             }
+        }
 
-            override fun onTouchEvent(ev: MotionEvent): Boolean {
-                if (!isSwipeNavEnabled) return super.onTouchEvent(ev)
-                when (ev.actionMasked) {
-                    MotionEvent.ACTION_UP -> {
-                        if (isHorizontalSwipe) {
-                            val diff = ev.x - downX
-                            if (diff < -dp(45)) {
-                                onSwipeLeft?.invoke()
-                                return true
-                            } else if (diff > dp(45)) {
-                                onSwipeRight?.invoke()
-                                return true
-                            }
-                        }
-                    }
-                }
-                return true
-            }
-        }.apply {
+        val overviewBtn = TextView(host)
+        val timelineBtn = TextView(host)
+
+        val scroll = ScrollView(host).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            isVerticalScrollBarEnabled = false
             setBackgroundColor(Color.TRANSPARENT)
         }
-        val tabViews = java.util.EnumMap<AppStatsTab, ScrollView>(AppStatsTab::class.java)
-        fun getOrCreateTabView(targetTab: AppStatsTab): ScrollView {
-            return tabViews.getOrPut(targetTab) {
-                buildStatsTabScrollView(snap, targetTab, todayStr)
+        val content = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)
+            setPadding(dp(4), dp(4), dp(4), dp(84))
+        }
+        scroll.addView(content)
+
+        fun updateSubTab(targetTab: AppStatsTab) {
+            host.currentStatsTab = targetTab
+            val isOverview = targetTab == AppStatsTab.OVERVIEW
+
+            overviewBtn.apply {
+                setTextColor(if (isOverview) Color.WHITE else themeCoordinator.textColor)
+                background = if (isOverview) {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(12).toFloat()
+                        setColor(themeCoordinator.primaryColor)
+                    }
+                } else null
+            }
+
+            timelineBtn.apply {
+                setTextColor(if (!isOverview) Color.WHITE else themeCoordinator.textColor)
+                background = if (!isOverview) {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(12).toFloat()
+                        setColor(themeCoordinator.primaryColor)
+                    }
+                } else null
+            }
+
+            content.removeAllViews()
+            if (isOverview) {
+                renderOverviewTabContent(content, snap)
+            } else {
+                CalendarTimeline(host).build(content, snap, todayStr)
             }
         }
-        val initialView = getOrCreateTabView(tab)
-        hasPlayedStatsEntranceAnimation = true
-        tabHost.addView(initialView)
-        mainColumn.addView(tabHost)
+
+        overviewBtn.apply {
+            text = "Overview"
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                updateSubTab(AppStatsTab.OVERVIEW)
+            }
+        }
+
+        timelineBtn.apply {
+            text = "History Calendar"
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(9), dp(12), dp(9))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                updateSubTab(AppStatsTab.TIMELINE)
+            }
+        }
+
+        switcherCard.addView(overviewBtn)
+        switcherCard.addView(timelineBtn)
+        mainColumn.addView(switcherCard)
+        mainColumn.addView(scroll)
 
         statsRoot.addView(mainColumn)
 
-        // 3. FLOATING BOTTOM PILL NAV BAR (Fixed at bottom overlay, Z-Index layer above content)
-        val pillBar = InsightsPillNavBar(host).apply {
-            applyTheme(themeCoordinator)
-            selectTab(currentStatsTab, animated = false)
-            setOnTabSelectedListener { targetTab ->
-                if (currentStatsTab != targetTab) {
-                    currentStatsTab = targetTab
-                    val nextTabView = getOrCreateTabView(targetTab)
-                    (nextTabView.parent as? android.view.ViewGroup)?.removeView(nextTabView)
-                    tabHost.removeAllViews()
-                    tabHost.addView(nextTabView)
-                }
-            }
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                setMargins(dp(24), 0, dp(24), dp(16))
-            }
-        }
-
-        tabHost.onSwipeLeft = {
-            val nextTab = when (currentStatsTab) {
-                AppStatsTab.OVERVIEW -> AppStatsTab.TIMELINE
-                AppStatsTab.TIMELINE -> AppStatsTab.PLANNER
-                AppStatsTab.PLANNER -> null
-            }
-            if (nextTab != null) {
-                currentStatsTab = nextTab
-                val nextTabView = getOrCreateTabView(nextTab)
-                (nextTabView.parent as? android.view.ViewGroup)?.removeView(nextTabView)
-                tabHost.removeAllViews()
-                tabHost.addView(nextTabView)
-                pillBar.selectTab(nextTab, animated = true)
-            }
-        }
-        tabHost.onSwipeRight = {
-            val prevTab = when (currentStatsTab) {
-                AppStatsTab.PLANNER -> AppStatsTab.TIMELINE
-                AppStatsTab.TIMELINE -> AppStatsTab.OVERVIEW
-                AppStatsTab.OVERVIEW -> null
-            }
-            if (prevTab != null) {
-                currentStatsTab = prevTab
-                val prevTabView = getOrCreateTabView(prevTab)
-                (prevTabView.parent as? android.view.ViewGroup)?.removeView(prevTabView)
-                tabHost.removeAllViews()
-                tabHost.addView(prevTabView)
-                pillBar.selectTab(prevTab, animated = true)
-            }
-        }
-
-        insightsPillBarRef = pillBar
-        statsRoot.addView(pillBar)
+        val initialTab = if (tab == AppStatsTab.TIMELINE) AppStatsTab.TIMELINE else AppStatsTab.OVERVIEW
+        updateSubTab(initialTab)
     }
 
     internal fun renderOverviewTabContent(content: LinearLayout, snap: StatsSnapshot) {
@@ -1432,128 +1394,28 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 pieView.setData(slicesList)
                 container.addView(pieView)
 
-                // Detailed Subject List with Progress Bars & Quota Badges
-                val listCard = LinearLayout(host).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(0, dp(14), 0, 0)
-                }
-
-                listCard.addView(TextView(host).apply {
-                    text = "SUBJECT BREAKDOWN"
-                    setTextColor(themeCoordinator.primaryColor)
-                    textSize = 11f
-                    letterSpacing = 0.15f
+                // Details Button that opens the rich details modal
+                val viewDetailsBtn = TextView(host).apply {
+                    text = "View Breakdown Details ➔"
+                    textSize = 13f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setPadding(0, 0, 0, dp(8))
-                })
-
-                for ((subj, secs) in sortedSubjects) {
-                    val percent = if (totalSecsAll > 0L) (secs.toDouble() / totalSecsAll.toDouble() * 100.0) else 0.0
-                    val subjColor = try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
-
-                    val itemCol = LinearLayout(host).apply {
-                        orientation = LinearLayout.VERTICAL
-                        background = themeCoordinator.createGlassChip(tintedColor(subjColor, 18), 12f)
-                        setPadding(dp(14), dp(10), dp(14), dp(10))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply { setMargins(0, 0, 0, dp(8)) }
+                    setTextColor(themeCoordinator.primaryColor)
+                    gravity = Gravity.CENTER
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 14f)
+                    setPadding(dp(16), dp(11), dp(16), dp(11))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, dp(10), 0, 0)
                     }
-
-                    // Row: Icon + Name + Time + %
-                    val topRow = LinearLayout(host).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                    setOnClickListener {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        showPieChartDetailsModal(initialPeriod = activePiePeriod)
                     }
-
-                    val colorDot = View(host).apply {
-                        background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(subjColor)
-                        }
-                        layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { setMargins(0, 0, dp(8), 0) }
-                    }
-                    topRow.addView(colorDot)
-
-                    topRow.addView(TextView(host).apply {
-                        text = "${subj.iconEmoji} ${subj.name}"
-                        setTextColor(themeCoordinator.textColor)
-                        textSize = 13.5f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                    })
-
-                    topRow.addView(TextView(host).apply {
-                        text = formatDuration(secs)
-                        setTextColor(themeCoordinator.textColor)
-                        textSize = 13f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    })
-
-                    topRow.addView(TextView(host).apply {
-                        text = " (${String.format(Locale.US, "%.1f", percent)}%)"
-                        setTextColor(themeCoordinator.primaryColor)
-                        textSize = 12f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    })
-
-                    itemCol.addView(topRow)
-
-                    // Mini Progress Bar
-                    val barTrack = FrameLayout(host).apply {
-                        background = GradientDrawable().apply {
-                            cornerRadius = dp(3).toFloat()
-                            setColor(tintedColor(themeCoordinator.textColor, 25))
-                        }
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            dp(5)
-                        ).apply { setMargins(0, dp(7), 0, 0) }
-                    }
-
-                    val fillRatio = (percent / 100.0).toFloat().coerceIn(0f, 1f)
-                    val fillBar = View(host).apply {
-                        background = GradientDrawable().apply {
-                            cornerRadius = dp(3).toFloat()
-                            setColor(subjColor)
-                        }
-                        layoutParams = FrameLayout.LayoutParams(0, FrameLayout.LayoutParams.MATCH_PARENT)
-                    }
-                    barTrack.addView(fillBar)
-
-                    barTrack.post {
-                        val w = (barTrack.width * fillRatio).toInt()
-                        fillBar.layoutParams = FrameLayout.LayoutParams(w, FrameLayout.LayoutParams.MATCH_PARENT)
-                    }
-
-                    itemCol.addView(barTrack)
-
-                    // Weekly Target Quota pill if configured and in WEEK mode
-                    if (activePiePeriod == SubjectTagManager.SubjectStatsPeriod.WEEK && subj.weeklyTargetHours > 0f) {
-                        val targetSecs = (subj.weeklyTargetHours * 3600f).toLong()
-                        val quotaPct = ((secs.toDouble() / targetSecs.toDouble()) * 100.0).toInt()
-                        val isReached = quotaPct >= 100
-
-                        val quotaRow = TextView(host).apply {
-                            text = if (isReached) {
-                                "🎯 Target Reached! ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%) 🎉"
-                            } else {
-                                "🎯 Weekly Quota: ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
-                            }
-                            setTextColor(if (isReached) Color.parseColor("#10B981") else themeCoordinator.textColor)
-                            alpha = if (isReached) 1f else 0.75f
-                            textSize = 11f
-                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                            setPadding(0, dp(6), 0, 0)
-                        }
-                        itemCol.addView(quotaRow)
-                    }
-
-                    listCard.addView(itemCol)
                 }
-
-                container.addView(listCard)
+                container.addView(viewDetailsBtn)
             }
         }
 
@@ -2094,7 +1956,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 setOnClickListener {
                     sharedPrefs.edit().putBoolean("show_focus_pattern", false).apply()
                     (patternCard.parent as? android.view.ViewGroup)?.removeView(patternCard)
-                    Toast.makeText(host, "Daily Study Rhythm hidden (re-enable in Settings)", Toast.LENGTH_SHORT).show()
+                    AppToast.show(host, "Daily Study Rhythm hidden (re-enable in Settings)")
                 }
             }
             patternHeader.addView(hidePatternBtn)
@@ -2314,21 +2176,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
             content.addView(highlightsGrid)
             content.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(10)) })
             content.addView(lifetimeCard)
-
-            val exportCardBtn = TextView(host).apply {
-                text = host.getString(R.string.export_summary_card)
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 14f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 30f)
-                setPadding(dp(16), dp(12), dp(16), dp(12))
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(12)) }
-                setOnClickListener {
-                    showSummaryCardPreview()
-                }
-            }
-            content.addView(exportCardBtn)
     }
 
     internal fun invalidateStatsCache() {

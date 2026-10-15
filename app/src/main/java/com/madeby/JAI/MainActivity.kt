@@ -227,7 +227,7 @@ class MainActivity : AppCompatActivity() {
             ) { croppedBitmap ->
                 val success = LocalAvatarManager.saveCroppedBitmap(this, croppedBitmap)
                 if (success) {
-                    Toast.makeText(this, "Profile picture cropped. Submitting for approval...", Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, "Profile picture cropped. Submitting for approval...")
                     if (currentPanel == AppPanel.SETTINGS) {
                         navigateToPanel(AppPanel.SETTINGS)
                     }
@@ -252,7 +252,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
                 } else {
-                    Toast.makeText(this, "Could not save cropped image", Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, "Could not save cropped image")
                 }
             }
         }
@@ -262,7 +262,7 @@ class MainActivity : AppCompatActivity() {
         try {
             pickAvatarLauncher.launch("image/*")
         } catch (_: Exception) {
-            Toast.makeText(this, "No image picker available", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, "No image picker available")
         }
     }
 
@@ -305,12 +305,29 @@ class MainActivity : AppCompatActivity() {
     internal lateinit var stopBtn: HoldRingButton
     internal lateinit var controlActionContainer: LinearLayout
     private lateinit var panelHost: FrameLayout
-    internal lateinit var navHeader: LinearLayout
+    internal lateinit var studyBottomNavBar: StudyBottomNavBar
+    internal lateinit var navHeader: View
     internal lateinit var statusBadgeContainer: LinearLayout
     internal var extraControlsContainer: LinearLayout? = null
     internal var statsFloatingIcon: ImageView? = null
+    internal var modeOptionsPill: View? = null
     internal var leaderboardLiveDot: View? = null
     internal var isPortraitFullscreenActive = false
+    internal var settingsOriginPanel: AppPanel = AppPanel.FOCUS
+    internal var settingsOriginWasSubTab: Boolean = false
+
+    internal fun handleSettingsBack() {
+        if (settingsOriginWasSubTab) {
+            settingsOriginWasSubTab = false
+            currentSettingsTab = AppSettingsTab.HUB
+            navigateToPanel(settingsOriginPanel)
+        } else if (currentSettingsTab != AppSettingsTab.HUB) {
+            currentSettingsTab = AppSettingsTab.HUB
+            navigateToPanel(AppPanel.SETTINGS)
+        } else {
+            navigateToPanel(settingsOriginPanel)
+        }
+    }
     private var lastConfigOrientation = Configuration.ORIENTATION_UNDEFINED
     private var lastFullscreenToggleTime = 0L
     private var lastActionTriggerTime = 0L
@@ -359,9 +376,9 @@ class MainActivity : AppCompatActivity() {
             result.data?.data?.let { uri ->
                 val success = backupManager.exportDataToJSON(uri)
                 if (success) {
-                    Toast.makeText(this, getString(R.string.toast_logs_exported), Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, R.string.toast_logs_exported)
                 } else {
-                    Toast.makeText(this, getString(R.string.toast_logs_export_failed), Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, R.string.toast_logs_export_failed)
                 }
             }
         }
@@ -372,9 +389,9 @@ class MainActivity : AppCompatActivity() {
             result.data?.data?.let { uri ->
                 val success = exportCsv(uri)
                 if (success) {
-                    Toast.makeText(this, getString(R.string.toast_csv_exported), Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, R.string.toast_csv_exported)
                 } else {
-                    Toast.makeText(this, getString(R.string.toast_csv_export_failed), Toast.LENGTH_SHORT).show()
+                    AppToast.show(this, R.string.toast_csv_export_failed)
                 }
             }
         }
@@ -435,7 +452,7 @@ class MainActivity : AppCompatActivity() {
                 resetHoldToEnd()
                 performHapticConfirm(stopBtn)
                 handleStopSession()
-                Toast.makeText(this@MainActivity, getString(R.string.toast_session_saved), Toast.LENGTH_SHORT).show()
+                AppToast.show(this@MainActivity, R.string.toast_session_saved)
                 kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                     CloudSyncManager.syncDataToCloud(this@MainActivity)
                 }
@@ -758,6 +775,22 @@ class MainActivity : AppCompatActivity() {
         }
         panelHost.addView(panelContainer)
         rootLayout.addView(panelHost)
+
+        studyBottomNavBar = StudyBottomNavBar(this).apply {
+            applyTheme(themeCoordinator)
+            onTabSelectedListener = { targetPanel ->
+                navigateToPanel(targetPanel)
+            }
+        }
+        val navParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            dp(58),
+            Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+        ).apply {
+            setMargins(dp(20), 0, dp(20), dp(16))
+        }
+        rootLayout.addView(studyBottomNavBar, navParams)
+
         setContentView(rootLayout)
         lastConfigOrientation = resources.configuration.orientation
         updateStatusBarIcons()
@@ -802,13 +835,10 @@ class MainActivity : AppCompatActivity() {
                 if (currentPanel == AppPanel.HEATMAP) {
                     // Pop from full-screen Heatmap back to Insights
                     navigateToPanel(AppPanel.STATS)
-                } else if (currentPanel == AppPanel.SETTINGS && currentSettingsTab != AppSettingsTab.HUB) {
-                    // Nested Settings sub-screen: pop back one level to the main Settings Hub Dashboard
-                    currentSettingsTab = AppSettingsTab.HUB
-                    navigateToPanel(AppPanel.SETTINGS)
+                } else if (currentPanel == AppPanel.SETTINGS) {
+                    handleSettingsBack()
                 } else if (currentPanel != AppPanel.FOCUS) {
-                    // Secondary Top-Level Tabs (Settings Hub, Insights/Stats): Return to Root Start Destination (Timer/Focus)
-                    currentSettingsTab = AppSettingsTab.HUB
+                    // Return to Root Start Destination (Timer/Focus)
                     navigateToPanel(AppPanel.FOCUS)
                 } else {
                     // Primary Root Anchor (Timer / Focus Screen): Trigger exit confirmation / double-tap to exit
@@ -817,7 +847,7 @@ class MainActivity : AppCompatActivity() {
                         finish()
                     } else {
                         lastBackTime = now
-                        Toast.makeText(this@MainActivity, getString(R.string.toast_press_back_again), Toast.LENGTH_SHORT).show()
+                        AppToast.show(this@MainActivity, R.string.toast_press_back_again)
                     }
                 }
             }
@@ -1155,6 +1185,12 @@ class MainActivity : AppCompatActivity() {
                 currentSettingsTab = when (key) {
                     settingsTabKey(AppSettingsTab.THEME) -> AppSettingsTab.THEME
                     settingsTabKey(AppSettingsTab.PROFILE) -> AppSettingsTab.PROFILE
+                    settingsTabKey(AppSettingsTab.COMMUNITY) -> AppSettingsTab.COMMUNITY
+                    settingsTabKey(AppSettingsTab.TIMER) -> AppSettingsTab.TIMER
+                    settingsTabKey(AppSettingsTab.PLANNER) -> AppSettingsTab.PLANNER
+                    settingsTabKey(AppSettingsTab.ANALYTICS) -> AppSettingsTab.ANALYTICS
+                    settingsTabKey(AppSettingsTab.CLOUD) -> AppSettingsTab.CLOUD
+                    settingsTabKey(AppSettingsTab.HUB) -> AppSettingsTab.HUB
                     else -> AppSettingsTab.SIMPLE
                 }
                 buildSettingsPanel(scratch, captureScrollRef = false)
@@ -1191,6 +1227,7 @@ class MainActivity : AppCompatActivity() {
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.SIMPLE))
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.THEME))
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.PROFILE))
+                getOrBuildTabPage(settingsTabKey(AppSettingsTab.COMMUNITY))
             }
             else -> {}
         }
@@ -1233,13 +1270,28 @@ class MainActivity : AppCompatActivity() {
         }
         when (currentPanel) {
             AppPanel.FOCUS -> buildFocusPanel()
+            AppPanel.PLANNER -> buildPlannerPanel()
             AppPanel.STATS -> buildStatsPanel()
+            AppPanel.COMMUNITY -> buildCommunityPanel()
             AppPanel.SETTINGS -> buildSettingsPanel()
             AppPanel.HEATMAP -> buildHeatmapFullscreenPanel()
-            AppPanel.LEADERBOARD -> buildLeaderboardPanel()
+            AppPanel.LEADERBOARD -> buildCommunityPanel()
         }
         prewarmTabPages()
         updateStatusBarIcons()
+    }
+
+    private fun buildPlannerPanel(target: android.view.ViewGroup = panelContainer) {
+        PlannerPanelBuilder(this).build(target)
+    }
+
+    private fun buildCommunityPanel(target: android.view.ViewGroup = panelContainer) {
+        val segment = if (currentPanel == AppPanel.LEADERBOARD) {
+            CommunityPanelBuilder.CommunitySegment.LEADERBOARD
+        } else {
+            CommunityPanelBuilder.CommunitySegment.ROOMS
+        }
+        CommunityPanelBuilder(this).build(target, segment)
     }
 
     private fun buildLeaderboardPanel(target: android.view.ViewGroup = panelContainer) {
@@ -1248,6 +1300,22 @@ class MainActivity : AppCompatActivity() {
 
     internal fun navigateToPanel(targetPanel: AppPanel) {
         isNavigatingBack = false
+
+        if (::studyBottomNavBar.isInitialized) {
+            val bottomNavPanel = when (targetPanel) {
+                AppPanel.LEADERBOARD -> AppPanel.COMMUNITY
+                else -> targetPanel
+            }
+            studyBottomNavBar.selectTab(bottomNavPanel, animated = true)
+
+            val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val shouldHide = isLandscape ||
+                targetPanel == AppPanel.SETTINGS ||
+                targetPanel == AppPanel.HEATMAP ||
+                isPortraitFullscreenActive
+
+            studyBottomNavBar.visibility = if (shouldHide) View.GONE else View.VISIBLE
+        }
 
         if (isPortraitFullscreenActive && targetPanel != AppPanel.FOCUS) {
             exitPortraitFullscreenMode()
@@ -1283,6 +1351,9 @@ class MainActivity : AppCompatActivity() {
 
         if (targetPanel != AppPanel.SETTINGS) {
             isDevModeUnlocked = false
+        } else if (currentPanel != AppPanel.SETTINGS) {
+            settingsOriginPanel = currentPanel
+            settingsOriginWasSubTab = (currentSettingsTab != AppSettingsTab.HUB)
         }
 
         val isSamePanel = targetPanel == currentPanel
@@ -1294,15 +1365,20 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val slideRight = when {
-            prevPanel == AppPanel.FOCUS && targetPanel == AppPanel.SETTINGS -> true
-            prevPanel == AppPanel.SETTINGS && targetPanel == AppPanel.FOCUS -> false
-            prevPanel == AppPanel.FOCUS && targetPanel == AppPanel.STATS -> false
-            prevPanel == AppPanel.STATS && targetPanel == AppPanel.FOCUS -> true
-            else -> prevPanel.ordinal < targetPanel.ordinal
+        fun getPanelNavIndex(panel: AppPanel): Int = when (panel) {
+            AppPanel.FOCUS -> 0
+            AppPanel.STATS -> 1
+            AppPanel.PLANNER -> 2
+            AppPanel.COMMUNITY -> 3
+            AppPanel.SETTINGS -> 4
+            AppPanel.HEATMAP -> 1
+            AppPanel.LEADERBOARD -> 3
         }
 
-        performSlidingTransition(if (slideRight) 1 else -1) {
+        val movingRight = getPanelNavIndex(targetPanel) > getPanelNavIndex(prevPanel)
+        val exitDir = if (movingRight) -1 else 1
+
+        performSlidingTransition(exitDir) {
             buildCurrentPanel()
         }
     }
@@ -1327,8 +1403,10 @@ class MainActivity : AppCompatActivity() {
         val snapW = (width * scale).toInt().coerceAtLeast(1)
         val snapH = (height * scale).toInt().coerceAtLeast(1)
         try {
-            snapshot = Bitmap.createBitmap(snapW, snapH, Bitmap.Config.RGB_565)
+            // ARGB_8888 + canvas.drawColor prevents transparent areas from turning pitch black in light mode
+            snapshot = Bitmap.createBitmap(snapW, snapH, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(snapshot)
+            canvas.drawColor(themeCoordinator.bgColor)
             canvas.scale(scale, scale)
             panelContainer.draw(canvas)
         } catch (_: Throwable) {
@@ -1337,22 +1415,19 @@ class MainActivity : AppCompatActivity() {
 
         rebuild()
 
-        val springPhysics = androidx.core.view.animation.PathInterpolatorCompat.create(0.18f, 0.9f, 0.2f, 1.0f)
-        val startOffset = (-exitDir * width * 0.35f)
+        val slideInterpolator = android.view.animation.DecelerateInterpolator(1.4f)
+        val slideDistance = width * 0.40f
+        val startOffset = -exitDir * slideDistance
 
         for (j in 0 until panelContainer.childCount) {
             val child = panelContainer.getChildAt(j)
             child.translationX = startOffset
             child.alpha = 0f
-            child.scaleX = 0.96f
-            child.scaleY = 0.96f
             child.animate()
                 .translationX(0f)
                 .alpha(1f)
-                .scaleX(1f)
-                .scaleY(1f)
-                .setDuration(260L)
-                .setInterpolator(springPhysics)
+                .setDuration(220L)
+                .setInterpolator(slideInterpolator)
                 .withLayer()
                 .start()
         }
@@ -1362,18 +1437,16 @@ class MainActivity : AppCompatActivity() {
             val overlay = ImageView(this).apply {
                 setImageBitmap(localSnapshot)
                 scaleType = ImageView.ScaleType.FIT_XY
-                setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                setBackgroundColor(Color.TRANSPARENT)
                 layoutParams = FrameLayout.LayoutParams(width, height)
             }
             panelHost.addView(overlay)
 
             overlay.animate()
-                .translationX((exitDir * width * 0.35f))
+                .translationX(exitDir * slideDistance)
                 .alpha(0f)
-                .scaleX(0.96f)
-                .scaleY(0.96f)
-                .setDuration(260L)
-                .setInterpolator(springPhysics)
+                .setDuration(220L)
+                .setInterpolator(slideInterpolator)
                 .withLayer()
                 .withEndAction {
                     if (overlay.parent != null) panelHost.removeView(overlay)
@@ -1853,13 +1926,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         navigateToPanel(AppPanel.FOCUS)
-        Toast.makeText(this, "Focusing on: ${goal.title}", Toast.LENGTH_SHORT).show()
+        AppToast.show(this, "Focusing on: ${goal.title}")
     }
 
     internal fun clearActivePlannerGoal() {
         val isRunning = currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK
         if (isRunning) {
-            Toast.makeText(this, "Pause or stop timer to remove active task", Toast.LENGTH_SHORT).show()
+            AppToast.show(this, "Pause or stop timer to remove active task")
             return
         }
         val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
@@ -2024,7 +2097,7 @@ class MainActivity : AppCompatActivity() {
         if (focus < goal) return
         prefs.edit().putString("goal_pinged_date", todayStr).apply()
         try { rootLayout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
-        Toast.makeText(this, getString(R.string.toast_goal_reached), Toast.LENGTH_LONG).show()
+        AppToast.show(this, R.string.toast_goal_reached, Toast.LENGTH_LONG)
     }
 
     private fun setupTimerLoop() {
@@ -2121,6 +2194,20 @@ class MainActivity : AppCompatActivity() {
                 && sharedPrefs.getBoolean("pending_inactivity_check", false)
                 && currentTimerState == TimerState.STUDYING) {
                 showInactivityCheckDialog()
+            }
+
+            // Automatic Day Rollover Detection: Ensures goals, stats, and timer reset seamlessly at midnight
+            val currentDayStr = dateKeyFmt.format(Date())
+            if (cachedTodayStr.isNotEmpty() && cachedTodayStr != currentDayStr) {
+                cachedTodayStr = currentDayStr
+                checkAndResetGoalsForNewDay()
+                if (currentPanel == AppPanel.STATS) {
+                    updateStatsLiveViews()
+                } else if (currentPanel == AppPanel.PLANNER) {
+                    PlannerPanelBuilder(this@MainActivity).build()
+                } else if (currentPanel == AppPanel.FOCUS) {
+                    updateVisualStyles()
+                }
             }
 
             if (currentPanel == AppPanel.FOCUS) {
@@ -2773,6 +2860,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        if (::studyBottomNavBar.isInitialized) {
+            studyBottomNavBar.applyTheme(themeCoordinator)
+            studyBottomNavBar.setStudyingDim(currentTimerState == TimerState.STUDYING)
+        }
+
         val timerColor = if (isPomoWhite) {
             0xFF000000.toInt()
         } else if (pureWhiteTimerEnabled()) {
@@ -3025,6 +3117,9 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+        if (::studyBottomNavBar.isInitialized) {
+            studyBottomNavBar.applyTheme(themeCoordinator)
+        }
         if (isPortraitFullscreenActive) {
             applyPortraitFullscreenLayout()
         }
@@ -3136,7 +3231,7 @@ class MainActivity : AppCompatActivity() {
             if (oldProfile.moderationStatus == ModerationStatus.PENDING_APPROVAL && updated.moderationStatus == ModerationStatus.APPROVED) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     if (!isFinishing && !isDestroyed) {
-                        Toast.makeText(this@MainActivity, "🎉 Your profile changes have been approved by the moderator!", Toast.LENGTH_LONG).show()
+                        AppToast.show(this@MainActivity, "🎉 Your profile changes have been approved by the moderator!", Toast.LENGTH_LONG)
                         if (currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.LEADERBOARD) {
                             buildCurrentPanel()
                         }
@@ -3145,7 +3240,7 @@ class MainActivity : AppCompatActivity() {
             } else if (oldProfile.moderationStatus == ModerationStatus.PENDING_APPROVAL && updated.moderationStatus == ModerationStatus.REJECTED) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     if (!isFinishing && !isDestroyed) {
-                        Toast.makeText(this@MainActivity, "⚠️ Your recent profile edit was not approved.", Toast.LENGTH_LONG).show()
+                        AppToast.show(this@MainActivity, "⚠️ Your recent profile edit was not approved.", Toast.LENGTH_LONG)
                         if (currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.LEADERBOARD) {
                             buildCurrentPanel()
                         }
@@ -3320,6 +3415,9 @@ class MainActivity : AppCompatActivity() {
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
         val isLandscapeEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
         val isLandscape = (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) && isLandscapeEnabled
+        if (::studyBottomNavBar.isInitialized) {
+            studyBottomNavBar.visibility = if (isLandscape || currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.HEATMAP) View.GONE else View.VISIBLE
+        }
         if (!isLandscape) {
             showSystemUI()
             return
@@ -3380,6 +3478,7 @@ class MainActivity : AppCompatActivity() {
 
         val fadeViews = listOfNotNull(
             if (::navHeader.isInitialized) navHeader else null,
+            modeOptionsPill,
             if (::statusBadgeContainer.isInitialized) statusBadgeContainer else null,
             extraControlsContainer,
             if (::controlActionContainer.isInitialized) controlActionContainer else null,
@@ -3390,6 +3489,10 @@ class MainActivity : AppCompatActivity() {
             v.animate().alpha(0f).setDuration(400).withEndAction {
                 if (isPortraitFullscreenActive) v.visibility = View.INVISIBLE
             }.start()
+        }
+
+        if (::studyBottomNavBar.isInitialized) {
+            studyBottomNavBar.setBarVisibility(false, animated = true)
         }
 
         applyPortraitFullscreenLayout()
@@ -3418,6 +3521,7 @@ class MainActivity : AppCompatActivity() {
 
             val revealViews = mutableListOf<View>()
             if (::navHeader.isInitialized) { navHeader.visibility = View.VISIBLE; revealViews.add(navHeader) }
+            modeOptionsPill?.let { it.visibility = View.VISIBLE; revealViews.add(it) }
             if (::statusBadgeContainer.isInitialized) { statusBadgeContainer.visibility = View.VISIBLE; revealViews.add(statusBadgeContainer) }
             if (showSubjectTagging && extraControlsContainer != null) { extraControlsContainer?.visibility = View.VISIBLE; revealViews.add(extraControlsContainer!!) }
             if (::controlActionContainer.isInitialized) { controlActionContainer.visibility = View.VISIBLE; revealViews.add(controlActionContainer) }
@@ -3425,6 +3529,10 @@ class MainActivity : AppCompatActivity() {
 
             for (v in revealViews) {
                 v.animate().alpha(1f).setDuration(350).start()
+            }
+
+            if (::studyBottomNavBar.isInitialized && currentPanel != AppPanel.SETTINGS && currentPanel != AppPanel.HEATMAP) {
+                studyBottomNavBar.setBarVisibility(true, animated = true)
             }
 
             applyPortraitFullscreenLayout()

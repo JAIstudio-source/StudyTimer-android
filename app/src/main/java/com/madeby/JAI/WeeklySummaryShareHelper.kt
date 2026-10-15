@@ -394,7 +394,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
                     if (!shared) {
                         handler.post {
                             loadingOverlay.visibility = View.GONE
-                            Toast.makeText(host, getString(R.string.toast_share_failed), Toast.LENGTH_SHORT).show()
+                            AppToast.show(host, host.getString(R.string.toast_share_failed))
                         }
                     }
                 }.start()
@@ -492,7 +492,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
                         it.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
                         if (isChecked) {
                             if (currentPinned.size <= 2) {
-                                Toast.makeText(host, "Keep at least 2 highlights pinned", Toast.LENGTH_SHORT).show()
+                                AppToast.show(host, "Keep at least 2 highlights pinned")
                             } else {
                                 currentPinned.remove(opt.key)
                                 renderOptions()
@@ -557,7 +557,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
             background = rippleBackground(themeCoordinator.primaryColor)
             setOnClickListener {
                 if (currentPinned.size < 2) {
-                    Toast.makeText(host, "Select at least 2 highlights", Toast.LENGTH_SHORT).show()
+                    AppToast.show(host, "Select at least 2 highlights")
                     return@setOnClickListener
                 }
                 val arr = org.json.JSONArray()
