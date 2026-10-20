@@ -47,6 +47,20 @@
 -keep class com.madeby.JAI.GoalReminderReceiver { *; }
 -keep class com.madeby.JAI.StudyWidgetProvider { *; }
 
+# ── Google Play Services & Auth ─────────────────────────────
+-keep class com.google.android.gms.auth.api.signin.** { *; }
+-keep class com.google.android.gms.auth.api.signin.internal.** { *; }
+-keep class com.google.android.gms.common.api.** { *; }
+-keep class com.google.android.gms.common.internal.safeparcel.** { *; }
+-keepnames class com.google.android.gms.common.annotation.KeepName
+-keepclassmembers class * implements android.os.Parcelable {
+    public static final ** CREATOR;
+}
+-keep class androidx.credentials.** { *; }
+-keep class com.google.android.libraries.identity.googleid.** { *; }
+-dontwarn com.google.android.gms.**
+-dontwarn androidx.credentials.**
+
 # ── Debug Log Stripping ───────────────────────────────────────
 # Strip debug and verbose log calls in release builds to avoid information disclosure
 -assumenosideeffects class android.util.Log {
@@ -54,3 +68,4 @@
     public static int v(...);
     public static int d(...);
 }
+

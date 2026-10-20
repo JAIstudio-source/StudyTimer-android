@@ -973,7 +973,46 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 }
                 profileContent.addView(accountBadge)
 
-                if (isGoogleAuth) {
+                if (!isGoogleAuth) {
+                    val signInCard = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#4285F4"), 40), 16f)
+                        setPadding(dp(18), dp(16), dp(18), dp(16))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, dp(4), 0, dp(10))
+                        }
+                    }
+                    signInCard.addView(TextView(this).apply {
+                        text = "Sign In with Google"
+                        setTextColor(themeCoordinator.textColor)
+                        textSize = 15f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    })
+                    signInCard.addView(TextView(this).apply {
+                        text = "Sign in to save your study logs to cloud, preserve your streaks, and join the global student leaderboard."
+                        setTextColor(themeCoordinator.textColor)
+                        alpha = 0.7f
+                        textSize = 12.5f
+                        setPadding(0, dp(4), 0, dp(14))
+                    })
+                    val googleBtn = Button(this).apply {
+                        text = "Sign in with Google"
+                        setTextColor(Color.WHITE)
+                        textSize = 14f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(12).toFloat()
+                            setColor(Color.parseColor("#4285F4"))
+                        }
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46))
+                        setOnClickListener {
+                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            startActivity(Intent(this@with, LoginActivity::class.java))
+                        }
+                    }
+                    signInCard.addView(googleBtn)
+                    profileContent.addView(signInCard)
+                } else {
                     val currentProfile = ProfileManager.getProfile(this)
 
                     // --- MODERATION STATUS BANNER ---
@@ -1469,6 +1508,27 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             }
                         }
                         actionsLayout.addView(signOutBtn)
+                    } else {
+                        actionsLayout.addView(createDivider())
+
+                        val signInActionBtn = Button(this@with).apply {
+                            text = "Sign in with Google"
+                            setTextColor(Color.WHITE)
+                            textSize = 13.5f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            background = GradientDrawable().apply {
+                                cornerRadius = dp(12).toFloat()
+                                setColor(Color.parseColor("#4285F4"))
+                            }
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
+                                setMargins(0, dp(10), 0, dp(8))
+                            }
+                            setOnClickListener {
+                                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                startActivity(Intent(this@with, LoginActivity::class.java))
+                            }
+                        }
+                        actionsLayout.addView(signInActionBtn)
                     }
 
                     actionsLayout.addView(createDivider())
@@ -2668,14 +2728,47 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 layout.addView(modeCard)
 
                 // ==========================================
+                // 2. CARD STYLES
                 // ==========================================
-                // WALLPAPERS & AMBIENT BACKGROUNDS
+                layout.addView(createSectionLabel("CARD STYLES"))
+                val styleCard = createSettingsCard()
+                val isBubble = themeCoordinator.isBubbleStyle()
+                val isGlass = themeCoordinator.isGlassStyle()
+
+                val glassRow = createSettingsRow("", getString(R.string.style_glass), getString(R.string.style_glass_sub), modeRadio(isGlass))
+                glassRow.setOnClickListener {
+                    sharedPrefs.edit().putString("ui_style", "GLASS").apply()
+                    themeCoordinator.applyThemeCoordinates()
+                    navigateToPanel(AppPanel.SETTINGS)
+                }
+                styleCard.addView(glassRow)
+                styleCard.addView(createDivider())
+
+                val bubbleRow = createSettingsRow("", "3D Soft Depth", "Soft elevated cards with smooth depth", modeRadio(isBubble))
+                bubbleRow.setOnClickListener {
+                    sharedPrefs.edit().putString("ui_style", "BUBBLE").apply()
+                    themeCoordinator.applyThemeCoordinates()
+                    navigateToPanel(AppPanel.SETTINGS)
+                }
+                styleCard.addView(bubbleRow)
+                styleCard.addView(createDivider())
+
+                val classicRow = createSettingsRow("", getString(R.string.style_classic), getString(R.string.style_classic_sub), modeRadio(!isGlass && !isBubble))
+                classicRow.setOnClickListener {
+                    sharedPrefs.edit().putString("ui_style", "CLASSIC").apply()
+                    themeCoordinator.applyThemeCoordinates()
+                    navigateToPanel(AppPanel.SETTINGS)
+                }
+                styleCard.addView(classicRow)
+                layout.addView(styleCard)
+
                 // ==========================================
+                // 3. WALLPAPER & TYPOGRAPHY (CONSOLIDATED CARD)
                 // ==========================================
-                // WALLPAPER & AMBIENT BACKGROUNDS
-                // ==========================================
-                layout.addView(createSectionLabel("WALLPAPER & AMBIENCE"))
-                val wallpaperCard = createSettingsCard()
+                layout.addView(createSectionLabel("WALLPAPER & TYPOGRAPHY"))
+                val mediaFontCard = createSettingsCard()
+
+                // Row 1: Wallpaper
                 val wallpaperType = WallpaperManager.getWallpaperType(this)
                 val activePresetId = WallpaperManager.getActivePresetId(this)
 
@@ -2693,11 +2786,13 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(16), dp(14), dp(16), dp(14))
+                    val outVal = android.util.TypedValue()
+                    theme.resolveAttribute(android.R.attr.selectableItemBackground, outVal, true)
+                    setBackgroundResource(outVal.resourceId)
                     isClickable = true
                     isFocusable = true
                 }
 
-                // Small Thumbnail / Preview Box on Left of Row
                 val heroPreviewContainer = FrameLayout(this).apply {
                     clipToOutline = true
                     outlineProvider = object : android.view.ViewOutlineProvider() {
@@ -2747,7 +2842,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 heroPreviewContainer.addView(heroPreviewImg)
                 wallpaperRow.addView(heroPreviewContainer)
 
-                // Text Description in Row
                 val heroTextLayout = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -2783,46 +2877,10 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                     showWallpaperGalleryDialog()
                 }
-                wallpaperCard.addView(wallpaperRow)
-                layout.addView(wallpaperCard)
+                mediaFontCard.addView(wallpaperRow)
+                mediaFontCard.addView(createDivider())
 
-                layout.addView(createSectionLabel("CARD STYLES"))
-                val styleCard = createSettingsCard()
-                val isBubble = themeCoordinator.isBubbleStyle()
-                val isGlass = themeCoordinator.isGlassStyle()
-
-                val glassRow = createSettingsRow("", getString(R.string.style_glass), getString(R.string.style_glass_sub), modeRadio(isGlass))
-                glassRow.setOnClickListener {
-                    sharedPrefs.edit().putString("ui_style", "GLASS").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                styleCard.addView(glassRow)
-                styleCard.addView(createDivider())
-
-                val bubbleRow = createSettingsRow("", "3D Soft Depth", "Soft elevated cards with smooth depth", modeRadio(isBubble))
-                bubbleRow.setOnClickListener {
-                    sharedPrefs.edit().putString("ui_style", "BUBBLE").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                styleCard.addView(bubbleRow)
-                styleCard.addView(createDivider())
-
-                val classicRow = createSettingsRow("", getString(R.string.style_classic), getString(R.string.style_classic_sub), modeRadio(!isGlass && !isBubble))
-                classicRow.setOnClickListener {
-                    sharedPrefs.edit().putString("ui_style", "CLASSIC").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                styleCard.addView(classicRow)
-                layout.addView(styleCard)
-
-                // ==========================================
-                // 20+ FONT STYLE SELECTOR
-                // ==========================================
-                layout.addView(createSectionLabel("FONT & TYPOGRAPHY"))
-                val fontCard = createSettingsCard()
+                // Row 2: Font & Typography
                 val currentFontId = FontStyleManager.getSelectedFontId(this)
                 val currentFontItem = FontStyleManager.FONT_OPTIONS.find { it.id == currentFontId } ?: FontStyleManager.FONT_OPTIONS[0]
 
@@ -2844,67 +2902,72 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 fontRow.setOnClickListener {
                     showFontSelectionDialog()
                 }
-                fontCard.addView(fontRow)
-                layout.addView(fontCard)
+                mediaFontCard.addView(fontRow)
+                layout.addView(mediaFontCard)
 
                 // ==========================================
-                // RANDOM THEME / ACCENT GENERATOR
+                // 4. ACCENT COLORS (WITH INLINE RANDOMIZE BUTTON)
                 // ==========================================
-                layout.addView(createSectionLabel("RANDOM ACCENT COLORS"))
-                val randomThemeCard = createSettingsCard()
-                val rollBtn = TextView(this).apply {
-                    text = "Randomize"
-                    textSize = 13f
+                val accentHeader = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(6), dp(18), dp(6), dp(8))
+                }
+                accentHeader.addView(TextView(this).apply {
+                    text = "ACCENT COLORS"
+                    textSize = 12f
+                    letterSpacing = 0.12f
+                    setTextColor(themeCoordinator.primaryColor)
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(0xFFFFFFFF.toInt())
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                val rollBtn = TextView(this).apply {
+                    text = "🎲 Randomize"
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(Color.WHITE)
                     background = themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
-                    setPadding(dp(14), dp(6), dp(14), dp(6))
-                }
-                val randomRow = createSettingsRow(
-                    "",
-                    "Random Accent Colors",
-                    "Generate clean, matching colors for Study & Break",
-                    rollBtn
-                )
-                randomRow.setOnClickListener {
-                    val focusList = ThemeCoordinator.SOFT_FOCUS_PALETTE
-                    val breakList = ThemeCoordinator.SOFT_BREAK_PALETTE
-                    val randomFocusHex = focusList.random()
-                    var randomBreakHex = breakList.random()
-                    while (randomBreakHex.equals(randomFocusHex, ignoreCase = true) && breakList.size > 1) {
-                        randomBreakHex = breakList.random()
+                    setPadding(dp(12), dp(5), dp(12), dp(5))
+                    setOnClickListener { v ->
+                        val focusList = ThemeCoordinator.SOFT_FOCUS_PALETTE
+                        val breakList = ThemeCoordinator.SOFT_BREAK_PALETTE
+                        val randomFocusHex = focusList.random()
+                        var randomBreakHex = breakList.random()
+                        while (randomBreakHex.equals(randomFocusHex, ignoreCase = true) && breakList.size > 1) {
+                            randomBreakHex = breakList.random()
+                        }
+
+                        val newFocus = Color.parseColor(randomFocusHex)
+                        val newBreak = Color.parseColor(randomBreakHex)
+
+                        val hsvFocus = FloatArray(3)
+                        val hsvBreak = FloatArray(3)
+                        Color.colorToHSV(newFocus, hsvFocus)
+                        Color.colorToHSV(newBreak, hsvBreak)
+
+                        sharedPrefs.edit()
+                            .putInt("customPrimary", newFocus)
+                            .putInt("customSecondary", newBreak)
+                            .putInt("customHue", hsvFocus[0].toInt())
+                            .putInt("customSecondaryHue", hsvBreak[0].toInt())
+                            .apply()
+
+                        themeCoordinator.primaryColor = newFocus
+                        themeCoordinator.secondaryColor = newBreak
+                        (settingsBackFab.background as? GradientDrawable)?.setColor(newFocus)
+
+                        updateVisualStyles()
+                        tabPageCache.clear()
+
+                        try {
+                            performMicroHaptic(v)
+                        } catch (_: Exception) {}
+                        AppToast.show(this@with, "New theme colors applied!")
+                        navigateToPanel(AppPanel.SETTINGS)
                     }
-
-                    val newFocus = Color.parseColor(randomFocusHex)
-                    val newBreak = Color.parseColor(randomBreakHex)
-
-                    val hsvFocus = FloatArray(3)
-                    val hsvBreak = FloatArray(3)
-                    Color.colorToHSV(newFocus, hsvFocus)
-                    Color.colorToHSV(newBreak, hsvBreak)
-
-                    sharedPrefs.edit()
-                        .putInt("customPrimary", newFocus)
-                        .putInt("customSecondary", newBreak)
-                        .putInt("customHue", hsvFocus[0].toInt())
-                        .putInt("customSecondaryHue", hsvBreak[0].toInt())
-                        .apply()
-
-                    themeCoordinator.primaryColor = newFocus
-                    themeCoordinator.secondaryColor = newBreak
-                    (settingsBackFab.background as? GradientDrawable)?.setColor(newFocus)
-
-                    updateVisualStyles()
-                    tabPageCache.clear()
-
-                    try {
-                        randomRow.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    } catch (_: Exception) {}
-                    AppToast.show(this, "New theme colors applied!")
-                    navigateToPanel(AppPanel.SETTINGS)
                 }
-                randomThemeCard.addView(randomRow)
-                layout.addView(randomThemeCard)
+                accentHeader.addView(rollBtn)
+                layout.addView(accentHeader)
 
                 // ==========================================
                 // DUAL FOCUS & BREAK ACCENT COLOR CONTROLS
@@ -3113,7 +3176,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 // ==========================================
                 // INTERACTION & HAPTICS (AT BOTTOM OF THEME)
                 // ==========================================
-                layout.addView(createSectionLabel("VIBRATION & HAPTICS"))
+                layout.addView(createSectionLabel("FEEDBACK & HAPTICS"))
                 val hapticCard = createSettingsCard()
                 val isHapticsEnabled = sharedPrefs.getBoolean("haptics_enabled", true)
                 val hapticsSwitch = SwitchMaterial(this).apply {

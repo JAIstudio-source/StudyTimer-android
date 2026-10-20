@@ -80,7 +80,7 @@ class LoginActivity : AppCompatActivity() {
                         // User explicitly pressed back on account chooser
                     }
                     10 -> {
-                        AppToast.show(this, "Connecting via secure browser...")
+                        AppToast.show(this, "Google Sign-In (Code 10). Connecting via browser...", Toast.LENGTH_LONG)
                         launchBrowserOAuth()
                     }
                     12501, 12500, 12502 -> {

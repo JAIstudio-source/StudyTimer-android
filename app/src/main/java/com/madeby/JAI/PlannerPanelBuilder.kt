@@ -245,6 +245,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
     }
 
     internal fun renderPlannerTabContent(parent: LinearLayout, snap: StatsSnapshot) {
+        parent.clipChildren = false
+        parent.clipToPadding = false
         val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val goalsJson = prefs.getString("session_goals_json", "[]") ?: "[]"
         val goalsList = loadSessionGoalsFromJson(goalsJson)
@@ -425,6 +427,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         } else {
             val goalsContainer = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
+                clipChildren = false
+                clipToPadding = false
             }
 
             class GoalDisplayInfo(
@@ -438,7 +442,6 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             val infoMap = mutableMapOf<String, GoalDisplayInfo>()
             val greenColor = 0xFF22C55E.toInt()
             val redColor = 0xFFEF4444.toInt()
-            val yellowColor = 0xFFFACC15.toInt()
 
             for (goal in activeGoalsList) {
                 val targetMins = goal.targetMinutes
@@ -467,12 +470,12 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             isDeficit = true
                         )
                     } else {
-                        val remText = if (actualMins > 0) " (${remainingMins}m left)" else ""
+                        val remText = if (remainingMins > 0) " (${remainingMins}m left)" else ""
                         infoMap[goal.id] = GoalDisplayInfo(
                             isChecked = false,
                             checkSymbol = "",
                             progressText = "${actualMins}/${targetMins}m$remText",
-                            chipColor = yellowColor,
+                            chipColor = plannerPrimary,
                             isDeficit = false
                         )
                     }
@@ -491,7 +494,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             isChecked = false,
                             checkSymbol = "",
                             progressText = if (actualMins > 0) "${actualMins}m" else "Mark Done",
-                            chipColor = yellowColor,
+                            chipColor = plannerPrimary,
                             isDeficit = false
                         )
                     }
@@ -505,6 +508,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
                 val goalCard = LinearLayout(host).apply {
                     orientation = LinearLayout.VERTICAL
+                    clipChildren = false
+                    clipToPadding = false
                     background = themeCoordinator.createCardBackground()
                     setPadding(dp(14), dp(8), dp(14), dp(8))
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(6)) }
@@ -531,10 +536,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val animateToggleGoalAction = { targetView: View ->
                     targetView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
                     targetView.animate()
-                        .scaleX(1.35f)
-                        .scaleY(1.35f)
-                        .setDuration(110)
-                        .setInterpolator(android.view.animation.OvershootInterpolator(2.5f))
+                        .scaleX(1.28f)
+                        .scaleY(1.28f)
+                        .setDuration(120)
+                        .setInterpolator(android.view.animation.OvershootInterpolator(1.8f))
                         .withEndAction {
                             targetView.animate()
                                 .scaleX(1.0f)
@@ -606,6 +611,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val headerRow = LinearLayout(host).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
+                    clipChildren = false
+                    clipToPadding = false
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
                 }
 
@@ -617,7 +624,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     typeface = host.themeCoordinator.getAppTypeface(isBold = true)
                     setTextColor(Color.WHITE)
                     val checkColor = if (isChecked) info.chipColor else Color.TRANSPARENT
-                    val strokeColor = if (isChecked) info.chipColor else yellowColor
+                    val strokeColor = if (isChecked) info.chipColor else plannerPrimary
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
                         setColor(checkColor)
@@ -1841,7 +1848,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val statusColor = when {
             isAchieved || isTargetMet -> if (isDark) 0xFF22C55E.toInt() else 0xFF10B981.toInt()
             isEarlyStopped || (!isCompleted && actualMins == 0) -> if (isDark) 0xFFEF4444.toInt() else 0xFFDC2626.toInt()
-            else -> 0xFFFACC15.toInt()
+            else -> plannerPrimary
         }
 
         makeDetailChip("Focus Time", if (goalSecs > 0) "${goalSecs / 60}m ${goalSecs % 60}s" else "${actualMins}m")

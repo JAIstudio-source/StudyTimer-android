@@ -36,8 +36,8 @@ android {
         minSdk = 28
         targetSdk = 34
         
-        versionCode = 47
-        versionName = "3.3.3"
+        versionCode = 48
+        versionName = "3.3.4"
 
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -62,7 +62,8 @@ android {
 
     buildTypes {
         getByName("debug") {
-            manifestPlaceholders["appName"] = "StudyTimer"
+            applicationIdSuffix = ".debug"
+            manifestPlaceholders["appName"] = "StudyTimer Dev"
             signingConfig = signingConfigs.getByName("release")
         }
 
