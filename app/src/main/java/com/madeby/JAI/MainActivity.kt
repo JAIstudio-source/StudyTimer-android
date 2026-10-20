@@ -169,6 +169,14 @@ class MainActivity : AppCompatActivity() {
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
                 val subId = if (obj.has("subjectId") && !obj.isNull("subjectId")) obj.optString("subjectId").takeIf { it.isNotEmpty() } else null
+                val subTopic = if (obj.has("subTopic") && !obj.isNull("subTopic")) obj.optString("subTopic").takeIf { it.isNotEmpty() } else null
+                val daysList = mutableListOf<Int>()
+                val daysArr = obj.optJSONArray("scheduledDays")
+                if (daysArr != null) {
+                    for (d in 0 until daysArr.length()) {
+                        daysList.add(daysArr.getInt(d))
+                    }
+                }
                 list.add(SessionGoal(
                     id = obj.optString("id", UUID.randomUUID().toString()),
                     title = obj.optString("title", ""),
@@ -177,7 +185,12 @@ class MainActivity : AppCompatActivity() {
                     completed = obj.optBoolean("completed", false),
                     checkedAt = obj.optLong("checkedAt", 0L),
                     createdAt = obj.optLong("createdAt", System.currentTimeMillis()),
-                    subjectId = subId
+                    subjectId = subId,
+                    reminderEnabled = obj.optBoolean("reminderEnabled", false),
+                    reminderHour = obj.optInt("reminderHour", 20),
+                    reminderMinute = obj.optInt("reminderMinute", 0),
+                    subTopic = subTopic,
+                    scheduledDays = daysList
                 ))
             }
             list
@@ -199,6 +212,17 @@ class MainActivity : AppCompatActivity() {
                 put("createdAt", goal.createdAt)
                 if (goal.subjectId != null) {
                     put("subjectId", goal.subjectId)
+                }
+                put("reminderEnabled", goal.reminderEnabled)
+                put("reminderHour", goal.reminderHour)
+                put("reminderMinute", goal.reminderMinute)
+                if (goal.subTopic != null) {
+                    put("subTopic", goal.subTopic)
+                }
+                if (goal.scheduledDays.isNotEmpty()) {
+                    val daysArr = org.json.JSONArray()
+                    goal.scheduledDays.forEach { daysArr.put(it) }
+                    put("scheduledDays", daysArr)
                 }
             }
             array.put(obj)
@@ -227,6 +251,29 @@ class MainActivity : AppCompatActivity() {
             ) { croppedBitmap ->
                 val success = LocalAvatarManager.saveCroppedBitmap(this, croppedBitmap)
                 if (success) {
+                    val isLoggedIn = AuthManager.isLoggedIn(this) && !AuthManager.isGuest(this)
+                    if (!isLoggedIn) {
+                        // Guest user: save locally only, do not trigger approval workflow
+                        LocalAvatarManager.markAvatarPendingUpload(this, false)
+                        CoroutineScope(Dispatchers.IO).launch {
+                            val current = ProfileManager.getProfile(this@MainActivity)
+                            val targetFile = LocalAvatarManager.getAvatarFile(this@MainActivity)
+                            ProfileManager.saveProfile(this@MainActivity, current.copy(
+                                avatarUrl = targetFile.absolutePath,
+                                updatedAt = System.currentTimeMillis()
+                            ))
+                            withContext(Dispatchers.Main) {
+                                tabPageCache.clear()
+                                buildCurrentPanel()
+                                if (currentPanel == AppPanel.SETTINGS) {
+                                    navigateToPanel(AppPanel.SETTINGS)
+                                }
+                                AppToast.show(this@MainActivity, "Profile picture updated locally. Sign in to submit for public verification!")
+                            }
+                        }
+                        return@showCropDialog
+                    }
+
                     AppToast.show(this, "Profile picture cropped. Submitting for approval...")
                     if (currentPanel == AppPanel.SETTINGS) {
                         navigateToPanel(AppPanel.SETTINGS)
@@ -246,6 +293,8 @@ class MainActivity : AppCompatActivity() {
                         )
 
                         withContext(Dispatchers.Main) {
+                            tabPageCache.clear()
+                            buildCurrentPanel()
                             if (currentPanel == AppPanel.SETTINGS) {
                                 navigateToPanel(AppPanel.SETTINGS)
                             }
@@ -255,6 +304,162 @@ class MainActivity : AppCompatActivity() {
                     AppToast.show(this, "Could not save cropped image")
                 }
             }
+        }
+    }
+
+    internal var wallpaperImageView: ImageView? = null
+    internal var liveWallpaperView: LiveWallpaperView? = null
+    internal var wallpaperDimScrimView: View? = null
+
+    private val pickWallpaperLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            val success = WallpaperManager.saveCustomWallpaperFromUri(this, uri)
+            if (success) {
+                AppToast.show(this, "Wallpaper applied!")
+                updateWallpaperLayer()
+                updateVisualStyles()
+                tabPageCache.clear()
+                if (currentPanel == AppPanel.SETTINGS) {
+                    navigateToPanel(AppPanel.SETTINGS)
+                }
+            } else {
+                AppToast.show(this, "Failed to load wallpaper image")
+            }
+        }
+    }
+
+    private val pickLiveVideoLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            when (WallpaperManager.saveCustomLiveVideoFromUri(this, uri)) {
+                WallpaperManager.VideoSaveResult.SUCCESS -> {
+                    AppToast.show(this, "Live video wallpaper applied!")
+                    updateWallpaperLayer()
+                    updateVisualStyles()
+                    tabPageCache.clear()
+                    if (currentPanel == AppPanel.SETTINGS) {
+                        navigateToPanel(AppPanel.SETTINGS)
+                    }
+                }
+                WallpaperManager.VideoSaveResult.EXCEEDS_DURATION -> {
+                    AppToast.show(this, "Video exceeds 20-second limit. Please pick a shorter clip.")
+                }
+                WallpaperManager.VideoSaveResult.ERROR -> {
+                    AppToast.show(this, "Failed to load video file")
+                }
+            }
+        }
+    }
+
+    internal fun pickCustomWallpaper() {
+        try {
+            pickWallpaperLauncher.launch("image/*")
+        } catch (_: Exception) {
+            AppToast.show(this, "No image picker available")
+        }
+    }
+
+    internal fun pickLiveVideoWallpaper() {
+        try {
+            pickLiveVideoLauncher.launch("video/*")
+        } catch (_: Exception) {
+            AppToast.show(this, "No video picker available")
+        }
+    }
+
+    internal fun setLiveWallpaper(type: String) {
+        WallpaperManager.setWallpaperType(this, type)
+        AppToast.show(this, "Live wallpaper applied!")
+        updateWallpaperLayer()
+        updateVisualStyles()
+        tabPageCache.clear()
+        if (currentPanel == AppPanel.SETTINGS) {
+            navigateToPanel(AppPanel.SETTINGS)
+        }
+    }
+
+    internal fun applyPresetWallpaper(presetId: String) {
+        WallpaperManager.setActivePreset(this, presetId)
+        val preset = WallpaperManager.getPresetById(this, presetId)
+        if (preset != null && !WallpaperManager.hasUserCustomDimAlpha(this)) {
+            WallpaperManager.setWallpaperDimAlpha(this, preset.recommendedDim, isUserExplicit = false)
+        }
+        AppToast.show(this, "Wallpaper applied!")
+        updateWallpaperLayer()
+        updateVisualStyles()
+        tabPageCache.clear()
+        if (currentPanel == AppPanel.SETTINGS) {
+            navigateToPanel(AppPanel.SETTINGS)
+        }
+    }
+
+    internal fun showWallpaperGalleryDialog() {
+        WallpaperGalleryDialog.show(this, themeCoordinator) {
+            updateWallpaperLayer()
+            updateVisualStyles()
+            tabPageCache.clear()
+            if (currentPanel == AppPanel.SETTINGS) {
+                navigateToPanel(AppPanel.SETTINGS)
+            }
+        }
+    }
+
+    internal fun updateWallpaperLayer() {
+        val type = WallpaperManager.getWallpaperType(this)
+        val hasWallpaper = type != WallpaperManager.TYPE_NONE
+
+        if (WallpaperManager.isLiveWallpaper(type)) {
+            wallpaperImageView?.visibility = View.GONE
+            wallpaperImageView?.setImageDrawable(null)
+            liveWallpaperView?.visibility = View.VISIBLE
+            liveWallpaperView?.setLiveMode(type)
+            liveWallpaperView?.resume()
+        } else {
+            liveWallpaperView?.pause()
+            liveWallpaperView?.visibility = View.GONE
+
+            when (type) {
+                WallpaperManager.TYPE_PRESET -> {
+                    val presetId = WallpaperManager.getActivePresetId(this)
+                    val bm = WallpaperManager.loadPresetBitmap(this, presetId)
+                    if (bm != null) {
+                        wallpaperImageView?.setImageBitmap(bm)
+                        wallpaperImageView?.visibility = View.VISIBLE
+                    } else {
+                        wallpaperImageView?.setImageDrawable(null)
+                        wallpaperImageView?.visibility = View.GONE
+                    }
+                }
+                WallpaperManager.TYPE_STATIC -> {
+                    val file = WallpaperManager.getCustomWallpaperFile(this)
+                    if (file.exists()) {
+                        val bm = android.graphics.BitmapFactory.decodeFile(file.absolutePath)
+                        if (bm != null) {
+                            wallpaperImageView?.setImageBitmap(bm)
+                            wallpaperImageView?.visibility = View.VISIBLE
+                        } else {
+                            wallpaperImageView?.setImageDrawable(null)
+                            wallpaperImageView?.visibility = View.GONE
+                        }
+                    } else {
+                        wallpaperImageView?.setImageDrawable(null)
+                        wallpaperImageView?.visibility = View.GONE
+                    }
+                }
+                else -> {
+                    wallpaperImageView?.setImageDrawable(null)
+                    wallpaperImageView?.visibility = View.GONE
+                }
+            }
+        }
+
+        // Dynamic Scrim Dimmer for legibility
+        if (hasWallpaper) {
+            val dimAlpha = WallpaperManager.getWallpaperDimAlpha(this)
+            val scrimColor = Color.argb((dimAlpha * 255).toInt(), 0, 0, 0)
+            wallpaperDimScrimView?.setBackgroundColor(scrimColor)
+            wallpaperDimScrimView?.visibility = View.VISIBLE
+        } else {
+            wallpaperDimScrimView?.visibility = View.GONE
         }
     }
 
@@ -309,6 +514,7 @@ class MainActivity : AppCompatActivity() {
     internal lateinit var navHeader: View
     internal lateinit var statusBadgeContainer: LinearLayout
     internal var extraControlsContainer: LinearLayout? = null
+    internal var gestureHintView: View? = null
     internal var statsFloatingIcon: ImageView? = null
     internal var modeOptionsPill: View? = null
     internal var leaderboardLiveDot: View? = null
@@ -697,7 +903,21 @@ class MainActivity : AppCompatActivity() {
     internal fun isPomodoroPureWhiteActive(): Boolean {
         val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val isEnabled = prefs.getBoolean("pomodoro_pure_white_theme", true)
-        return isEnabled && timerMode == "COUNTDOWN"
+        val hasWallpaper = WallpaperManager.getWallpaperType(this) != "NONE"
+        return isEnabled && timerMode == "COUNTDOWN" && !hasWallpaper
+    }
+
+    override fun attachBaseContext(newBase: Context) {
+        val config = Configuration(newBase.resources.configuration)
+        config.fontScale = config.fontScale.coerceIn(0.85f, 1.05f)
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
+    override fun applyOverrideConfiguration(overrideConfiguration: Configuration?) {
+        if (overrideConfiguration != null) {
+            overrideConfiguration.fontScale = overrideConfiguration.fontScale.coerceIn(0.85f, 1.05f)
+        }
+        super.applyOverrideConfiguration(overrideConfiguration)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -712,7 +932,8 @@ class MainActivity : AppCompatActivity() {
         if (!sharedPrefs.contains("activeBgMode")) {
             sharedPrefs.edit()
                 .putString("activeBgMode", "OLED")
-                .putString("ui_style", "BUBBLE")
+                .putString("ui_style", "GLASS")
+                .putString("wallpaper_type", WallpaperManager.TYPE_LIVE_AURORA)
                 .putInt("customHue", 255)
                 .putInt("customPrimary", Color.parseColor("#A78BFA"))
                 .putInt("customSecondaryHue", 199)
@@ -757,11 +978,30 @@ class MainActivity : AppCompatActivity() {
             } catch (_: Exception) {}
         }.start()
 
-        requestNotificationPermissionIfNeeded()
-
         rootLayout = FrameLayout(this).apply {
             background = themeCoordinator.createBackgroundDrawable()
         }
+
+        liveWallpaperView = LiveWallpaperView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            visibility = View.GONE
+        }
+        rootLayout.addView(liveWallpaperView)
+
+        wallpaperImageView = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            visibility = View.GONE
+        }
+        rootLayout.addView(wallpaperImageView)
+
+        wallpaperDimScrimView = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+            visibility = View.GONE
+        }
+        rootLayout.addView(wallpaperDimScrimView)
+
+        updateWallpaperLayer()
 
         panelContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -792,6 +1032,40 @@ class MainActivity : AppCompatActivity() {
         rootLayout.addView(studyBottomNavBar, navParams)
 
         setContentView(rootLayout)
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
+            val statusBarInset = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars()).top
+            val navInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())
+            val tappableInsets = insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.tappableElement())
+            val navBottom = navInsets.bottom
+            val tappableBottom = tappableInsets.bottom
+
+            // Conditional Bottom Navigation & Gesture Bar Padding:
+            // 3-button navigation bars have active tappable buttons and substantial height (> 28dp)
+            val isThreeButtonNav = (tappableBottom > 0 && navBottom > dp(28)) || navBottom > dp(36)
+
+            val bottomNavMargin = if (isThreeButtonNav) {
+                navBottom + dp(10)
+            } else {
+                // No bottom bar or standard gesture navigation: display cleanly without extra bottom padding
+                dp(16)
+            }
+
+            (studyBottomNavBar.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                if (lp.bottomMargin != bottomNavMargin) {
+                    lp.bottomMargin = bottomNavMargin
+                    studyBottomNavBar.layoutParams = lp
+                }
+            }
+
+            val panelBottomPadding = if (isThreeButtonNav) {
+                navBottom + dp(76)
+            } else {
+                dp(16)
+            }
+            panelHost.setPadding(dp(16), statusBarInset + dp(4), dp(16), panelBottomPadding)
+            insets
+        }
         lastConfigOrientation = resources.configuration.orientation
         updateStatusBarIcons()
 
@@ -867,6 +1141,15 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("has_seen_app_guide", false)) {
             prefs.edit().putBoolean("has_seen_app_guide", true).apply()
+        }
+
+        // Trigger FTUX interactive 3-step setup on first launch
+        if (!prefs.getBoolean("has_completed_onboarding_v2", false)) {
+            window.decorView.postDelayed({
+                if (!isFinishing && !isDestroyed) {
+                    OnboardingDialogHelper.showOnboardingIfNeeded(this)
+                }
+            }, 500L)
         }
     }
 
@@ -961,6 +1244,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
+        newConfig.fontScale = newConfig.fontScale.coerceIn(0.85f, 1.05f)
         super.onConfigurationChanged(newConfig)
         val orientationChanged = (newConfig.orientation != lastConfigOrientation)
         lastConfigOrientation = newConfig.orientation
@@ -1210,6 +1494,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         scratch.removeView(page)
+        FontStyleManager.applyRecursively(page)
         tabPageCache[key] = CachedTabPage(page, if (key.startsWith("ST:")) 0 else statsSnapshotGen, tabThemeSig())
         return page
     }
@@ -1277,6 +1562,10 @@ class MainActivity : AppCompatActivity() {
             AppPanel.HEATMAP -> buildHeatmapFullscreenPanel()
             AppPanel.LEADERBOARD -> buildCommunityPanel()
         }
+        FontStyleManager.applyRecursively(rootLayout)
+        if (::studyBottomNavBar.isInitialized) {
+            studyBottomNavBar.applyTheme(themeCoordinator)
+        }
         prewarmTabPages()
         updateStatusBarIcons()
     }
@@ -1285,13 +1574,11 @@ class MainActivity : AppCompatActivity() {
         PlannerPanelBuilder(this).build(target)
     }
 
+    internal var defaultCommunitySegment: CommunityPanelBuilder.CommunitySegment? = null
     private fun buildCommunityPanel(target: android.view.ViewGroup = panelContainer) {
-        val segment = if (currentPanel == AppPanel.LEADERBOARD) {
-            CommunityPanelBuilder.CommunitySegment.LEADERBOARD
-        } else {
-            CommunityPanelBuilder.CommunitySegment.ROOMS
-        }
-        CommunityPanelBuilder(this).build(target, segment)
+        val initialSeg = defaultCommunitySegment ?: CommunityPanelBuilder.CommunitySegment.LEADERBOARD
+        defaultCommunitySegment = null
+        CommunityPanelBuilder(this).build(target, initialSeg)
     }
 
     private fun buildLeaderboardPanel(target: android.view.ViewGroup = panelContainer) {
@@ -1367,11 +1654,11 @@ class MainActivity : AppCompatActivity() {
 
         fun getPanelNavIndex(panel: AppPanel): Int = when (panel) {
             AppPanel.FOCUS -> 0
-            AppPanel.STATS -> 1
-            AppPanel.PLANNER -> 2
+            AppPanel.PLANNER -> 1
+            AppPanel.STATS -> 2
             AppPanel.COMMUNITY -> 3
             AppPanel.SETTINGS -> 4
-            AppPanel.HEATMAP -> 1
+            AppPanel.HEATMAP -> 2
             AppPanel.LEADERBOARD -> 3
         }
 
@@ -1384,79 +1671,23 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performSlidingTransition(exitDir: Int, rebuild: () -> Unit) {
-        val width = panelContainer.width.takeIf { it > 0 } ?: dp(160)
-        val height = panelContainer.height.takeIf { it > 0 } ?: dp(240)
-
-        // Cancel and remove any previous sliding overlay in panelHost during rapid clicks
-        for (i in panelHost.childCount - 1 downTo 0) {
-            val child = panelHost.getChildAt(i)
-            if (child is ImageView && child !== panelContainer) {
-                child.animate().cancel()
-                panelHost.removeViewAt(i)
-                child.setImageBitmap(null)
+        // Smooth, zero-black-flash tab transition
+        panelContainer.animate().cancel()
+        panelContainer.animate()
+            .alpha(0f)
+            .setDuration(80L)
+            .withEndAction {
+                rebuild()
+                panelContainer.alpha = 0f
+                panelContainer.translationX = -exitDir * dp(20).toFloat()
+                panelContainer.animate()
+                    .alpha(1f)
+                    .translationX(0f)
+                    .setDuration(160L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.4f))
+                    .start()
             }
-        }
-
-        // Lightweight scaled snapshot (0.5x) to save memory and eliminate GC jank on low-end hardware
-        var snapshot: Bitmap? = null
-        val scale = 0.5f
-        val snapW = (width * scale).toInt().coerceAtLeast(1)
-        val snapH = (height * scale).toInt().coerceAtLeast(1)
-        try {
-            // ARGB_8888 + canvas.drawColor prevents transparent areas from turning pitch black in light mode
-            snapshot = Bitmap.createBitmap(snapW, snapH, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(snapshot)
-            canvas.drawColor(themeCoordinator.bgColor)
-            canvas.scale(scale, scale)
-            panelContainer.draw(canvas)
-        } catch (_: Throwable) {
-            snapshot = null
-        }
-
-        rebuild()
-
-        val slideInterpolator = android.view.animation.DecelerateInterpolator(1.4f)
-        val slideDistance = width * 0.40f
-        val startOffset = -exitDir * slideDistance
-
-        for (j in 0 until panelContainer.childCount) {
-            val child = panelContainer.getChildAt(j)
-            child.translationX = startOffset
-            child.alpha = 0f
-            child.animate()
-                .translationX(0f)
-                .alpha(1f)
-                .setDuration(220L)
-                .setInterpolator(slideInterpolator)
-                .withLayer()
-                .start()
-        }
-
-        if (snapshot != null) {
-            val localSnapshot = snapshot
-            val overlay = ImageView(this).apply {
-                setImageBitmap(localSnapshot)
-                scaleType = ImageView.ScaleType.FIT_XY
-                setBackgroundColor(Color.TRANSPARENT)
-                layoutParams = FrameLayout.LayoutParams(width, height)
-            }
-            panelHost.addView(overlay)
-
-            overlay.animate()
-                .translationX(exitDir * slideDistance)
-                .alpha(0f)
-                .setDuration(220L)
-                .setInterpolator(slideInterpolator)
-                .withLayer()
-                .withEndAction {
-                    if (overlay.parent != null) panelHost.removeView(overlay)
-                    overlay.setImageBitmap(null)
-                    if (!localSnapshot.isRecycled) {
-                        localSnapshot.recycle()
-                    }
-                }
-                .start()
-        }
+            .start()
     }
 
     private fun buildFocusPanel() {
@@ -1927,6 +2158,14 @@ class MainActivity : AppCompatActivity() {
 
         navigateToPanel(AppPanel.FOCUS)
         AppToast.show(this, "Focusing on: ${goal.title}")
+
+        if (currentTimerState == TimerState.IDLE) {
+            handler.post {
+                if (currentTimerState == TimerState.IDLE) {
+                    handleStateToggle()
+                }
+            }
+        }
     }
 
     internal fun clearActivePlannerGoal() {
@@ -2144,7 +2383,6 @@ class MainActivity : AppCompatActivity() {
                     sharedPrefs.edit().putLong("${cachedTodayStr}_goal_secs", sharedPrefs.getLong("daily_goal_secs", 2700L)).apply()
                 }
                 val goals = loadSessionGoalsFromJson(sharedPrefs.getString("session_goals_json", "[]") ?: "[]")
-                PlannerHistoryManager.snapshotToday(this, goals)
                 checkAndResetGoalsForNewDay()
                 recalculateStreak()
                 if (currentPanel == AppPanel.STATS) {
@@ -2542,12 +2780,24 @@ class MainActivity : AppCompatActivity() {
         } else {
             startService(intent)
         }
+        dismissGestureHint()
         playToggleFeedback()
         StudyWidgetProvider.refresh(this)
     }
 
+    internal fun dismissGestureHint() {
+        val hint = gestureHintView ?: return
+        if (hint.visibility == View.VISIBLE) {
+            hint.animate().alpha(0f).setDuration(220).withEndAction {
+                hint.visibility = View.GONE
+            }.start()
+            getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE).edit().putBoolean("gesture_hint_dismissed", true).apply()
+        }
+    }
+
     internal fun handlePause() {
         if (!canExecuteAction()) return
+        dismissGestureHint()
         statsDirty = true
         val intent = Intent(this, TimerService::class.java).apply {
             action = TimerService.ACTION_PAUSE
@@ -2590,7 +2840,8 @@ class MainActivity : AppCompatActivity() {
 
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
         val isLectureCountdown = timerMode == "LECTURE" && sharedPrefs.getBoolean("lecture_mode_enabled", false)
-        val shouldShowCountdownRing = (timerMode == "COUNTDOWN" || isLectureCountdown)
+        val shouldShowCountdownRing = (timerMode == "COUNTDOWN")
+        timerRing.visibility = if (shouldShowCountdownRing) View.VISIBLE else View.GONE
 
         if (!shouldShowCountdownRing || currentTimerState == TimerState.IDLE) {
             timerRing.setProgress(0f, primaryRingColor, track)
@@ -2865,10 +3116,27 @@ class MainActivity : AppCompatActivity() {
             studyBottomNavBar.setStudyingDim(currentTimerState == TimerState.STUDYING)
         }
 
-        val timerColor = if (isPomoWhite) {
-            0xFF000000.toInt()
-        } else if (pureWhiteTimerEnabled()) {
-            0xFFFFFFFF.toInt()
+        val selectedTf = FontStyleManager.getTypeface(this)
+        val selectedBoldTf = FontStyleManager.getBoldTypeface(this)
+        if (::studyTimerDisplay.isInitialized) {
+            studyTimerDisplay.typeface = selectedTf
+        }
+        if (::breakTimerDisplay.isInitialized) {
+            breakTimerDisplay.typeface = selectedTf
+        }
+        if (::mainBtn.isInitialized) mainBtn.typeface = selectedBoldTf
+        if (::pauseBtn.isInitialized) pauseBtn.typeface = selectedBoldTf
+        if (::stopBtn.isInitialized) stopBtn.typeface = selectedBoldTf
+        if (::statusBadge.isInitialized) statusBadge.typeface = selectedBoldTf
+        FontStyleManager.applyRecursively(panelContainer)
+
+        val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
+        val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(this)
+
+        val timerColor = if (isPomoWhite || (isWallpaperActive && isBrightUnderTimer)) {
+            0xFF0F172A.toInt() // High-contrast obsidian slate for bright backgrounds
+        } else if (pureWhiteTimerEnabled() || (isWallpaperActive && !isBrightUnderTimer)) {
+            0xFFFFFFFF.toInt() // Crisp pure white for dark backgrounds
         } else {
             themeCoordinator.primaryColor
         }
@@ -2901,22 +3169,22 @@ class MainActivity : AppCompatActivity() {
                 studyTimerDisplay.setTextColor(timerColor)
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.GONE
                 if (timerMode == "COUNTDOWN") {
-                    mainBtn.text = getString(R.string.start_focus)
+                    mainBtn.text = "Start"
                     mainBtn.setTextColor(mainBtnTextColor)
                     if (isPomoWhite) {
                         mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                            cornerRadius = dp(24).toFloat()
+                            cornerRadius = dp(20).toFloat()
                             setColor(0xFF000000.toInt())
                         }
                     } else {
                         mainBtn.background = rippleBackground(themeCoordinator.primaryColor)
                     }
                     pauseBtn.visibility = View.VISIBLE
-                    pauseBtn.text = "☕ START BREAK"
+                    pauseBtn.text = "Break"
                     if (isPomoWhite) {
                         pauseBtn.setTextColor(0xFF0F172A.toInt())
                         pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                            cornerRadius = dp(24).toFloat()
+                            cornerRadius = dp(20).toFloat()
                             setColor(0xFFF1F5F9.toInt())
                         }
                     } else {
@@ -2926,7 +3194,7 @@ class MainActivity : AppCompatActivity() {
                     pauseBtn.setOnClickListener { showBreakDurationDialog() }
                     stopBtn.visibility = View.GONE
                 } else {
-                    mainBtn.text = getString(R.string.start_focus)
+                    mainBtn.text = "Start"
                     mainBtn.setTextColor(mainBtnTextColor)
                     mainBtn.background = rippleBackground(themeCoordinator.primaryColor)
                     pauseBtn.visibility = View.GONE
@@ -2937,7 +3205,7 @@ class MainActivity : AppCompatActivity() {
                 val isOvertime = timerMode == "COUNTDOWN" && focusRemainingSecs < 0L
                 statusBadge.text = when {
                     timerMode == "LECTURE" -> "LECTURE IN PROGRESS"
-                    isOvertime -> "🔥 OVERTIME FLOW"
+                    isOvertime -> "OVERTIME"
                     else -> getString(R.string.learning_time)
                 }
                 if (isPomoWhite) {
@@ -2962,37 +3230,42 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
 
-                mainBtn.text = if (timerMode == "LECTURE") "Pause Lec & Start Break" else getString(R.string.take_a_break)
-                mainBtn.setTextColor(mainBtnTextColor)
-                if (isPomoWhite) {
-                    mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(24).toFloat()
-                        setColor(0xFF1E293B.toInt())
-                    }
-                } else {
-                    mainBtn.background = rippleBackground(themeCoordinator.secondaryColor)
-                }
-
+                // Primary Action during Study: PAUSE is the prominent filled CTA
                 pauseBtn.visibility = pauseButtonVisibility()
-                pauseBtn.text = getString(R.string.btn_pause)
+                pauseBtn.text = "Pause"
                 pauseBtn.setOnClickListener { handlePause() }
                 if (isPomoWhite) {
-                    pauseBtn.setTextColor(0xFF0F172A.toInt())
+                    pauseBtn.setTextColor(0xFFFFFFFF.toInt())
                     pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(24).toFloat()
+                        cornerRadius = dp(20).toFloat()
+                        setColor(0xFF0F172A.toInt())
+                    }
+                } else {
+                    pauseBtn.setTextColor(mainBtnTextColor)
+                    pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
+                }
+
+                // Secondary Action during Study: BREAK is subtle outlined
+                mainBtn.text = "Break"
+                mainBtn.setOnClickListener { handleStateToggle() }
+                if (isPomoWhite) {
+                    mainBtn.setTextColor(0xFF0F172A.toInt())
+                    mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
-                    pauseBtn.setTextColor(themeCoordinator.textColor)
-                    pauseBtn.background = outlinedButtonBackground()
+                    mainBtn.setTextColor(themeCoordinator.textColor)
+                    mainBtn.background = outlinedButtonBackground()
                 }
 
                 stopBtn.visibility = View.VISIBLE
+                stopBtn.text = "Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
                     stopBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(24).toFloat()
+                        cornerRadius = dp(20).toFloat()
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
@@ -3007,11 +3280,12 @@ class MainActivity : AppCompatActivity() {
                 statusBadge.background = themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 30f)
                 studyTimerDisplay.setTextColor(timerColor)
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.GONE
-                mainBtn.text = "Start Break Now"
+                mainBtn.text = "Break"
                 mainBtn.setTextColor(mainBtnTextColor)
                 mainBtn.background = rippleBackground(themeCoordinator.secondaryColor)
                 pauseBtn.visibility = View.GONE
                 stopBtn.visibility = View.VISIBLE
+                stopBtn.text = "Finish"
                 stopBtn.ringColor = themeCoordinator.primaryColor
                 checkAndShowLecturePrompt()
             }
@@ -3033,11 +3307,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
 
-                mainBtn.text = getString(R.string.resume_deep_focus)
+                mainBtn.text = "Resume"
                 mainBtn.setTextColor(mainBtnTextColor)
                 if (isPomoWhite) {
                     mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(24).toFloat()
+                        cornerRadius = dp(20).toFloat()
                         setColor(0xFF000000.toInt())
                     }
                 } else {
@@ -3045,12 +3319,12 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 pauseBtn.visibility = pauseButtonVisibility()
-                pauseBtn.text = getString(R.string.btn_pause)
+                pauseBtn.text = "Pause"
                 pauseBtn.setOnClickListener { handlePause() }
                 if (isPomoWhite) {
                     pauseBtn.setTextColor(0xFF0F172A.toInt())
                     pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(24).toFloat()
+                        cornerRadius = dp(20).toFloat()
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
@@ -3059,11 +3333,12 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 stopBtn.visibility = View.VISIBLE
+                stopBtn.text = "Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
                     stopBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(24).toFloat()
+                        cornerRadius = dp(20).toFloat()
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
@@ -3090,11 +3365,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
 
-                mainBtn.text = getString(R.string.resume)
+                mainBtn.text = "Resume"
                 mainBtn.setTextColor(mainBtnTextColor)
                 if (isPomoWhite) {
                     mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(24).toFloat()
+                        cornerRadius = dp(20).toFloat()
                         setColor(0xFF000000.toInt())
                     }
                 } else {
@@ -3103,11 +3378,12 @@ class MainActivity : AppCompatActivity() {
 
                 pauseBtn.visibility = View.GONE
                 stopBtn.visibility = View.VISIBLE
+                stopBtn.text = "Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
                     stopBtn.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(24).toFloat()
+                        cornerRadius = dp(20).toFloat()
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
@@ -3116,6 +3392,10 @@ class MainActivity : AppCompatActivity() {
                     stopBtn.background = outlinedButtonBackground()
                 }
             }
+        }
+        val isLandscapeOrientation = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        if (!isLandscapeOrientation && ::controlActionContainer.isInitialized) {
+            applyPortraitActionControlLayout()
         }
         if (::studyBottomNavBar.isInitialized) {
             studyBottomNavBar.applyTheme(themeCoordinator)
@@ -3126,44 +3406,64 @@ class MainActivity : AppCompatActivity() {
         updateStatusBarIcons()
     }
 
+    private fun applyPortraitActionControlLayout() {
+        if (!::controlActionContainer.isInitialized) return
+        controlActionContainer.orientation = LinearLayout.HORIZONTAL
+        controlActionContainer.gravity = Gravity.CENTER
+
+        val visibleButtons = mutableListOf<View>()
+        if (::pauseBtn.isInitialized && pauseBtn.visibility == View.VISIBLE) visibleButtons.add(pauseBtn)
+        if (::mainBtn.isInitialized && mainBtn.visibility == View.VISIBLE) visibleButtons.add(mainBtn)
+        if (::stopBtn.isInitialized && stopBtn.visibility == View.VISIBLE) visibleButtons.add(stopBtn)
+
+        when (visibleButtons.size) {
+            1 -> {
+                visibleButtons[0].layoutParams = LinearLayout.LayoutParams(dp(210), dp(48)).apply {
+                    gravity = Gravity.CENTER
+                }
+            }
+            2 -> {
+                visibleButtons[0].layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(12), 0, dp(6), 0)
+                }
+                visibleButtons[1].layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(6), 0, dp(12), 0)
+                }
+            }
+            3 -> {
+                visibleButtons[0].layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(8), 0, dp(4), 0)
+                }
+                visibleButtons[1].layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(4), 0, dp(4), 0)
+                }
+                visibleButtons[2].layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(4), 0, dp(8), 0)
+                }
+            }
+        }
+    }
+
     internal fun updateStatusBarIcons() {
         try {
             window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
             window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+            val hasWallpaper = WallpaperManager.getWallpaperType(this) != "NONE"
             val isPomoWhiteOnFocus = (currentPanel == AppPanel.FOCUS && isPomodoroPureWhiteActive())
-            val effectiveBgColor = if (isPomoWhiteOnFocus) 0xFFFFFFFF.toInt() else themeCoordinator.bgColor
-            val isLight = isPomoWhiteOnFocus || themeCoordinator.activeBgMode == "LIGHT"
+            val isLight = if (hasWallpaper) {
+                WallpaperManager.isBackgroundUnderTimerBright(this)
+            } else {
+                isPomoWhiteOnFocus || themeCoordinator.activeBgMode == "LIGHT"
+            }
 
-            window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(effectiveBgColor))
-            window.statusBarColor = effectiveBgColor
-            window.navigationBarColor = effectiveBgColor
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.TRANSPARENT
             val decor = window.peekDecorView() ?: window.decorView
             androidx.core.view.WindowCompat.getInsetsController(window, decor).let { controller ->
                 controller.isAppearanceLightStatusBars = isLight
                 controller.isAppearanceLightNavigationBars = isLight
             }
-        } catch (_: Exception) {
-            try {
-                window.addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
-                val isPomoWhiteOnFocus = (currentPanel == AppPanel.FOCUS && isPomodoroPureWhiteActive())
-                val effectiveBgColor = if (isPomoWhiteOnFocus) 0xFFFFFFFF.toInt() else themeCoordinator.bgColor
-                val isLight = isPomoWhiteOnFocus || themeCoordinator.activeBgMode == "LIGHT"
-
-                window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(effectiveBgColor))
-                window.statusBarColor = effectiveBgColor
-                window.navigationBarColor = effectiveBgColor
-                @Suppress("DEPRECATION")
-                var flags = window.decorView.systemUiVisibility
-                flags = if (isLight) {
-                    flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-                } else {
-                    flags and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-                }
-                @Suppress("DEPRECATION")
-                window.decorView.systemUiVisibility = flags
-            } catch (_: Exception) {}
-        }
+        } catch (_: Exception) {}
     }
 
 
@@ -3189,8 +3489,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    fun syncFlipToFocusState() {
+        if (FlipToFocusManager.isEnabled(this)) {
+            FlipToFocusManager.setContext(this)
+            FlipToFocusManager.start(
+                context = this,
+                onFaceDown = {
+                    if (currentTimerState == TimerState.IDLE || currentTimerState == TimerState.PAUSED || currentTimerState == TimerState.BREAK) {
+                        handleStateToggle()
+                    }
+                },
+                onFaceUp = {
+                    if (FlipToFocusManager.isPauseOnFaceUp(this) && currentTimerState == TimerState.STUDYING) {
+                        handlePause()
+                    }
+                }
+            )
+        } else {
+            FlipToFocusManager.stop()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        liveWallpaperView?.resume()
         if (::updateRunnable.isInitialized) {
             handler.removeCallbacks(updateRunnable)
             handler.post(updateRunnable)
@@ -3209,22 +3531,7 @@ class MainActivity : AppCompatActivity() {
         checkPomoSubjectPrompt()
         checkCelebration()
         triggerAutoSyncIfEligible()
-        if (FlipToFocusManager.isEnabled(this)) {
-            FlipToFocusManager.setContext(this)
-            FlipToFocusManager.start(
-                context = this,
-                onFaceDown = {
-                    if (currentTimerState == TimerState.IDLE || currentTimerState == TimerState.PAUSED) {
-                        handleStateToggle()
-                    }
-                },
-                onFaceUp = {
-                    if (FlipToFocusManager.isPauseOnFaceUp(this) && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK)) {
-                        handleStateToggle()
-                    }
-                }
-            )
-        }
+        syncFlipToFocusState()
         val oldProfile = ProfileManager.getProfile(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val updated = ProfileSyncService.refreshProfileStatus(this@MainActivity)
@@ -3252,6 +3559,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         super.onPause()
+        liveWallpaperView?.pause()
         FlipToFocusManager.stop()
         if (::updateRunnable.isInitialized) {
             handler.removeCallbacks(updateRunnable)
@@ -3340,6 +3648,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        liveWallpaperView?.release()
         systemDialogHelper.dismissDialogs()
         handler.removeCallbacks(holdToEndRunnable)
         pauseBlinkAnimator?.cancel()
@@ -3481,6 +3790,7 @@ class MainActivity : AppCompatActivity() {
             modeOptionsPill,
             if (::statusBadgeContainer.isInitialized) statusBadgeContainer else null,
             extraControlsContainer,
+            gestureHintView,
             if (::controlActionContainer.isInitialized) controlActionContainer else null,
             statsFloatingIcon
         )
@@ -3523,7 +3833,11 @@ class MainActivity : AppCompatActivity() {
             if (::navHeader.isInitialized) { navHeader.visibility = View.VISIBLE; revealViews.add(navHeader) }
             modeOptionsPill?.let { it.visibility = View.VISIBLE; revealViews.add(it) }
             if (::statusBadgeContainer.isInitialized) { statusBadgeContainer.visibility = View.VISIBLE; revealViews.add(statusBadgeContainer) }
-            if (showSubjectTagging && extraControlsContainer != null) { extraControlsContainer?.visibility = View.VISIBLE; revealViews.add(extraControlsContainer!!) }
+            extraControlsContainer?.let { it.visibility = View.VISIBLE; revealViews.add(it) }
+            val isHintDismissed = sharedPrefs.getBoolean("gesture_hint_dismissed", false)
+            if (!isHintDismissed && currentTimerState == TimerState.IDLE) {
+                gestureHintView?.let { it.visibility = View.VISIBLE; revealViews.add(it) }
+            }
             if (::controlActionContainer.isInitialized) { controlActionContainer.visibility = View.VISIBLE; revealViews.add(controlActionContainer) }
             statsFloatingIcon?.let { it.visibility = View.VISIBLE; revealViews.add(it) }
 
@@ -3554,10 +3868,11 @@ class MainActivity : AppCompatActivity() {
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
         val timerMode = sharedPrefs.getString("timer_mode", "STOPWATCH") ?: "STOPWATCH"
-        val hasRing = (timerMode == "COUNTDOWN" || timerMode == "LECTURE")
+        val hasRing = (timerMode == "COUNTDOWN")
 
         if (::timerRing.isInitialized) {
-            timerRing.isFullscreen = (!isLandscape && isPortraitFullscreenActive)
+            timerRing.visibility = if (!isLandscape && hasRing) View.VISIBLE else View.GONE
+            timerRing.isFullscreen = (!isLandscape && isPortraitFullscreenActive && hasRing)
         }
 
         studyTimerDisplay.translationY = 0f
@@ -3567,10 +3882,10 @@ class MainActivity : AppCompatActivity() {
         if (!isLandscape && isPortraitFullscreenActive) {
             val activeText = if (isBreaking) breakTimerDisplay.text.toString() else studyTimerDisplay.text.toString()
             val fullscreenTextSize = when {
-                hasRing && activeText.length <= 5 -> 62f
-                hasRing -> 50f
-                activeText.length <= 5 -> 72f
-                else -> 66f
+                hasRing && activeText.length <= 5 -> 68f
+                hasRing -> 56f
+                activeText.length <= 5 -> 86f
+                else -> 78f
             }
 
             if (isBreaking) {
@@ -3582,8 +3897,8 @@ class MainActivity : AppCompatActivity() {
                 studyTimerDisplay.visibility = if (currentTimerState == TimerState.PAUSED) View.VISIBLE else View.INVISIBLE
                 if (currentTimerState == TimerState.PAUSED) {
                     studyTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-                    studyTimerDisplay.textSize = 20f
-                    studyTimerDisplay.setPadding(0, 0, 0, 40)
+                    studyTimerDisplay.textSize = 22f
+                    studyTimerDisplay.setPadding(0, 0, 0, 44)
                 }
             } else {
                 studyTimerDisplay.visibility = View.VISIBLE
@@ -3594,29 +3909,32 @@ class MainActivity : AppCompatActivity() {
                 breakTimerDisplay.visibility = if (currentTimerState == TimerState.PAUSED) View.VISIBLE else View.INVISIBLE
                 if (currentTimerState == TimerState.PAUSED) {
                     breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-                    breakTimerDisplay.textSize = 20f
-                    breakTimerDisplay.setPadding(0, 0, 0, 40)
+                    breakTimerDisplay.textSize = 22f
+                    breakTimerDisplay.setPadding(0, 0, 0, 44)
                 }
             }
         } else if (!isLandscape) {
             studyTimerDisplay.visibility = View.VISIBLE
             breakTimerDisplay.visibility = View.VISIBLE
+            val regularTextSize = if (hasRing) 64f else 78f
+            val smallSubTextSize = 22f
+
             if (isBreaking) {
                 breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
-                breakTimerDisplay.textSize = 54f
+                breakTimerDisplay.textSize = regularTextSize
                 breakTimerDisplay.setPadding(0, 0, 0, 5)
 
                 studyTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-                studyTimerDisplay.textSize = 20f
-                studyTimerDisplay.setPadding(0, 0, 0, 40)
+                studyTimerDisplay.textSize = smallSubTextSize
+                studyTimerDisplay.setPadding(0, 0, 0, 44)
             } else {
                 studyTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
-                studyTimerDisplay.textSize = 54f
+                studyTimerDisplay.textSize = regularTextSize
                 studyTimerDisplay.setPadding(0, 0, 0, 5)
 
                 breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-                breakTimerDisplay.textSize = 20f
-                breakTimerDisplay.setPadding(0, 0, 0, 40)
+                breakTimerDisplay.textSize = smallSubTextSize
+                breakTimerDisplay.setPadding(0, 0, 0, 44)
             }
         }
     }

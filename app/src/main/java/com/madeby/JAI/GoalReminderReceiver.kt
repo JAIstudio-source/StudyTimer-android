@@ -13,17 +13,71 @@ class GoalReminderReceiver : BroadcastReceiver() {
 
     companion object {
         const val ACTION_DAILY_REMIND = "com.madeby.JAI.ACTION_DAILY_REMIND"
+        const val ACTION_GOAL_ITEM_REMIND = "com.madeby.JAI.ACTION_GOAL_ITEM_REMIND"
+        const val EXTRA_GOAL_ID = "extra_goal_id"
+        const val EXTRA_GOAL_TITLE = "extra_goal_title"
         private const val NOTIFICATION_ID = NotificationHelper.NOTIFICATION_ID_GOAL_REMINDER
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED -> GoalReminderScheduler.schedule(context)
+            Intent.ACTION_BOOT_COMPLETED -> {
+                GoalReminderScheduler.schedule(context)
+                GoalReminderScheduler.rescheduleAllGoalReminders(context)
+            }
             ACTION_DAILY_REMIND -> {
                 maybeShowReminder(context)
                 GoalReminderScheduler.schedule(context)
             }
+            ACTION_GOAL_ITEM_REMIND -> {
+                val goalId = intent.getStringExtra(EXTRA_GOAL_ID) ?: ""
+                val goalTitle = intent.getStringExtra(EXTRA_GOAL_TITLE) ?: "Study Goal"
+                showGoalItemReminder(context, goalId, goalTitle)
+            }
         }
+    }
+
+    private fun showGoalItemReminder(context: Context, goalId: String, goalTitle: String) {
+        if (goalId.isBlank()) return
+        val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val jsonStr = prefs.getString("session_goals_json", "[]") ?: "[]"
+        try {
+            val array = org.json.JSONArray(jsonStr)
+            var isCompleted = false
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                if (obj.optString("id") == goalId && obj.optBoolean("completed", false)) {
+                    isCompleted = true
+                    break
+                }
+            }
+            if (isCompleted) return
+        } catch (_: Exception) {}
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val notifId = 40000 + (goalId.hashCode() and 0x7FFFFFFF) % 100000
+        val openPending = PendingIntent.getActivity(
+            context, notifId, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+        val notification = NotificationCompat.Builder(context, GoalReminderScheduler.CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_flame)
+            .setContentTitle("🎯 Study Goal Reminder")
+            .setContentText("Time to focus on: $goalTitle")
+            .setAutoCancel(true)
+            .setSound(soundUri)
+            .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_LIGHTS)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(openPending)
+            .build()
+
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(notifId, notification)
     }
 
     private fun maybeShowReminder(context: Context) {

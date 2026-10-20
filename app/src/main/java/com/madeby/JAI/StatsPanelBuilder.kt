@@ -131,6 +131,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         }
 
         renderStatsContent(statsRoot, snap, renderTab)
+        FontStyleManager.applyRecursively(statsRoot)
         target.addView(statsRoot)
     }
 
@@ -279,7 +280,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
         heatmapScroll.addView(heatmapView)
-        heatmapScroll.post { heatmapScroll.fullScroll(View.FOCUS_RIGHT) }
+        heatmapScroll.post { heatmapScroll.scrollTo(heatmapView.getTodayScrollX(heatmapScroll.width), 0) }
         root.addView(heatmapScroll)
 
         panelContainer.addView(root)
@@ -545,7 +546,9 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val scroll = ScrollView(host).apply {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             setBackgroundColor(Color.TRANSPARENT)
-            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
                     val dy = scrollY - oldScrollY
@@ -588,76 +591,11 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val header = UniversalHeaderHelper.createHeader(host, extraRightView = null, title = "INSIGHTS")
         mainColumn.addView(header)
 
-        val isQuoteDismissed = sharedPrefs.getBoolean("quote_dismissed_today_${todayStr}", false)
-        if (!isQuoteDismissed) {
-            val dayOfYear = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
-            val todayQuote = DailyQuotes.getTodayQuote(dayOfYear)
-            val quoteRibbon = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(14).toFloat()
-                    val cardBg = if (themeCoordinator.isDarkMode()) {
-                        if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF161822.toInt()
-                    } else {
-                        0xFFF1F5F9.toInt()
-                    }
-                    setColor(cardBg)
-                    setStroke(dp(1), tintedColor(themeCoordinator.primaryColor, if (themeCoordinator.isDarkMode()) 50 else 90))
-                }
-                setPadding(dp(14), dp(10), dp(12), dp(10))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(8))
-                }
-            }
-            quoteRibbon.addView(TextView(host).apply {
-                text = "“"
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 14f
-                setPadding(0, 0, dp(8), 0)
-            })
-            quoteRibbon.addView(TextView(host).apply {
-                text = todayQuote
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.85f
-                textSize = 12.5f
-                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            val dismissBtn = TextView(host).apply {
-                text = "✕"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.45f
-                textSize = 13f
-                setPadding(dp(8), dp(4), dp(4), dp(4))
-                setOnClickListener {
-                    sharedPrefs.edit().putBoolean("quote_dismissed_today_${todayStr}", true).apply()
-                    (quoteRibbon.parent as? android.view.ViewGroup)?.removeView(quoteRibbon)
-                }
-            }
-            quoteRibbon.addView(dismissBtn)
-            mainColumn.addView(quoteRibbon)
-        }
-
-        // 2. Sub-Tab Switcher: [ 📊 Overview | 📅 History Calendar ]
-        val switcherCard = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = themeCoordinator.createCardBackground()
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(0, 0, 0, dp(8))
-            }
-        }
-
-        val overviewBtn = TextView(host)
-        val timelineBtn = TextView(host)
-
         val scroll = ScrollView(host).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
-            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             setBackgroundColor(Color.TRANSPARENT)
         }
         val content = LinearLayout(host).apply {
@@ -667,73 +605,52 @@ class StatsPanelBuilder(private val host: MainActivity) {
         }
         scroll.addView(content)
 
-        fun updateSubTab(targetTab: AppStatsTab) {
-            host.currentStatsTab = targetTab
-            val isOverview = targetTab == AppStatsTab.OVERVIEW
-
-            overviewBtn.apply {
-                setTextColor(if (isOverview) Color.WHITE else themeCoordinator.textColor)
-                background = if (isOverview) {
-                    GradientDrawable().apply {
-                        cornerRadius = dp(12).toFloat()
-                        setColor(themeCoordinator.primaryColor)
-                    }
-                } else null
+        if (tab == AppStatsTab.TIMELINE) {
+            val backToOverviewBtn = TextView(host).apply {
+                text = "← Back to Overview"
+                textSize = 13f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.primaryColor)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(8), dp(12), dp(10))
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    host.currentStatsTab = AppStatsTab.OVERVIEW
+                    renderStatsContent(statsRoot, snap, AppStatsTab.OVERVIEW)
+                }
             }
+            content.addView(backToOverviewBtn)
+            CalendarTimeline(host).build(content, snap, todayStr)
+        } else {
+            renderOverviewTabContent(content, snap)
 
-            timelineBtn.apply {
-                setTextColor(if (!isOverview) Color.WHITE else themeCoordinator.textColor)
-                background = if (!isOverview) {
-                    GradientDrawable().apply {
-                        cornerRadius = dp(12).toFloat()
-                        setColor(themeCoordinator.primaryColor)
-                    }
-                } else null
+            // Tactile History Timeline Button at bottom of Overview
+            val historyLinkCard = TextView(host).apply {
+                text = "📅 View Detailed History Calendar →"
+                textSize = 13.5f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.primaryColor)
+                gravity = Gravity.CENTER
+                background = themeCoordinator.createCardBackground()
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(dp(4), dp(8), dp(4), dp(16))
+                }
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    host.currentStatsTab = AppStatsTab.TIMELINE
+                    renderStatsContent(statsRoot, snap, AppStatsTab.TIMELINE)
+                }
             }
-
-            content.removeAllViews()
-            if (isOverview) {
-                renderOverviewTabContent(content, snap)
-            } else {
-                CalendarTimeline(host).build(content, snap, todayStr)
-            }
+            content.addView(historyLinkCard)
         }
 
-        overviewBtn.apply {
-            text = "Overview"
-            textSize = 13f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(9), dp(12), dp(9))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener {
-                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                updateSubTab(AppStatsTab.OVERVIEW)
-            }
-        }
-
-        timelineBtn.apply {
-            text = "History Calendar"
-            textSize = 13f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(9), dp(12), dp(9))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setOnClickListener {
-                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                updateSubTab(AppStatsTab.TIMELINE)
-            }
-        }
-
-        switcherCard.addView(overviewBtn)
-        switcherCard.addView(timelineBtn)
-        mainColumn.addView(switcherCard)
         mainColumn.addView(scroll)
-
         statsRoot.addView(mainColumn)
-
-        val initialTab = if (tab == AppStatsTab.TIMELINE) AppStatsTab.TIMELINE else AppStatsTab.OVERVIEW
-        updateSubTab(initialTab)
+        FontStyleManager.applyRecursively(statsRoot)
     }
 
     internal fun renderOverviewTabContent(content: LinearLayout, snap: StatsSnapshot) {
@@ -1028,7 +945,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 val chip = chipViews.getOrNull(idx) ?: continue
                 chip.setTextColor(if (isActive) themeCoordinator.primaryColor else themeCoordinator.textColor)
                 chip.alpha = if (isActive) 1f else 0.65f
-                chip.typeface = Typeface.create("sans-serif-medium", if (isActive) Typeface.BOLD else Typeface.NORMAL)
+                chip.typeface = themeCoordinator.getAppTypeface(isBold = isActive)
                 chip.background = if (isActive) themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 20f) else null
             }
         }
@@ -1041,7 +958,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(14), dp(6), dp(14), dp(6))
                 setTextColor(if (isActive) themeCoordinator.primaryColor else themeCoordinator.textColor)
                 alpha = if (isActive) 1f else 0.65f
-                typeface = Typeface.create("sans-serif-medium", if (isActive) Typeface.BOLD else Typeface.NORMAL)
+                typeface = themeCoordinator.getAppTypeface(isBold = isActive)
                 background = if (isActive) themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 20f) else null
                 setOnClickListener {
                     if (selectedDaysFilter != filterValues[idx]) {
@@ -1298,56 +1215,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 .filter { it.second > 0L }
                 .sortedByDescending { it.second }
 
-            // Period Daily Average
-            val dailyAvg = when (activePiePeriod) {
-                SubjectTagManager.SubjectStatsPeriod.TODAY -> totalSecsAll
-                SubjectTagManager.SubjectStatsPeriod.WEEK -> (totalSecsAll / 7L).coerceAtLeast(0L)
-                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
-                    val dom = Calendar.getInstance().get(Calendar.DAY_OF_MONTH).coerceAtLeast(1)
-                    (totalSecsAll / dom.toLong()).coerceAtLeast(0L)
-                }
-                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> {
-                    (totalSecsAll / snap.activeDays.coerceAtLeast(1).toLong()).coerceAtLeast(0L)
-                }
-            }
 
-            // Summary Header Pill
-            val summaryRow = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(9), dp(12), dp(9))
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 30), 12f)
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(12))
-                }
-            }
-
-            summaryRow.addView(TextView(host).apply {
-                text = "🔥 ${formatDuration(totalSecsAll)}"
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 12.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            })
-
-            if (activePiePeriod != SubjectTagManager.SubjectStatsPeriod.TODAY && totalSecsAll > 0L) {
-                summaryRow.addView(TextView(host).apply {
-                    text = "  •  ⚡ ~${formatDuration(dailyAvg)}/day"
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.8f
-                    textSize = 12f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                })
-            }
-
-            summaryRow.addView(TextView(host).apply {
-                text = "  •  📚 ${sortedSubjects.size} subjects"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.65f
-                textSize = 12f
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            })
-
-            container.addView(summaryRow)
 
             if (sortedSubjects.isEmpty() || totalSecsAll < 60L) {
                 val emptyBox = LinearLayout(host).apply {
@@ -1394,28 +1262,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 pieView.setData(slicesList)
                 container.addView(pieView)
 
-                // Details Button that opens the rich details modal
-                val viewDetailsBtn = TextView(host).apply {
-                    text = "View Breakdown Details ➔"
-                    textSize = 13f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(themeCoordinator.primaryColor)
-                    gravity = Gravity.CENTER
-                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 14f)
-                    setPadding(dp(16), dp(11), dp(16), dp(11))
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        setMargins(0, dp(10), 0, 0)
-                    }
-                    isClickable = true
-                    setOnClickListener {
-                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                        showPieChartDetailsModal(initialPeriod = activePiePeriod)
-                    }
-                }
-                container.addView(viewDetailsBtn)
+                // Note: Duplicate bottom "View Details" button removed as the card header already provides a sleek action link
             }
         }
 
@@ -1471,44 +1318,54 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
         val lifetimeTopRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            setPadding(0, 0, 0, dp(8))
         }
-        val lifetimeLeftCol = LinearLayout(host).apply {
+
+        val focusCol = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val lifetimeFocusLabel = TextView(host).apply { text = host.getString(R.string.lifetime_focus); setTextColor(themeCoordinator.primaryColor); alpha = 0.7f; textSize = 12f; typeface = Typeface.create("sans-serif-medium", Typeface.BOLD) }
-        val lifetimeFocusValue = TextView(host).apply { setTextColor(themeCoordinator.primaryColor); textSize = 26f; typeface = Typeface.MONOSPACE; setPadding(0, dp(2), 0, dp(10)) }
-        val lifetimeBreakLabel = TextView(host).apply { text = host.getString(R.string.lifetime_breaks); setTextColor(themeCoordinator.secondaryColor); alpha = 0.7f; textSize = 12f; typeface = Typeface.create("sans-serif-medium", Typeface.BOLD) }
-        val lifetimeBreakValue = TextView(host).apply { setTextColor(themeCoordinator.secondaryColor); textSize = 26f; typeface = Typeface.MONOSPACE; setPadding(0, dp(2), 0, 0) }
-        lifetimeFocusValue.text = host.getString(R.string.duration_h_m, totalLifeFocus / 3600, (totalLifeFocus % 3600) / 60)
-        lifetimeBreakValue.text = host.getString(R.string.duration_h_m, totalLifeBreak / 3600, (totalLifeBreak % 3600) / 60)
-        lifetimeLeftCol.addView(lifetimeFocusLabel)
-        lifetimeLeftCol.addView(lifetimeFocusValue)
-        lifetimeLeftCol.addView(lifetimeBreakLabel)
-        lifetimeLeftCol.addView(lifetimeBreakValue)
-        lifetimeTopRow.addView(lifetimeLeftCol)
-
-        val focusFrac = if (totalLife > 0L) totalLifeFocus.toFloat() / totalLife.toFloat() else 0f
-        val breakFrac = if (totalLife > 0L) totalLifeBreak.toFloat() / totalLife.toFloat() else 0f
-        val lifetimeDonutWrap = FrameLayout(host).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(96), dp(96))
-        }
-        lifetimeDonutWrap.addView(host.SegmentRing(
-            listOf(focusFrac to themeCoordinator.primaryColor, breakFrac to themeCoordinator.secondaryColor),
-            themeCoordinator.bgColor,
-            dp(10),
-            null
-        ), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-        lifetimeDonutWrap.addView(TextView(host).apply {
-            text = "${(focusFrac * 100f).toInt()}%"
-            gravity = Gravity.CENTER
+        val lifetimeFocusLabel = TextView(host).apply {
+            text = host.getString(R.string.lifetime_focus)
             setTextColor(themeCoordinator.primaryColor)
-            textSize = 15f
+            alpha = 0.75f
+            textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-        })
-        lifetimeTopRow.addView(lifetimeDonutWrap)
+        }
+        val lifetimeFocusValue = TextView(host).apply {
+            text = host.getString(R.string.duration_h_m, totalLifeFocus / 3600, (totalLifeFocus % 3600) / 60)
+            setTextColor(themeCoordinator.primaryColor)
+            textSize = 24f
+            typeface = Typeface.MONOSPACE
+            setPadding(0, dp(2), 0, 0)
+        }
+        focusCol.addView(lifetimeFocusLabel)
+        focusCol.addView(lifetimeFocusValue)
+        lifetimeTopRow.addView(focusCol)
+
+        val breakCol = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val lifetimeBreakLabel = TextView(host).apply {
+            text = host.getString(R.string.lifetime_breaks)
+            setTextColor(themeCoordinator.secondaryColor)
+            alpha = 0.75f
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        }
+        val lifetimeBreakValue = TextView(host).apply {
+            text = host.getString(R.string.duration_h_m, totalLifeBreak / 3600, (totalLifeBreak % 3600) / 60)
+            setTextColor(themeCoordinator.secondaryColor)
+            textSize = 24f
+            typeface = Typeface.MONOSPACE
+            setPadding(0, dp(2), 0, 0)
+        }
+        breakCol.addView(lifetimeBreakLabel)
+        breakCol.addView(lifetimeBreakValue)
+        lifetimeTopRow.addView(breakCol)
+
         lifetimeCard.addView(lifetimeTopRow)
 
         val longestStreak = snap.longestStreak
@@ -1851,15 +1708,16 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     overScrollMode = View.OVER_SCROLL_NEVER
                     isFillViewport = true
                 }
-                heatmapScroll.addView(HeatmapView(host).apply {
+                val overviewHeatmapView = HeatmapView(host).apply {
                     setData(heatmapData, themeCoordinator.primaryColor, themeCoordinator.textColor, { resolveGoalFor(it) })
                     onDayTap = { dateStr ->
                         val d = try { sdf.parse(dateStr) } catch (_: Exception) { null }
                         val lbl = if (d != null) SimpleDateFormat("dd MMM, yyyy", Locale.getDefault()).format(d) else dateStr
                         host.showDayDialog(dateStr, lbl)
                     }
-                })
-                heatmapScroll.post { heatmapScroll.fullScroll(View.FOCUS_RIGHT) }
+                }
+                heatmapScroll.addView(overviewHeatmapView)
+                heatmapScroll.post { heatmapScroll.scrollTo(overviewHeatmapView.getTodayScrollX(heatmapScroll.width), 0) }
                 heatmapCard.addView(heatmapScroll)
 
                 val legendRow = LinearLayout(host).apply {
@@ -2189,24 +2047,30 @@ class StatsPanelBuilder(private val host: MainActivity) {
         invalidateStatsCache()
         if (host.currentPanel == AppPanel.STATS) {
             host.navigateToPanel(AppPanel.STATS)
+        } else if (host.currentPanel == AppPanel.PLANNER) {
+            host.buildCurrentPanel()
         }
     }
 
     internal fun checkAndResetGoalsForNewDay() {
-
         val todayStr = dateKeyFmt.format(Date())
         val lastResetDate = sharedPrefs.getString("last_planner_reset_date", "") ?: ""
 
         if (lastResetDate != todayStr) {
             val goals = loadSessionGoalsFromJson(sharedPrefs.getString("session_goals_json", "[]") ?: "[]")
             if (goals.isNotEmpty()) {
-                if (lastResetDate.isNotEmpty()) {
-                    PlannerHistoryManager.snapshotForDate(host, lastResetDate, goals)
-                } else {
-                    PlannerHistoryManager.snapshotToday(host, goals)
+                val yesterdayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+                val yesterdayStr = dateKeyFmt.format(yesterdayCal.time)
+                val priorDate = if (lastResetDate.isNotBlank() && lastResetDate < todayStr) lastResetDate else yesterdayStr
+                // Snapshot the prior day with its final completion/deficit states
+                PlannerHistoryManager.snapshotForDate(host, priorDate, goals)
+                if (priorDate != yesterdayStr) {
+                    PlannerHistoryManager.snapshotForDate(host, yesterdayStr, goals)
                 }
+                // Reset daily completion for the new day
                 val resetGoals = goals.map { it.copy(completed = false, checkedAt = 0L) }
                 saveSessionGoalsToJson(resetGoals)
+                PlannerHistoryManager.snapshotToday(host, resetGoals)
             }
             sharedPrefs.edit().putString("last_planner_reset_date", todayStr).apply()
             refreshStatsPanel()

@@ -1,0 +1,82 @@
+[
+  {
+    "id": "bright_day",
+    "title": "Bright Day",
+    "category": "Nature",
+    "assetPath": "wallpapers/bright_day.webp",
+    "thumbAssetPath": "wallpapers/thumbs/bright_day.webp",
+    "recommendedDim": 0.5
+  },
+  {
+    "id": "bright_sky",
+    "title": "Bright Sky",
+    "category": "Sky",
+    "assetPath": "wallpapers/bright_sky.webp",
+    "thumbAssetPath": "wallpapers/thumbs/bright_sky.webp",
+    "recommendedDim": 0.5
+  },
+  {
+    "id": "cozy_cat",
+    "title": "Cozy Cat",
+    "category": "Lofi & Chill",
+    "assetPath": "wallpapers/cozy_cat.webp",
+    "thumbAssetPath": "wallpapers/thumbs/cozy_cat.webp",
+    "recommendedDim": 0.4
+  },
+  {
+    "id": "dark_night",
+    "title": "Dark Night Sky",
+    "category": "Astronomy",
+    "assetPath": "wallpapers/dark_night.webp",
+    "thumbAssetPath": "wallpapers/thumbs/dark_night.webp",
+    "recommendedDim": 0.35
+  },
+  {
+    "id": "dense_forest",
+    "title": "Dense Forest",
+    "category": "Nature",
+    "assetPath": "wallpapers/dense_forest.webp",
+    "thumbAssetPath": "wallpapers/thumbs/dense_forest.webp",
+    "recommendedDim": 0.4
+  },
+  {
+    "id": "peaceful_field",
+    "title": "Peaceful Field",
+    "category": "Nature",
+    "assetPath": "wallpapers/peaceful_field.webp",
+    "thumbAssetPath": "wallpapers/thumbs/peaceful_field.webp",
+    "recommendedDim": 0.45
+  },
+  {
+    "id": "studying_desk",
+    "title": "Study Desk",
+    "category": "Lofi Study",
+    "assetPath": "wallpapers/studying_desk.webp",
+    "thumbAssetPath": "wallpapers/thumbs/studying_desk.webp",
+    "recommendedDim": 0.4
+  },
+  {
+    "id": "tokyo_mountain",
+    "title": "Tokyo Mountain",
+    "category": "Landscape",
+    "assetPath": "wallpapers/tokyo_mountain.webp",
+    "thumbAssetPath": "wallpapers/thumbs/tokyo_mountain.webp",
+    "recommendedDim": 0.4
+  },
+  {
+    "id": "tranquil_water",
+    "title": "Tranquil Water",
+    "category": "Minimal",
+    "assetPath": "wallpapers/tranquil_water.webp",
+    "thumbAssetPath": "wallpapers/thumbs/tranquil_water.webp",
+    "recommendedDim": 0.45
+  },
+  {
+    "id": "wonderful_sky",
+    "title": "Wonderful Sky",
+    "category": "Sky",
+    "assetPath": "wallpapers/wonderful_sky.webp",
+    "thumbAssetPath": "wallpapers/thumbs/wonderful_sky.webp",
+    "recommendedDim": 0.45
+  }
+]

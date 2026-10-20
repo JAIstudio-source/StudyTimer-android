@@ -8,7 +8,7 @@ import android.os.Build
 class ThemeCoordinator(private val context: Context) {
 
     var activeBgMode = "OLED"
-    var uiStyle = "BUBBLE"
+    var uiStyle = "GLASS"
     var bgColor = 0xFF000000.toInt()
     var boxColor = 0xFF121212.toInt()
     var textColor = 0xFFFFFFFF.toInt()
@@ -53,7 +53,7 @@ class ThemeCoordinator(private val context: Context) {
         if (!sharedPrefs.contains("activeBgMode")) {
             sharedPrefs.edit()
                 .putString("activeBgMode", "OLED")
-                .putString("ui_style", "BUBBLE")
+                .putString("ui_style", "GLASS")
                 .putInt("customHue", 255)
                 .putInt("customPrimary", Color.parseColor("#A78BFA"))
                 .putInt("customSecondaryHue", 199)
@@ -62,7 +62,7 @@ class ThemeCoordinator(private val context: Context) {
         }
 
         activeBgMode = sharedPrefs.getString("activeBgMode", "OLED") ?: "OLED"
-        uiStyle = sharedPrefs.getString("ui_style", "BUBBLE") ?: "BUBBLE"
+        uiStyle = sharedPrefs.getString("ui_style", "GLASS") ?: "GLASS"
 
         when (activeBgMode) {
             "LIGHT" -> {
@@ -111,7 +111,7 @@ class ThemeCoordinator(private val context: Context) {
 
     fun createBackgroundDrawable(): GradientDrawable {
         if (!isGlassStyle() && !isBubbleStyle()) {
-            return GradientDrawable().apply { setColor(bgColor) }
+            return GradientDrawable().apply { setColor(if (activeBgMode == "OLED") 0xFF000000.toInt() else 0xFF0A0C13.toInt()) }
         }
         val top: Int
         val bottom: Int
@@ -124,67 +124,53 @@ class ThemeCoordinator(private val context: Context) {
                 top = 0xFF0F172A.toInt()
                 bottom = 0xFF1B1B3E.toInt()
             }
-            else -> {
-                // True black stays true black on OLED — no gradient
+            "OLED" -> {
                 top = 0xFF000000.toInt()
                 bottom = 0xFF000000.toInt()
+            }
+            else -> {
+                // Luxury Obsidian & Frosted Glass Canvas
+                top = 0xFF0D0F17.toInt()
+                bottom = 0xFF08090F.toInt()
             }
         }
         return GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(top, bottom))
     }
 
-    fun createCardBackground(cornerRadius: Float = 26f): android.graphics.drawable.Drawable {
+    fun createCardBackground(cornerRadius: Float = 24f): android.graphics.drawable.Drawable {
         val density = context.resources.displayMetrics.density
-        if (isBubbleStyle()) {
-            if (activeBgMode == "LIGHT") {
-                return GradientDrawable().apply {
-                    this.cornerRadius = cornerRadius * density
-                    setColor(0xFFFFFFFF.toInt())
-                    setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
-                }
-            }
-            val fillTop = when (activeBgMode) {
-                "ECLIPSE" -> 0xFF1E293B.toInt()
-                else -> 0xFF161820.toInt()
-            }
-            val fillBottom = when (activeBgMode) {
-                "ECLIPSE" -> 0xFF0F172A.toInt()
-                else -> 0xFF101217.toInt()
-            }
-            return GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(fillTop, fillBottom)).apply {
-                this.cornerRadius = cornerRadius * density
-                setStroke((1f * density).toInt(), 0xFF282A36.toInt())
-            }
-        }
-        if (!isGlassStyle()) {
-            val strokeCol = if (activeBgMode == "LIGHT") 0xFFE2E8F0.toInt() else 0xFF282A36.toInt()
-            val fillCol = if (activeBgMode == "LIGHT") 0xFFFFFFFF.toInt() else (if (activeBgMode == "OLED") 0xFF121318.toInt() else boxColor)
+        val hasWallpaper = WallpaperManager.getWallpaperType(context) != "NONE"
+
+        if (hasWallpaper) {
+            // Frosted translucent glass card that blends with custom wallpapers
+            val fillCol = if (activeBgMode == "LIGHT") Color.argb(195, 255, 255, 255) else Color.argb(180, 14, 16, 24)
+            val strokeCol = if (activeBgMode == "LIGHT") Color.argb(60, 203, 213, 225) else Color.argb(45, 255, 255, 255)
             return GradientDrawable().apply {
                 this.cornerRadius = cornerRadius * density
                 setColor(fillCol)
-                setStroke((1 * density).toInt(), strokeCol)
+                setStroke((1f * density).toInt(), strokeCol)
             }
         }
-        val fill: Int
-        val stroke: Int
-        when (activeBgMode) {
-            "LIGHT" -> {
-                fill = 0xFFFFFFFF.toInt()
-                stroke = 0xFFE2E8F0.toInt()
-            }
-            "ECLIPSE" -> {
-                fill = 0x1AFFFFFF.toInt()
-                stroke = 0x33FFFFFF.toInt()
-            }
-            else -> {
-                fill = 0xFF121318.toInt()
-                stroke = 0xFF282A36.toInt()
+
+        if (activeBgMode == "LIGHT") {
+            return GradientDrawable().apply {
+                this.cornerRadius = cornerRadius * density
+                setColor(0xFFFFFFFF.toInt())
+                setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
             }
         }
+
+        // Luxury Obsidian Tonal Elevation
+        val fill = when (activeBgMode) {
+            "OLED" -> 0xFF0A0B10.toInt()
+            "ECLIPSE" -> 0xFF141926.toInt()
+            else -> 0xFF131622.toInt()
+        }
+        val stroke = Color.argb(28, 255, 255, 255) // Hair-thin specular light catch
         return GradientDrawable().apply {
             this.cornerRadius = cornerRadius * density
             setColor(fill)
-            setStroke((1 * density).toInt(), stroke)
+            setStroke((1f * density).toInt(), stroke)
         }
     }
 
@@ -321,5 +307,13 @@ class ThemeCoordinator(private val context: Context) {
             cornerRadius = 80f * density
             setColor(colorHex)
         }
+    }
+
+    fun getAppTypeface(isBold: Boolean = false): android.graphics.Typeface {
+        return if (isBold) FontStyleManager.getBoldTypeface(context) else FontStyleManager.getNormalTypeface(context)
+    }
+
+    fun applyTypography(textView: android.widget.TextView, isBold: Boolean = false) {
+        FontStyleManager.applyTo(textView, isBold)
     }
 }

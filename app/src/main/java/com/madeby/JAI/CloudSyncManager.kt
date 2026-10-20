@@ -378,7 +378,9 @@ object CloudSyncManager {
                 val keys = cloudPrefs.keys()
                 val intPrefKeys = setOf(
                     "customBg", "customPrimary", "customHue", "customSecondary", "customSecondaryHue",
-                    "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute"
+                    "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute",
+                    "update_launch_count", "update_dismissed_version", "battery_opt_opens",
+                    "post_notif_rationale_shown", "pomo_completed_count", "pomodoro_study_minutes", "pomodoro_break_minutes"
                 )
                 val stringPrefKeys = setOf(
                     "timerState", "pre_pause_state", "prePauseState", "timer_mode", "timerMode", "selected_theme_key",
@@ -721,7 +723,9 @@ object CloudSyncManager {
                     val keys = prefsObj.keys()
                     val intPrefKeys = setOf(
                         "customBg", "customPrimary", "customHue", "customSecondary", "customSecondaryHue",
-                        "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute"
+                        "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute",
+                        "update_launch_count", "update_dismissed_version", "battery_opt_opens",
+                        "post_notif_rationale_shown", "pomo_completed_count", "pomodoro_study_minutes", "pomodoro_break_minutes"
                     )
                     val stringPrefKeys = setOf(
                         "timerState", "pre_pause_state", "prePauseState", "timer_mode", "timerMode", "selected_theme_key",

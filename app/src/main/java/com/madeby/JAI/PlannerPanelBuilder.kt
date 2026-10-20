@@ -14,6 +14,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.text.TextUtils
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
 import android.view.View
@@ -110,7 +111,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         val scroll = ScrollView(host).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
-            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         }
         val content = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -146,6 +149,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         target.removeAllViews()
         target.addView(root)
+        FontStyleManager.applyRecursively(root)
     }
 
     private fun showPlannerOptionsMenu(target: ViewGroup) {
@@ -159,16 +163,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         val card = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                cornerRadius = dp(20).toFloat()
-                val cardBg = if (isDark) {
-                    if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF141724.toInt()
-                } else {
-                    0xFFFFFFFF.toInt()
-                }
-                setColor(cardBg)
-                setStroke(dp(1), tintedColor(plannerPrimary, if (isDark) 60 else 90))
-            }
+            background = themeCoordinator.createDialogBackground(22f)
             setPadding(dp(18), dp(18), dp(18), dp(16))
             layoutParams = FrameLayout.LayoutParams(dp(270), FrameLayout.LayoutParams.WRAP_CONTENT)
         }
@@ -245,6 +240,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
 
         dialog.setContentView(wrapper)
+        FontStyleManager.applyRecursively(card)
         dialog.show()
     }
 
@@ -304,27 +300,41 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val summaryCard = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             background = themeCoordinator.createCardBackground()
-            setPadding(dp(18), dp(16), dp(18), dp(16))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(12)) }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) }
         }
 
         val topRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         topRow.addView(TextView(host).apply {
             text = "DAILY GOALS"
             setTextColor(plannerPrimary)
-            textSize = 14f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            textSize = 12.5f
+            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
             letterSpacing = 0.15f
         })
         topRow.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
 
+        val gridBtn = TextView(host).apply {
+            text = "▦ Grid"
+            setTextColor(plannerPrimary)
+            textSize = 12f
+            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+            background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 70), 12f)
+            setPadding(dp(10), dp(5), dp(10), dp(5))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, dp(6), 0)
+            }
+            setOnClickListener { showPlannerMatrixDialog() }
+        }
+        topRow.addView(gridBtn)
+
         val addBtn = TextView(host).apply {
             text = "+ Add Goal"
             setTextColor(plannerPrimary)
-            textSize = 14f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            textSize = 12f
+            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
             background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 120), 12f)
-            setPadding(dp(14), dp(7), dp(14), dp(7))
+            setPadding(dp(10), dp(5), dp(10), dp(5))
             setOnClickListener { showAddSessionGoalDialog() }
         }
         topRow.addView(addBtn)
@@ -333,21 +343,21 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val isGoalReached = progressPct >= 100 && totalCount > 0
         val lineProgressColor = if (isGoalReached) 0xFF43D36E.toInt() else plannerPrimary
 
-        val progressRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(12), 0, dp(6)) }
+        val progressRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, dp(4)) }
         progressRow.addView(TextView(host).apply {
             tag = "planner_completed_text"
             text = "$completedCount of $totalCount completed"
             setTextColor(themeCoordinator.textColor)
-            textSize = 16f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            textSize = 13.5f
+            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
         })
         progressRow.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
         progressRow.addView(TextView(host).apply {
             tag = "planner_pct_text"
             text = "$progressPct%"
             setTextColor(lineProgressColor)
-            textSize = 17f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            textSize = 14f
+            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
         })
         summaryCard.addView(progressRow)
 
@@ -357,22 +367,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             progress = progressPct
             progressTintList = android.content.res.ColorStateList.valueOf(lineProgressColor)
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(if (themeCoordinator.isDarkMode()) 0xFF222430.toInt() else 0xFFE2E8F0.toInt())
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(8)).apply { setMargins(0, 0, 0, dp(14)) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4)).apply { setMargins(0, 0, 0, dp(2)) }
         }
         summaryCard.addView(progressBar)
-
-        val gridBtn = TextView(host).apply {
-            text = "Goal History Grid"
-            setTextColor(plannerPrimary)
-            textSize = 13.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 120), 12f)
-            setPadding(dp(14), dp(9), dp(14), dp(9))
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            setOnClickListener { showPlannerMatrixDialog() }
-        }
-        summaryCard.addView(gridBtn)
         parent.addView(summaryCard)
 
         if (activeGoalsList.isEmpty()) {
@@ -428,13 +425,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             )
 
             val infoMap = mutableMapOf<String, GoalDisplayInfo>()
-            val greenColor = 0xFF22C55E.toInt()
-            val redColor = 0xFFEF4444.toInt()
+            val yellowColor = 0xFFFACC15.toInt()
 
             for (goal in activeGoalsList) {
                 val targetMins = goal.targetMinutes
                 val prog = progressMap[goal.id]
                 val actualMins = prog?.actualMinutes ?: 0
+                val remainingMins = (targetMins - actualMins).coerceAtLeast(0)
 
                 if (targetMins > 0) {
                     val isDone = actualMins >= targetMins
@@ -442,16 +439,17 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         infoMap[goal.id] = GoalDisplayInfo(
                             isChecked = true,
                             progressText = "${actualMins}/${targetMins}m",
-                            chipColor = greenColor,
+                            chipColor = yellowColor,
                             isDeficit = false
                         )
                     } else if (goal.completed) {
-                        val deficit = targetMins - actualMins
+                        // User manually completed it: show remaining time clearly
+                        val remText = if (remainingMins > 0) " (${remainingMins}m left)" else ""
                         infoMap[goal.id] = GoalDisplayInfo(
                             isChecked = true,
-                            progressText = "${actualMins}/${targetMins}m (${deficit}m left)",
-                            chipColor = redColor,
-                            isDeficit = true
+                            progressText = "${actualMins}/${targetMins}m$remText",
+                            chipColor = yellowColor,
+                            isDeficit = false
                         )
                     } else {
                         infoMap[goal.id] = GoalDisplayInfo(
@@ -462,10 +460,11 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         )
                     }
                 } else {
+                    val durationText = if (actualMins > 0) " • ${actualMins}m" else ""
                     infoMap[goal.id] = GoalDisplayInfo(
                         isChecked = goal.completed,
-                        progressText = if (goal.completed) "Done" else "Mark Done",
-                        chipColor = if (goal.completed) greenColor else themeCoordinator.primaryColor,
+                        progressText = if (goal.completed) "Done$durationText" else "Mark Done$durationText",
+                        chipColor = if (goal.completed) yellowColor else themeCoordinator.primaryColor,
                         isDeficit = false
                     )
                 }
@@ -477,11 +476,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val targetMins = goal.targetMinutes
 
                 val goalCard = LinearLayout(host).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
+                    orientation = LinearLayout.VERTICAL
                     background = themeCoordinator.createCardBackground()
-                    setPadding(dp(14), dp(12), dp(14), dp(12))
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) }
+                    setPadding(dp(14), dp(8), dp(14), dp(8))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(6)) }
                 }
 
                 val toggleGoalAction = {
@@ -490,6 +488,14 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         if (it.id == goal.id) it.copy(completed = !it.completed, checkedAt = if (!it.completed) now else 0L) else it
                     }
                     saveSessionGoalsToJson(updated)
+                    val targetGoal = updated.find { it.id == goal.id }
+                    if (targetGoal != null) {
+                        if (targetGoal.completed) {
+                            GoalReminderScheduler.cancelGoalReminder(host, targetGoal.id)
+                        } else if (targetGoal.reminderEnabled) {
+                            GoalReminderScheduler.scheduleGoalReminder(host, targetGoal)
+                        }
+                    }
                     PlannerHistoryManager.snapshotToday(host, updated)
                     reloadPlanner()
                 }
@@ -514,21 +520,103 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         .start()
                 }
 
+                val prog = progressMap[goal.id]
+                val actualMins = prog?.actualMinutes ?: 0
+                val remainingMins = (targetMins - actualMins).coerceAtLeast(0)
+
+                // Function to build action CTA: Quick Start button or Done badge
+                fun createActionCtaView(): View {
+                    return if (!isChecked || actualMins < targetMins) {
+                        LinearLayout(host).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            background = GradientDrawable().apply {
+                                cornerRadius = dp(14).toFloat()
+                                setColor(plannerPrimary)
+                            }
+                            setPadding(dp(8), dp(3), dp(10), dp(3))
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                dp(26)
+                            )
+                            isClickable = true
+                            isFocusable = true
+                            contentDescription = "Start Focus on ${goal.title}"
+                            setOnClickListener { v ->
+                                v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                v.animate()
+                                    .scaleX(0.92f)
+                                    .scaleY(0.92f)
+                                    .setDuration(70)
+                                    .withEndAction {
+                                        v.animate()
+                                            .scaleX(1.0f)
+                                            .scaleY(1.0f)
+                                            .setDuration(70)
+                                            .withEndAction {
+                                                host.startFocusForGoal(goal)
+                                            }
+                                            .start()
+                                    }
+                                    .start()
+                            }
+                            addView(ImageView(host).apply {
+                                setImageResource(R.drawable.ic_play_arrow)
+                                imageTintList = ColorStateList.valueOf(Color.WHITE)
+                                layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply {
+                                    setMargins(0, 0, dp(3), 0)
+                                }
+                            })
+                            addView(TextView(host).apply {
+                                text = "Start"
+                                textSize = 11.5f
+                                setTextColor(Color.WHITE)
+                                typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                            })
+                        }
+                    } else {
+                        TextView(host).apply {
+                            val doneText = if (targetMins > 0) {
+                                if (actualMins >= targetMins) "✓ Done • ${actualMins}m" else "✓ Done • ${actualMins}/${targetMins}m (${remainingMins}m left)"
+                            } else {
+                                if (actualMins > 0) "✓ Done • ${actualMins}m" else "✓ Done"
+                            }
+                            text = doneText
+                            textSize = 11f
+                            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                            setTextColor(yellowColor)
+                            background = themeCoordinator.createGlassChip(tintedColor(yellowColor, 60), 10f)
+                            setPadding(dp(8), dp(3), dp(8), dp(3))
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            )
+                        }
+                    }
+                }
+
+                // 1. Top Header Row: Checkbox, Title, Time Chip, Action CTA, Drag Grip
+                val headerRow = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                }
+
                 val checkBtn = TextView(host).apply {
                     tag = "goal_check_${goal.id}"
-                    text = if (isChecked) (if (info.isDeficit) "✕" else "✓") else ""
-                    textSize = 14f
+                    text = if (isChecked) "✓" else ""
+                    textSize = 13f
                     gravity = Gravity.CENTER
-                    setTextColor(0xFFFFFFFF.toInt())
+                    val checkColor = if (isChecked) yellowColor else Color.TRANSPARENT
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setColor(if (isChecked) (if (info.isDeficit) redColor else greenColor) else Color.TRANSPARENT)
-                        setStroke(dp(2), if (isChecked) (if (info.isDeficit) redColor else greenColor) else themeCoordinator.textColor)
+                        setColor(checkColor)
+                        setStroke(dp(2), if (isChecked) checkColor else themeCoordinator.textColor)
                     }
-                    layoutParams = LinearLayout.LayoutParams(dp(24), dp(24)).apply { setMargins(0, 0, dp(12), 0) }
+                    layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply { setMargins(0, 0, dp(10), 0) }
                     setOnClickListener { v -> animateToggleGoalAction(v) }
                 }
-                goalCard.addView(checkBtn)
+                headerRow.addView(checkBtn)
 
                 val textCol = LinearLayout(host).apply {
                     orientation = LinearLayout.VERTICAL
@@ -537,83 +625,84 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 textCol.addView(TextView(host).apply {
                     text = goal.title
                     setTextColor(if (isChecked) tintedColor(themeCoordinator.textColor, 120) else themeCoordinator.textColor)
-                    textSize = 16f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    textSize = 14.5f
+                    typeface = host.themeCoordinator.getAppTypeface(isBold = true)
                     if (isChecked) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
                 })
-                if (!goal.subjectId.isNullOrBlank() && goal.subjectId != "all") {
-                    val sub = SubjectTagManager.resolveSubject(host, goal.subjectId)
-                    val subBadge = TextView(host).apply {
-                        text = "${sub.iconEmoji} ${sub.name}"
-                        setTextColor(try { Color.parseColor(sub.colorHex) } catch (_: Exception) { plannerPrimary })
-                        textSize = 13f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        setPadding(0, dp(2), 0, 0)
-                    }
-                    textCol.addView(subBadge)
-                }
                 if (goal.note.isNotBlank()) {
                     textCol.addView(TextView(host).apply {
                         text = goal.note
                         setTextColor(themeCoordinator.textColor)
-                        alpha = 0.7f
-                        textSize = 13.5f
-                        setPadding(0, dp(2), 0, 0)
+                        alpha = 0.65f
+                        textSize = 11.5f
+                        setPadding(0, dp(1), 0, 0)
                     })
                 }
-                goalCard.addView(textCol)
+                headerRow.addView(textCol)
 
                 if (targetMins > 0) {
-                    val chipView = TextView(host).apply {
+                    val isDone = actualMins >= targetMins
+                    val chipText = if (isDone) {
+                        "✓ ${actualMins}/${targetMins}m"
+                    } else if (isChecked && remainingMins > 0) {
+                        "✓ ${actualMins}/${targetMins}m (${remainingMins}m left)"
+                    } else {
+                        "${actualMins}/${targetMins}m"
+                    }
+                    val timeChip = TextView(host).apply {
                         tag = "goal_chip_${goal.id}"
-                        text = info.progressText
-                        setTextColor(info.chipColor)
-                        textSize = 13f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        background = themeCoordinator.createGlassChip(tintedColor(info.chipColor, 100), 10f)
-                        setPadding(dp(8), dp(4), dp(8), dp(4))
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(6), 0, dp(6), 0) }
+                        text = chipText
+                        setTextColor(if (isChecked) yellowColor else info.chipColor)
+                        textSize = 11f
+                        isSingleLine = true
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                        background = themeCoordinator.createGlassChip(
+                            tintedColor(if (isChecked) yellowColor else info.chipColor, if (isChecked) 50 else 70),
+                            8f
+                        )
+                        setPadding(dp(7), dp(3), dp(7), dp(3))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(dp(6), 0, dp(6), 0)
+                        }
                     }
-                    goalCard.addView(chipView)
+                    headerRow.addView(timeChip)
+                } else if (actualMins > 0) {
+                    val timeChip = TextView(host).apply {
+                        tag = "goal_chip_${goal.id}"
+                        text = "${actualMins}m"
+                        setTextColor(if (isChecked) yellowColor else info.chipColor)
+                        textSize = 11f
+                        isSingleLine = true
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                        background = themeCoordinator.createGlassChip(
+                            tintedColor(if (isChecked) yellowColor else info.chipColor, if (isChecked) 50 else 70),
+                            8f
+                        )
+                        setPadding(dp(7), dp(3), dp(7), dp(3))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(dp(6), 0, dp(6), 0)
+                        }
+                    }
+                    headerRow.addView(timeChip)
                 }
 
-                goalCard.setOnClickListener { animateToggleGoalAction(checkBtn) }
-                goalCard.setOnLongClickListener { v ->
-                    v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    showGoalHistoryDialog(goal)
-                    true
-                }
-
-                // Focus / Start Timer directly for this goal
-                val focusActionBtn = TextView(host).apply {
-                    text = "▶"
-                    textSize = 12f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(Color.WHITE)
-                    gravity = Gravity.CENTER
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(plannerPrimary)
-                    }
-                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
-                        setMargins(dp(6), 0, dp(4), 0)
-                    }
-                    contentDescription = "Start Focus on ${goal.title}"
-                    setOnClickListener {
-                        host.startFocusForGoal(goal)
+                val actionCta = createActionCtaView().apply {
+                    (layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                        lp.setMargins(0, 0, if (activeGoalsList.size > 1) dp(4) else 0, 0)
+                        layoutParams = lp
                     }
                 }
-                goalCard.addView(focusActionBtn)
+                headerRow.addView(actionCta)
 
                 // Hold & Drag Reorder Handle
                 if (activeGoalsList.size > 1) {
                     val gripBtn = TextView(host).apply {
                         text = "⠿"
-                        textSize = 17f
-                        setTextColor(tintedColor(themeCoordinator.textColor, 70))
-                        setPadding(dp(6), dp(4), dp(4), dp(4))
+                        textSize = 16f
+                        setTextColor(tintedColor(themeCoordinator.textColor, 80))
+                        setPadding(dp(6), dp(4), dp(2), dp(4))
                     }
-                    goalCard.addView(gripBtn)
+                    headerRow.addView(gripBtn)
 
                     gripBtn.setOnLongClickListener { v ->
                         val clipData = android.content.ClipData.newPlainText("goal_id", goal.id)
@@ -627,7 +716,147 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         true
                     }
+                }
 
+                goalCard.addView(headerRow)
+
+                // 2. Slim Progress Bar (directly under headerRow)
+                if (targetMins > 0) {
+                    val pct = ((actualMins * 100) / targetMins).coerceIn(0, 100)
+                    val miniBar = ProgressBar(host, null, android.R.attr.progressBarStyleHorizontal).apply {
+                        max = 100
+                        progress = pct
+                        progressTintList = ColorStateList.valueOf(if (isChecked) yellowColor else plannerPrimary)
+                        progressBackgroundTintList = ColorStateList.valueOf(if (themeCoordinator.isDarkMode()) 0x22FFFFFF else 0x1A000000)
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2.5f)).apply {
+                            setMargins(dp(32), dp(3), 0, dp(2))
+                        }
+                    }
+                    goalCard.addView(miniBar)
+                }
+
+                // 3. Subject, Sub-Topic, Schedule, and Reminder Badges Row
+                val hasSubject = !goal.subjectId.isNullOrBlank() && goal.subjectId != "all"
+                val hasSubTopic = !goal.subTopic.isNullOrBlank()
+                val hasScheduledDays = goal.scheduledDays.isNotEmpty()
+                val hasReminder = goal.reminderEnabled
+
+                val tagsRow = if (hasSubject || hasSubTopic || hasScheduledDays || hasReminder) {
+                    LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(dp(32), dp(2), 0, 0)
+                        }
+                    }
+                } else null
+
+                if (hasSubject && tagsRow != null) {
+                    val sub = SubjectTagManager.resolveSubject(host, goal.subjectId)
+                    val subColor = try { Color.parseColor(sub.colorHex) } catch (_: Exception) { plannerPrimary }
+                    val subBadge = TextView(host).apply {
+                        text = "${sub.iconEmoji} ${sub.name}"
+                        setTextColor(subColor)
+                        textSize = 11f
+                        isSingleLine = true
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        maxWidth = dp(120)
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                        background = themeCoordinator.createGlassChip(tintedColor(subColor, 60), 8f)
+                        setPadding(dp(7), dp(2), dp(7), dp(2))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, dp(5), 0)
+                        }
+                    }
+                    tagsRow.addView(subBadge)
+                }
+
+                if (hasSubTopic && tagsRow != null) {
+                    val topicBadge = TextView(host).apply {
+                        text = "📖 ${goal.subTopic}"
+                        setTextColor(themeCoordinator.accentColor)
+                        textSize = 11f
+                        isSingleLine = true
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        maxWidth = dp(120)
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, 50), 8f)
+                        setPadding(dp(7), dp(2), dp(7), dp(2))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, dp(5), 0)
+                        }
+                    }
+                    tagsRow.addView(topicBadge)
+                }
+
+                if (hasScheduledDays && tagsRow != null) {
+                    val daysMap = mapOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
+                    val daysText = goal.scheduledDays.sorted().mapNotNull { daysMap[it] }.joinToString(",")
+                    val schedBadge = TextView(host).apply {
+                        text = "📅 $daysText"
+                        setTextColor(tintedColor(themeCoordinator.textColor, 180))
+                        textSize = 10.5f
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 8f)
+                        setPadding(dp(7), dp(2), dp(7), dp(2))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, dp(5), 0)
+                        }
+                    }
+                    tagsRow.addView(schedBadge)
+                }
+
+                if (hasReminder && tagsRow != null) {
+                    val cal = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, goal.reminderHour)
+                        set(Calendar.MINUTE, goal.reminderMinute)
+                    }
+                    val reminderTimeStr = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
+                    val reminderBadge = TextView(host).apply {
+                        text = "🔔 $reminderTimeStr"
+                        setTextColor(if (themeCoordinator.isDarkMode()) 0xFFF59E0B.toInt() else 0xFFD97706.toInt())
+                        textSize = 10.5f
+                        isSingleLine = true
+                        maxLines = 1
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                        background = themeCoordinator.createGlassChip(tintedColor(0xFFF59E0B.toInt(), 50), 8f)
+                        setPadding(dp(7), dp(2), dp(7), dp(2))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, dp(5), 0)
+                        }
+                    }
+                    tagsRow.addView(reminderBadge)
+                }
+
+                if (tagsRow != null) {
+                    goalCard.addView(tagsRow)
+                }
+
+                goalCard.setOnClickListener { animateToggleGoalAction(checkBtn) }
+                goalCard.setOnLongClickListener { v ->
+                    v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                    showGoalHistoryDialog(goal)
+                    true
+                }
+
+                if (activeGoalsList.size > 1) {
                     goalCard.setOnDragListener { v, event ->
                         when (event.action) {
                             android.view.DragEvent.ACTION_DRAG_STARTED -> true
@@ -664,89 +893,54 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         }
                     }
                 }
-
-                val deleteBtn = TextView(host).apply {
-                    text = "\u2715"
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.5f
-                    textSize = 16f
-                    setPadding(dp(8), dp(8), dp(8), dp(8))
-                    setOnClickListener {
-                        showConfirmDialog(
-                            title = "Delete Goal?",
-                            message = "Are you sure you want to remove '${goal.title}' from your planner?"
-                        ) {
-                            val updated = activeGoalsList.filter { it.id != goal.id }
-                            saveSessionGoalsToJson(updated)
-                            PlannerHistoryManager.snapshotToday(host, updated)
-                            reloadPlanner()
-                        }
-                    }
-                }
-                goalCard.addView(deleteBtn)
                 goalsContainer.addView(goalCard)
             }
             parent.addView(goalsContainer)
         }
 
-        // Planner Insights Section (always computed)
-        val overallInsights = PlannerHistoryManager.computeOverallPlannerInsights(host, activeGoalsList)
+        // Daily Motivational Quote (Placed below goals section)
+        val dayOfYear = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+        val todayQuote = DailyQuotes.getTodayQuote(dayOfYear)
 
-        parent.addView(createSectionLabel("Planner Insights"))
-
-        val insightsCard = LinearLayout(host).apply {
+        val quoteCard = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             background = themeCoordinator.createCardBackground()
             setPadding(dp(18), dp(16), dp(18), dp(16))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(12)) }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, dp(8), 0, dp(14))
+            }
         }
 
-        fun addInsightRow(icon: String, title: String, value: String, sub: String) {
-            val row = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(8), 0, dp(8))
-            }
-            if (icon.isNotEmpty()) {
-                row.addView(TextView(host).apply {
-                    text = icon
-                    textSize = 20f
-                    setPadding(0, 0, dp(12), 0)
-                })
-            }
-            val textCol = LinearLayout(host).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            textCol.addView(TextView(host).apply {
-                text = title
-                setTextColor(themeCoordinator.textColor)
-                textSize = 15f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            })
-            textCol.addView(TextView(host).apply {
-                text = sub
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.7f
-                textSize = 13f
-                setPadding(0, dp(2), 0, 0)
-            })
-            row.addView(textCol)
-            row.addView(TextView(host).apply {
-                text = value
-                setTextColor(plannerSecondary)
-                textSize = 16f
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            })
-            insightsCard.addView(row)
+        val quoteHeader = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(8))
         }
 
-        addInsightRow("", "Best Streak", if (overallInsights.bestStreakDays > 0) "${overallInsights.bestStreakDays}d" else "0d", if (overallInsights.bestStreakDays > 0) overallInsights.bestStreakGoalTitle else "No streak yet")
-        insightsCard.addView(createDivider())
-        addInsightRow("", "Most Consistent", if (overallInsights.mostConsistentPct > 0) "${overallInsights.mostConsistentPct}%" else "0%", if (overallInsights.mostConsistentPct > 0) overallInsights.mostConsistentGoalTitle else "No track yet")
-        insightsCard.addView(createDivider())
+        quoteHeader.addView(TextView(host).apply {
+            text = "DAILY INSPIRATION"
+            setTextColor(plannerSecondary)
+            textSize = 11f
+            letterSpacing = 0.08f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
 
-        parent.addView(insightsCard)
+        val quoteText = TextView(host).apply {
+            text = todayQuote
+            setTextColor(themeCoordinator.textColor)
+            textSize = 14f
+            typeface = Typeface.create("sans-serif", Typeface.ITALIC)
+            setLineSpacing(dp(3).toFloat(), 1.15f)
+        }
+
+        quoteCard.addView(quoteHeader)
+        quoteCard.addView(quoteText)
+        parent.addView(quoteCard)
+
+        FontStyleManager.applyRecursively(parent)
     }
 
     internal fun showGoalHistoryDialog(goal: PlannerGoal, displayMonthOffset: Int = 0) {
@@ -755,9 +949,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         val isDark = themeCoordinator.isDarkMode()
         val (plannerPrimary, plannerSecondary) = resolvePlannerColors()
-        val historyDetailedMap = PlannerHistoryManager.loadGoalHistoryDetailed(host, goal.id)
+        val historyDetailedMap = PlannerHistoryManager.loadGoalHistoryDetailed(host, goal.id, goal.scheduledDays, goal.createdAt)
         val snapshotsMap = PlannerHistoryManager.loadGoalSnapshotsMap(host, goal.id)
-        val insights = PlannerHistoryManager.computeGoalInsights(host, goal.id)
+        val insights = PlannerHistoryManager.computeGoalInsights(host, goal.id, goal.scheduledDays, goal.createdAt)
         var currentOffset = displayMonthOffset
 
         val content = LinearLayout(host).apply {
@@ -1018,7 +1212,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                                         }
                                         GoalHistoryStatus.NOT_COMPLETED -> {
                                             setColor(if (isDark) 0x33EF4444.toInt() else 0x22EF4444.toInt())
-                                            setStroke(dp(1), if (isDark) 0x66EF4444.toInt() else 0x4DEF4444.toInt())
+                                            setStroke(dp(1), if (isDark) 0xFFEF4444.toInt() else 0xFFDC2626.toInt())
+                                        }
+                                        GoalHistoryStatus.NOT_SCHEDULED -> {
+                                            setColor(Color.TRANSPARENT)
                                         }
                                         null -> {
                                             if (isToday) {
@@ -1035,7 +1232,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             addView(TextView(host).apply {
                                 text = when (status) {
                                     GoalHistoryStatus.ACHIEVED -> "\u2713"
-                                    GoalHistoryStatus.DEFICIT -> "\u2715"
+                                    GoalHistoryStatus.DEFICIT, GoalHistoryStatus.NOT_COMPLETED -> "\u2715"
+                                    GoalHistoryStatus.NOT_SCHEDULED -> "—"
                                     else -> dayCounter.toString()
                                 }
                                 textSize = 12f
@@ -1045,6 +1243,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                                     when (status) {
                                         GoalHistoryStatus.ACHIEVED, GoalHistoryStatus.DEFICIT -> 0xFFFFFFFF.toInt()
                                         GoalHistoryStatus.NOT_COMPLETED -> if (isDark) 0xFFEF4444.toInt() else 0xFFDC2626.toInt()
+                                        GoalHistoryStatus.NOT_SCHEDULED -> if (isDark) 0x44FFFFFF.toInt() else 0xFF94A3B8.toInt()
                                         null -> if (isToday) (if (isDark) plannerSecondary else 0xFF0284C7.toInt()) else (if (isDark) 0xCCFFFFFF.toInt() else 0xFF334155.toInt())
                                     }
                                 )
@@ -1057,9 +1256,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                                 val snapshot = snapshotsMap[dateKey]
                                 val statusLabel = when (status) {
                                     GoalHistoryStatus.ACHIEVED -> "Goal Achieved (${snapshot?.targetMinutes ?: goal.targetMinutes}m target)"
-                                    GoalHistoryStatus.DEFICIT -> "Incomplete (${snapshot?.targetMinutes ?: goal.targetMinutes}m target)"
-                                    GoalHistoryStatus.NOT_COMPLETED -> "Missed Goal"
-                                    null -> if (isToday) "Today (In Progress)" else "No Session Recorded"
+                                    GoalHistoryStatus.DEFICIT -> "Incomplete (${snapshot?.actualMinutes ?: 0}/${snapshot?.targetMinutes ?: goal.targetMinutes}m)"
+                                    GoalHistoryStatus.NOT_COMPLETED -> "Missed Goal (0/${snapshot?.targetMinutes ?: goal.targetMinutes}m completed)"
+                                    GoalHistoryStatus.NOT_SCHEDULED -> "Not Scheduled for this day"
+                                    null -> if (isToday) "Today (In Progress)" else "Outside Active Tracking"
                                 }
                                 val displayDateSdf = SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault())
                                 val dateFormatted = runCatching { displayDateSdf.format(sdf.parse(dateKey)!!) }.getOrDefault(dateKey)
@@ -1098,7 +1298,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             setPadding(0, dp(8), 0, dp(6))
         }
         legendRow.addView(TextView(host).apply {
-            text = "● Goal Met   ✕ Incomplete   ○ Missed\n(Tap marked date to view session notes)"
+            text = "✓ Achieved   ✕ Incomplete / Missed   — Not Scheduled\n(Tap marked date to view session notes)"
             gravity = Gravity.CENTER
             setTextColor(if (isDark) 0x99FFFFFF.toInt() else 0xFF64748B.toInt())
             textSize = 11f
@@ -1238,7 +1438,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
 
         val scroll = ScrollView(host).apply {
-            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 (host.resources.displayMetrics.heightPixels * 0.40f).toInt()
@@ -1707,7 +1909,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val note: String = "",
         val targetMinutes: Int = 0,
         val isDeleted: Boolean = false,
-        val subjectId: String? = null
+        val subjectId: String? = null,
+        val subTopic: String? = null,
+        val scheduledDays: List<Int> = emptyList(),
+        val createdAt: Long = 0L
     )
 
     internal fun showPlannerMatrixDialog(startFullscreen: Boolean = false) {
@@ -1727,7 +1932,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val content = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             background = if (isFullscreen) {
-                android.graphics.drawable.ColorDrawable(themeCoordinator.bgColor)
+                null
             } else {
                 themeCoordinator.createDialogBackground(28f)
             }
@@ -1737,6 +1942,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 dp(16),
                 if (isFullscreen) dp(16) else dp(18)
             )
+            if (isFullscreen) {
+                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+            }
         }
 
         val topHeaderRow = LinearLayout(host).apply {
@@ -1791,7 +1999,17 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         // Add current active goals first
         for (g in goalsList) {
-            allGoalItemsMap[g.id] = MatrixGoalItem(g.id, g.title, note = g.note, targetMinutes = g.targetMinutes, isDeleted = false, subjectId = g.subjectId)
+            allGoalItemsMap[g.id] = MatrixGoalItem(
+                id = g.id,
+                title = g.title,
+                note = g.note,
+                targetMinutes = g.targetMinutes,
+                isDeleted = false,
+                subjectId = g.subjectId,
+                subTopic = g.subTopic,
+                scheduledDays = g.scheduledDays,
+                createdAt = g.createdAt
+            )
         }
 
         // Add past deleted goals from daily snapshots
@@ -1802,7 +2020,17 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val snapshots = PlannerHistoryManager.loadDaySnapshot(host, key.removeSuffix("_planner_snapshot"))
                 for (s in snapshots) {
                     if (s.goalId.isNotBlank() && !allGoalItemsMap.containsKey(s.goalId)) {
-                        allGoalItemsMap[s.goalId] = MatrixGoalItem(s.goalId, if (s.title.isNotBlank()) s.title else "Deleted Goal", note = s.note, targetMinutes = s.targetMinutes, isDeleted = true, subjectId = s.subjectId)
+                        allGoalItemsMap[s.goalId] = MatrixGoalItem(
+                            id = s.goalId,
+                            title = if (s.title.isNotBlank()) s.title else "Deleted Goal",
+                            note = s.note,
+                            targetMinutes = s.targetMinutes,
+                            isDeleted = true,
+                            subjectId = s.subjectId,
+                            subTopic = s.subTopic,
+                            scheduledDays = s.scheduledDays,
+                            createdAt = 0L
+                        )
                     }
                 }
             }
@@ -1812,7 +2040,12 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val allDates = mutableSetOf<String>()
 
         val goalHistories = allGoalItems.associate { item ->
-            val h = PlannerHistoryManager.loadGoalHistoryDetailed(host, item.id)
+            val h = PlannerHistoryManager.loadGoalHistoryDetailed(
+                context = host,
+                goalId = item.id,
+                scheduledDays = item.scheduledDays,
+                createdAt = item.createdAt
+            )
             allDates.addAll(h.keys)
             item.id to h
         }
@@ -2021,19 +2254,26 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     val status = history[dateKey]
                     val isToday = (dateKey == todayStr)
                     row.addView(TextView(host).apply {
-                        text = when (status) {
-                            GoalHistoryStatus.ACHIEVED -> "\u2713"
-                            GoalHistoryStatus.DEFICIT -> "\u2715"
-                            GoalHistoryStatus.NOT_COMPLETED, null -> "-"
+                        val cal = Calendar.getInstance().apply { time = d }
+                        val isScheduled = PlannerHistoryManager.isGoalScheduledOnDay(item.scheduledDays, cal)
+                        val isMissed = !isToday && (status == GoalHistoryStatus.DEFICIT || status == GoalHistoryStatus.NOT_COMPLETED || (status == null && !d.after(Date()) && isScheduled))
+                        val isAchieved = (status == GoalHistoryStatus.ACHIEVED)
+                        val isUnscheduled = (status == GoalHistoryStatus.NOT_SCHEDULED || (!isScheduled && !isAchieved))
+
+                        text = when {
+                            isAchieved -> "\u2713"
+                            isToday -> "•"
+                            isMissed -> "\u2715"
+                            isUnscheduled -> "—"
+                            d.after(Date()) -> ""
+                            else -> "—"
                         }
-                        setTextColor(when (status) {
-                            GoalHistoryStatus.ACHIEVED -> greenColor
-                            GoalHistoryStatus.DEFICIT -> redColor
-                            GoalHistoryStatus.NOT_COMPLETED, null -> if (isToday) {
-                                if (isDark) 0xFFFFFFFF.toInt() else 0xFFD97706.toInt()
-                            } else {
-                                if (isDark) tintedColor(themeCoordinator.textColor, 80) else 0xFF94A3B8.toInt()
-                            }
+                        setTextColor(when {
+                            isAchieved -> greenColor
+                            isToday -> if (isDark) 0xFFFFFFFF.toInt() else 0xFFD97706.toInt()
+                            isMissed -> redColor
+                            isUnscheduled -> if (isDark) tintedColor(themeCoordinator.textColor, 70) else 0xFF94A3B8.toInt()
+                            else -> if (isDark) tintedColor(themeCoordinator.textColor, 80) else 0xFF94A3B8.toInt()
                         })
                         textSize = 14f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -2128,7 +2368,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             return TextView(host).apply {
                 text = label
                 textSize = 12f
-                typeface = Typeface.create("sans-serif-medium", if (isSel) Typeface.BOLD else Typeface.NORMAL)
+                typeface = host.themeCoordinator.getAppTypeface(isBold = isSel)
                 setTextColor(
                     if (isSel) {
                         Color.WHITE
@@ -2159,7 +2399,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     for (i in 0 until filterRow.childCount) {
                         val child = filterRow.getChildAt(i) as? TextView ?: continue
                         val sel = (child.tag as? Int) == selectedRangeDays
-                        child.typeface = Typeface.create("sans-serif-medium", if (sel) Typeface.BOLD else Typeface.NORMAL)
+                        child.typeface = host.themeCoordinator.getAppTypeface(isBold = sel)
                         child.setTextColor(
                             if (sel) {
                                 Color.WHITE
@@ -2194,6 +2434,20 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         filterRow.addView(makeFilterBtn("All Time", 0))
 
         content.addView(filterRow)
+
+        val legendRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(10))
+        }
+        legendRow.addView(TextView(host).apply {
+            text = "✓ Achieved   ✕ Incomplete / Missed   — Not Scheduled"
+            textSize = 11f
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        })
+        content.addView(legendRow)
+
         renderMatrix(selectedRangeDays)
         content.addView(matrixContainer)
 
@@ -2216,20 +2470,52 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
         content.addView(closeBtn)
 
-        dialog.setContentView(content)
-
         if (isFullscreen) {
+            val rootContainer = WallpaperManager.buildWallpaperContainer(host, themeCoordinator)
+            val scrollWrapper = ScrollView(host).apply {
+                isFillViewport = true
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                addView(content)
+            }
+            rootContainer.addView(scrollWrapper)
+            dialog.setContentView(rootContainer)
+
             dialog.window?.apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                     setDecorFitsSystemWindows(false)
                 }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
                 addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+                clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
                 statusBarColor = Color.TRANSPARENT
                 navigationBarColor = Color.TRANSPARENT
-                setBackgroundDrawable(android.graphics.drawable.ColorDrawable(themeCoordinator.bgColor))
+                setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
                 setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+                decorView.setPadding(0, 0, 0, 0)
+                try {
+                    val isLightMode = themeCoordinator.activeBgMode == "LIGHT"
+                    val decor = peekDecorView() ?: decorView
+                    androidx.core.view.WindowCompat.getInsetsController(this, decor).let { controller ->
+                        controller.isAppearanceLightStatusBars = isLightMode
+                        controller.isAppearanceLightNavigationBars = isLightMode
+                    }
+                } catch (_: Exception) {}
+            }
+            dialog.setOnShowListener {
+                dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+                dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+            }
+            dialog.setOnDismissListener {
+                for (i in 0 until rootContainer.childCount) {
+                    (rootContainer.getChildAt(i) as? LiveWallpaperView)?.release()
+                }
             }
         } else {
+            dialog.setContentView(content)
             dialog.window?.apply {
                 setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
                 setLayout((host.resources.displayMetrics.widthPixels * 0.95f).toInt(), LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -2726,7 +3012,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         content.addView(titleText)
 
         val scrollView = ScrollView(host).apply {
-            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
 
@@ -2953,7 +3241,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(0, dp(4), 0, dp(4))
             }
+            isFillViewport = true
             isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         }
 
         val bodyBox = LinearLayout(host).apply {
@@ -3104,6 +3394,66 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         )
     }
 
+    private fun promptAddSubTopicDialog(subjectId: String, onAdded: (String) -> Unit) {
+        val input = android.widget.EditText(host).apply {
+            hint = "Chapter / Sub-Topic name"
+            setHintTextColor(tintedColor(themeCoordinator.textColor, 100))
+            setTextColor(themeCoordinator.textColor)
+            textSize = 14f
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, dp(10), 0, dp(14))
+            }
+        }
+        val dialog = Dialog(host).apply {
+            requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+        }
+        val container = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(22f)
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+        }
+        container.addView(TextView(host).apply {
+            text = "Add Chapter"
+            textSize = 16f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.primaryColor)
+        })
+        container.addView(input)
+        val btnRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        btnRow.addView(Button(host).apply {
+            text = "Cancel"
+            background = null
+            setTextColor(themeCoordinator.textColor)
+            setOnClickListener { dialog.dismiss() }
+        })
+        btnRow.addView(Button(host).apply {
+            text = "Add"
+            background = rippleBackground(themeCoordinator.primaryColor)
+            setTextColor(themeCoordinator.bgColor)
+            setOnClickListener {
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    if (SubjectTagManager.addSubTopic(host, subjectId, name)) {
+                        onAdded(name)
+                        dialog.dismiss()
+                    } else {
+                        AppToast.show(host, "Chapter already exists")
+                    }
+                }
+            }
+        })
+        container.addView(btnRow)
+        dialog.setContentView(container)
+        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+        dialog.window?.setLayout((host.resources.displayMetrics.widthPixels * 0.85f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.show()
+    }
+
     internal fun showAddSessionGoalDialog() {
         val dialog = Dialog(host)
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
@@ -3126,7 +3476,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
                 setMargins(0, dp(10), 0, dp(10))
             }
+            isFillViewport = true
             isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         }
 
         val inputsBox = LinearLayout(host).apply {
@@ -3202,26 +3554,166 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         inputsBox.addView(durationInput)
         inputsBox.addView(presetScroll)
 
-        // Subject Tag Selector
-        inputsBox.addView(TextView(host).apply {
-            text = "Subject (optional)"
+        // Subject Tag Toggle Card (Off by default)
+        var subjectEnabled = false
+        var selectedSubjectId: String? = null
+        var selectedSubTopic: String? = null
+        val allSubjects = SubjectTagManager.getAllSubjects(host)
+
+        val subjectCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(10))
+            }
+        }
+        val subjectHeaderRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val subjectTextCol = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        subjectTextCol.addView(TextView(host).apply {
+            text = "Subject & Topic"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+        })
+        subjectTextCol.addView(TextView(host).apply {
+            text = "Tag with a specific subject or chapter"
+            textSize = 11f
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+        })
+        subjectHeaderRow.addView(subjectTextCol)
+
+        val subjectSwitch = SwitchMaterial(host).apply {
+            isChecked = false
+        }
+        subjectHeaderRow.addView(subjectSwitch)
+        subjectCard.addView(subjectHeaderRow)
+
+        val subjectContentContainer = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        val subjectChipScroll = HorizontalScrollView(host).apply {
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(10))
+            }
+        }
+        val subjectChipRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        // Sub-topic selection container
+        val subTopicSection = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(12))
+            }
+        }
+        val subTopicLabel = TextView(host).apply {
+            text = "Chapter / Sub-Topic (optional)"
             setTextColor(themeCoordinator.textColor)
             alpha = 0.8f
             textSize = 12.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(0, dp(4), 0, dp(6))
-        })
-
-        var selectedSubjectId: String? = null
-        val allSubjects = SubjectTagManager.getAllSubjects(host)
-        val subjectChipScroll = HorizontalScrollView(host).apply {
-            isHorizontalScrollBarEnabled = false
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(14))
-            }
         }
-        val subjectChipRow = LinearLayout(host).apply {
+        subTopicSection.addView(subTopicLabel)
+
+        val subTopicChipScroll = HorizontalScrollView(host).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val subTopicChipRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
+        }
+        subTopicChipScroll.addView(subTopicChipRow)
+        subTopicSection.addView(subTopicChipScroll)
+
+        fun refreshSubTopicChips() {
+            val subId = selectedSubjectId
+            if (subId == null || subId == "all") {
+                subTopicSection.visibility = View.GONE
+                selectedSubTopic = null
+                return
+            }
+            subTopicSection.visibility = View.VISIBLE
+            subTopicChipRow.removeAllViews()
+
+            val isAllChapters = selectedSubTopic.isNullOrBlank()
+            val allSubChip = TextView(host).apply {
+                text = "All Chapters"
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(if (isAllChapters) Color.WHITE else themeCoordinator.textColor)
+                background = if (isAllChapters) {
+                    themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
+                } else {
+                    themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                }
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                setOnClickListener {
+                    selectedSubTopic = null
+                    refreshSubTopicChips()
+                }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+            }
+            subTopicChipRow.addView(allSubChip)
+
+            val subTopics = SubjectTagManager.getSubTopics(host, subId)
+            for (st in subTopics) {
+                val isSelected = selectedSubTopic == st
+                val chip = TextView(host).apply {
+                    text = st
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                    background = if (isSelected) {
+                        themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                    }
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    setOnClickListener {
+                        selectedSubTopic = st
+                        refreshSubTopicChips()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, 0, dp(8), 0)
+                    }
+                }
+                subTopicChipRow.addView(chip)
+            }
+
+            // + Add Chapter chip
+            val addChip = TextView(host).apply {
+                text = "+ Add Chapter"
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(themeCoordinator.primaryColor)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 12f)
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                setOnClickListener {
+                    promptAddSubTopicDialog(subId) { newName ->
+                        selectedSubTopic = newName
+                        refreshSubTopicChips()
+                    }
+                }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+            }
+            subTopicChipRow.addView(addChip)
         }
 
         fun refreshSubjectChips() {
@@ -3242,7 +3734,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(12), dp(6), dp(12), dp(6))
                 setOnClickListener {
                     selectedSubjectId = null
+                    selectedSubTopic = null
                     refreshSubjectChips()
+                    refreshSubTopicChips()
                 }
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     setMargins(0, 0, dp(8), 0)
@@ -3266,7 +3760,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     setPadding(dp(12), dp(6), dp(12), dp(6))
                     setOnClickListener {
                         selectedSubjectId = sub.id
+                        selectedSubTopic = null
                         refreshSubjectChips()
+                        refreshSubTopicChips()
                     }
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                         setMargins(0, 0, dp(8), 0)
@@ -3277,7 +3773,247 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
         refreshSubjectChips()
         subjectChipScroll.addView(subjectChipRow)
-        inputsBox.addView(subjectChipScroll)
+        subjectContentContainer.addView(subjectChipScroll)
+        subjectContentContainer.addView(subTopicSection)
+        subjectCard.addView(subjectContentContainer)
+        inputsBox.addView(subjectCard)
+
+        subjectSwitch.setOnCheckedChangeListener { _, isChecked ->
+            subjectEnabled = isChecked
+            subjectContentContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
+        // Scheduled Days Toggle Card (Off by default)
+        var scheduleEnabled = false
+        val selectedDays = mutableSetOf<Int>() // empty = Every Day
+        val scheduleDaysList = listOf(
+            Calendar.MONDAY to "Mon",
+            Calendar.TUESDAY to "Tue",
+            Calendar.WEDNESDAY to "Wed",
+            Calendar.THURSDAY to "Thu",
+            Calendar.FRIDAY to "Fri",
+            Calendar.SATURDAY to "Sat",
+            Calendar.SUNDAY to "Sun"
+        )
+
+        val scheduleCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(10))
+            }
+        }
+        val scheduleHeaderRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val scheduleTextCol = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        scheduleTextCol.addView(TextView(host).apply {
+            text = "Scheduled Days"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+        })
+        scheduleTextCol.addView(TextView(host).apply {
+            text = "Choose active study days (otherwise every day)"
+            textSize = 11f
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+        })
+        scheduleHeaderRow.addView(scheduleTextCol)
+
+        val scheduleSwitch = SwitchMaterial(host).apply {
+            isChecked = false
+        }
+        scheduleHeaderRow.addView(scheduleSwitch)
+        scheduleCard.addView(scheduleHeaderRow)
+
+        val scheduleContentContainer = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        val scheduleChipScroll = HorizontalScrollView(host).apply {
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(4))
+            }
+        }
+        val scheduleChipRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
+        scheduleChipScroll.addView(scheduleChipRow)
+
+        fun refreshScheduleChips() {
+            scheduleChipRow.removeAllViews()
+
+            val isEveryDay = selectedDays.isEmpty() || selectedDays.size == 7
+            val everyDayChip = TextView(host).apply {
+                text = "Every Day"
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(if (isEveryDay) Color.WHITE else themeCoordinator.textColor)
+                background = if (isEveryDay) {
+                    themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
+                } else {
+                    themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                }
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                setOnClickListener {
+                    selectedDays.clear()
+                    refreshScheduleChips()
+                }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+            }
+            scheduleChipRow.addView(everyDayChip)
+
+            for ((dayInt, dayLabel) in scheduleDaysList) {
+                val isSelected = !isEveryDay && selectedDays.contains(dayInt)
+                val dayChip = TextView(host).apply {
+                    text = dayLabel
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                    background = if (isSelected) {
+                        themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                    }
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    setOnClickListener {
+                        if (isEveryDay) {
+                            selectedDays.clear()
+                            selectedDays.add(dayInt)
+                        } else {
+                            if (selectedDays.contains(dayInt)) {
+                                selectedDays.remove(dayInt)
+                            } else {
+                                selectedDays.add(dayInt)
+                            }
+                        }
+                        refreshScheduleChips()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, 0, dp(8), 0)
+                    }
+                }
+                scheduleChipRow.addView(dayChip)
+            }
+        }
+        refreshScheduleChips()
+        scheduleContentContainer.addView(scheduleChipScroll)
+        scheduleCard.addView(scheduleContentContainer)
+        inputsBox.addView(scheduleCard)
+
+        scheduleSwitch.setOnCheckedChangeListener { _, isChecked ->
+            scheduleEnabled = isChecked
+            scheduleContentContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
+        // 5. Reminder Section (Off by default, reveals custom time picker on toggle)
+        var reminderEnabled = false
+        var reminderHour = 20
+        var reminderMinute = 0
+
+        val reminderCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(14))
+            }
+        }
+
+        val reminderHeaderRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val reminderTextCol = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        reminderTextCol.addView(TextView(host).apply {
+            text = "Reminder"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+        })
+        reminderTextCol.addView(TextView(host).apply {
+            text = "Get notified when it's time to study"
+            textSize = 11f
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+        })
+        reminderHeaderRow.addView(reminderTextCol)
+
+        val reminderSwitch = SwitchMaterial(host).apply {
+            isChecked = false
+        }
+        reminderHeaderRow.addView(reminderSwitch)
+        reminderCard.addView(reminderHeaderRow)
+
+        fun formatReminderTime(h: Int, m: Int): String {
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, h)
+                set(Calendar.MINUTE, m)
+            }
+            return SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
+        }
+
+        val timePickerRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = View.GONE
+            setPadding(0, dp(8), 0, dp(2))
+        }
+
+        val timePill = TextView(host).apply {
+            text = formatReminderTime(reminderHour, reminderMinute)
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.primaryColor)
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 12f)
+            val clockIcon = androidx.core.content.ContextCompat.getDrawable(host, R.drawable.ic_clock)?.mutate()?.apply {
+                setTint(themeCoordinator.primaryColor)
+                setBounds(0, 0, dp(15), dp(15))
+            }
+            setCompoundDrawables(clockIcon, null, null, null)
+            compoundDrawablePadding = dp(6)
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            isClickable = true
+            setOnClickListener {
+                android.app.TimePickerDialog(
+                    host,
+                    { _, hourOfDay, minute ->
+                        reminderHour = hourOfDay
+                        reminderMinute = minute
+                        text = formatReminderTime(reminderHour, reminderMinute)
+                    },
+                    reminderHour,
+                    reminderMinute,
+                    false
+                ).show()
+            }
+        }
+        timePickerRow.addView(TextView(host).apply {
+            text = "Alert at: "
+            textSize = 12f
+            setTextColor(tintedColor(themeCoordinator.textColor, 180))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        timePickerRow.addView(timePill)
+        reminderCard.addView(timePickerRow)
+
+        reminderSwitch.setOnCheckedChangeListener { _, isChecked ->
+            reminderEnabled = isChecked
+            timePickerRow.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
+        inputsBox.addView(reminderCard)
 
         scrollContainer.addView(inputsBox)
         content.addView(scrollContainer)
@@ -3303,8 +4039,23 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     val rawMins = durationInput.text.toString().toIntOrNull() ?: 0
                     val targetMins = rawMins.coerceAtMost(1440)
                     val currentGoals = loadSessionGoalsFromJson(host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("session_goals_json", "[]") ?: "[]").toMutableList()
-                    currentGoals.add(PlannerGoal(title = titleText, note = noteText, targetMinutes = targetMins, subjectId = selectedSubjectId))
+                    val scheduledList = if (scheduleEnabled && selectedDays.isNotEmpty() && selectedDays.size < 7) selectedDays.sorted() else emptyList()
+                    val newGoal = PlannerGoal(
+                        title = titleText,
+                        note = noteText,
+                        targetMinutes = targetMins,
+                        subjectId = if (subjectEnabled) selectedSubjectId else null,
+                        subTopic = if (subjectEnabled) selectedSubTopic else null,
+                        scheduledDays = scheduledList,
+                        reminderEnabled = reminderEnabled,
+                        reminderHour = reminderHour,
+                        reminderMinute = reminderMinute
+                    )
+                    currentGoals.add(newGoal)
                     saveSessionGoalsToJson(currentGoals)
+                    if (reminderEnabled) {
+                        GoalReminderScheduler.scheduleGoalReminder(host, newGoal)
+                    }
                     refreshStatsPanel()
                 }
                 dialog.dismiss()
@@ -3315,7 +4066,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         dialog.setContentView(content)
         dialog.window?.apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-            setLayout((host.resources.displayMetrics.widthPixels * 0.90f).toInt(), (host.resources.displayMetrics.heightPixels * 0.80f).toInt().coerceAtMost(android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+            setLayout((host.resources.displayMetrics.widthPixels * 0.90f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         dialog.show()
     }
@@ -3344,7 +4095,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
                 setMargins(0, dp(10), 0, dp(10))
             }
+            isFillViewport = true
             isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         }
 
         val inputsBox = LinearLayout(host).apply {
@@ -3422,26 +4175,167 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         presetScroll.addView(presetRow)
         inputsBox.addView(presetScroll)
 
-        // Subject Tag Selector
-        inputsBox.addView(TextView(host).apply {
-            text = "Subject (optional)"
+        // Subject Tag Toggle Card
+        val hasInitialSubject = !goal.subjectId.isNullOrBlank() && goal.subjectId != "all"
+        var subjectEnabled = hasInitialSubject
+        var selectedSubjectId: String? = goal.subjectId
+        var selectedSubTopic: String? = goal.subTopic
+        val allSubjects = SubjectTagManager.getAllSubjects(host)
+
+        val subjectCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(10))
+            }
+        }
+        val subjectHeaderRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val subjectTextCol = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        subjectTextCol.addView(TextView(host).apply {
+            text = "Subject & Topic"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+        })
+        subjectTextCol.addView(TextView(host).apply {
+            text = "Tag with a specific subject or chapter"
+            textSize = 11f
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+        })
+        subjectHeaderRow.addView(subjectTextCol)
+
+        val subjectSwitch = SwitchMaterial(host).apply {
+            isChecked = hasInitialSubject
+        }
+        subjectHeaderRow.addView(subjectSwitch)
+        subjectCard.addView(subjectHeaderRow)
+
+        val subjectContentContainer = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (hasInitialSubject) View.VISIBLE else View.GONE
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        val subjectChipScroll = HorizontalScrollView(host).apply {
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(10))
+            }
+        }
+        val subjectChipRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        // Sub-topic selection container
+        val subTopicSection = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (selectedSubjectId != null && selectedSubjectId != "all") View.VISIBLE else View.GONE
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(12))
+            }
+        }
+        val subTopicLabel = TextView(host).apply {
+            text = "Chapter / Sub-Topic (optional)"
             setTextColor(themeCoordinator.textColor)
             alpha = 0.8f
             textSize = 12.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(0, dp(4), 0, dp(6))
-        })
-
-        var selectedSubjectId: String? = goal.subjectId
-        val allSubjects = SubjectTagManager.getAllSubjects(host)
-        val subjectChipScroll = HorizontalScrollView(host).apply {
-            isHorizontalScrollBarEnabled = false
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(14))
-            }
         }
-        val subjectChipRow = LinearLayout(host).apply {
+        subTopicSection.addView(subTopicLabel)
+
+        val subTopicChipScroll = HorizontalScrollView(host).apply {
+            isHorizontalScrollBarEnabled = false
+        }
+        val subTopicChipRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
+        }
+        subTopicChipScroll.addView(subTopicChipRow)
+        subTopicSection.addView(subTopicChipScroll)
+
+        fun refreshSubTopicChips() {
+            val subId = selectedSubjectId
+            if (subId == null || subId == "all") {
+                subTopicSection.visibility = View.GONE
+                selectedSubTopic = null
+                return
+            }
+            subTopicSection.visibility = View.VISIBLE
+            subTopicChipRow.removeAllViews()
+
+            val isAllChapters = selectedSubTopic.isNullOrBlank()
+            val allSubChip = TextView(host).apply {
+                text = "All Chapters"
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(if (isAllChapters) Color.WHITE else themeCoordinator.textColor)
+                background = if (isAllChapters) {
+                    themeCoordinator.createGlassChip(plannerPrimary, 12f)
+                } else {
+                    themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                }
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                setOnClickListener {
+                    selectedSubTopic = null
+                    refreshSubTopicChips()
+                }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+            }
+            subTopicChipRow.addView(allSubChip)
+
+            val subTopics = SubjectTagManager.getSubTopics(host, subId)
+            for (st in subTopics) {
+                val isSelected = selectedSubTopic == st
+                val chip = TextView(host).apply {
+                    text = st
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                    background = if (isSelected) {
+                        themeCoordinator.createGlassChip(plannerPrimary, 12f)
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                    }
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    setOnClickListener {
+                        selectedSubTopic = st
+                        refreshSubTopicChips()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, 0, dp(8), 0)
+                    }
+                }
+                subTopicChipRow.addView(chip)
+            }
+
+            // + Add Chapter chip
+            val addChip = TextView(host).apply {
+                text = "+ Add Chapter"
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(plannerPrimary)
+                background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 35), 12f)
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                setOnClickListener {
+                    promptAddSubTopicDialog(subId) { newName ->
+                        selectedSubTopic = newName
+                        refreshSubTopicChips()
+                    }
+                }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+            }
+            subTopicChipRow.addView(addChip)
         }
 
         fun refreshSubjectChips() {
@@ -3462,7 +4356,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(12), dp(6), dp(12), dp(6))
                 setOnClickListener {
                     selectedSubjectId = null
+                    selectedSubTopic = null
                     refreshSubjectChips()
+                    refreshSubTopicChips()
                 }
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     setMargins(0, 0, dp(8), 0)
@@ -3486,7 +4382,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     setPadding(dp(12), dp(6), dp(12), dp(6))
                     setOnClickListener {
                         selectedSubjectId = sub.id
+                        selectedSubTopic = null
                         refreshSubjectChips()
+                        refreshSubTopicChips()
                     }
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                         setMargins(0, 0, dp(8), 0)
@@ -3496,16 +4394,283 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
         }
         refreshSubjectChips()
+        refreshSubTopicChips()
         subjectChipScroll.addView(subjectChipRow)
-        inputsBox.addView(subjectChipScroll)
+        subjectContentContainer.addView(subjectChipScroll)
+        subjectContentContainer.addView(subTopicSection)
+        subjectCard.addView(subjectContentContainer)
+        inputsBox.addView(subjectCard)
+
+        subjectSwitch.setOnCheckedChangeListener { _, isChecked ->
+            subjectEnabled = isChecked
+            subjectContentContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
+        // Scheduled Days Toggle Card
+        val hasInitialSchedule = goal.scheduledDays.isNotEmpty() && goal.scheduledDays.size < 7
+        var scheduleEnabled = hasInitialSchedule
+        val selectedDays = goal.scheduledDays.toMutableSet()
+        val scheduleDaysList = listOf(
+            Calendar.MONDAY to "Mon",
+            Calendar.TUESDAY to "Tue",
+            Calendar.WEDNESDAY to "Wed",
+            Calendar.THURSDAY to "Thu",
+            Calendar.FRIDAY to "Fri",
+            Calendar.SATURDAY to "Sat",
+            Calendar.SUNDAY to "Sun"
+        )
+
+        val scheduleCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(10))
+            }
+        }
+        val scheduleHeaderRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val scheduleTextCol = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        scheduleTextCol.addView(TextView(host).apply {
+            text = "Scheduled Days"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+        })
+        scheduleTextCol.addView(TextView(host).apply {
+            text = "Choose active study days (otherwise every day)"
+            textSize = 11f
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+        })
+        scheduleHeaderRow.addView(scheduleTextCol)
+
+        val scheduleSwitch = SwitchMaterial(host).apply {
+            isChecked = hasInitialSchedule
+        }
+        scheduleHeaderRow.addView(scheduleSwitch)
+        scheduleCard.addView(scheduleHeaderRow)
+
+        val scheduleContentContainer = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (hasInitialSchedule) View.VISIBLE else View.GONE
+            setPadding(0, dp(8), 0, 0)
+        }
+
+        val scheduleChipScroll = HorizontalScrollView(host).apply {
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(4))
+            }
+        }
+        val scheduleChipRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
+        scheduleChipScroll.addView(scheduleChipRow)
+
+        fun refreshScheduleChips() {
+            scheduleChipRow.removeAllViews()
+
+            val isEveryDay = selectedDays.isEmpty() || selectedDays.size == 7
+            val everyDayChip = TextView(host).apply {
+                text = "Every Day"
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(if (isEveryDay) Color.WHITE else themeCoordinator.textColor)
+                background = if (isEveryDay) {
+                    themeCoordinator.createGlassChip(plannerPrimary, 12f)
+                } else {
+                    themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                }
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                setOnClickListener {
+                    selectedDays.clear()
+                    refreshScheduleChips()
+                }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+            }
+            scheduleChipRow.addView(everyDayChip)
+
+            for ((dayInt, dayLabel) in scheduleDaysList) {
+                val isSelected = !isEveryDay && selectedDays.contains(dayInt)
+                val dayChip = TextView(host).apply {
+                    text = dayLabel
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                    background = if (isSelected) {
+                        themeCoordinator.createGlassChip(plannerPrimary, 12f)
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                    }
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    setOnClickListener {
+                        if (isEveryDay) {
+                            selectedDays.clear()
+                            selectedDays.add(dayInt)
+                        } else {
+                            if (selectedDays.contains(dayInt)) {
+                                selectedDays.remove(dayInt)
+                            } else {
+                                selectedDays.add(dayInt)
+                            }
+                        }
+                        refreshScheduleChips()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, 0, dp(8), 0)
+                    }
+                }
+                scheduleChipRow.addView(dayChip)
+            }
+        }
+        refreshScheduleChips()
+        scheduleContentContainer.addView(scheduleChipScroll)
+        scheduleCard.addView(scheduleContentContainer)
+        inputsBox.addView(scheduleCard)
+
+        scheduleSwitch.setOnCheckedChangeListener { _, isChecked ->
+            scheduleEnabled = isChecked
+            scheduleContentContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
+        // 5. Reminder Section (Pre-filled with goal settings)
+        var reminderEnabled = goal.reminderEnabled
+        var reminderHour = goal.reminderHour
+        var reminderMinute = goal.reminderMinute
+
+        val reminderCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(14))
+            }
+        }
+
+        val reminderHeaderRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        val reminderTextCol = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        reminderTextCol.addView(TextView(host).apply {
+            text = "Reminder"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+        })
+        reminderTextCol.addView(TextView(host).apply {
+            text = "Get notified when it's time to study"
+            textSize = 11f
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+        })
+        reminderHeaderRow.addView(reminderTextCol)
+
+        val reminderSwitch = SwitchMaterial(host).apply {
+            isChecked = reminderEnabled
+        }
+        reminderHeaderRow.addView(reminderSwitch)
+        reminderCard.addView(reminderHeaderRow)
+
+        fun formatReminderTime(h: Int, m: Int): String {
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, h)
+                set(Calendar.MINUTE, m)
+            }
+            return SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
+        }
+
+        val timePickerRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = if (reminderEnabled) View.VISIBLE else View.GONE
+            setPadding(0, dp(8), 0, dp(2))
+        }
+
+        val timePill = TextView(host).apply {
+            text = formatReminderTime(reminderHour, reminderMinute)
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(plannerPrimary)
+            background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 40), 12f)
+            val clockIcon = androidx.core.content.ContextCompat.getDrawable(host, R.drawable.ic_clock)?.mutate()?.apply {
+                setTint(plannerPrimary)
+                setBounds(0, 0, dp(15), dp(15))
+            }
+            setCompoundDrawables(clockIcon, null, null, null)
+            compoundDrawablePadding = dp(6)
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+            isClickable = true
+            setOnClickListener {
+                android.app.TimePickerDialog(
+                    host,
+                    { _, hourOfDay, minute ->
+                        reminderHour = hourOfDay
+                        reminderMinute = minute
+                        text = formatReminderTime(reminderHour, reminderMinute)
+                    },
+                    reminderHour,
+                    reminderMinute,
+                    false
+                ).show()
+            }
+        }
+        timePickerRow.addView(TextView(host).apply {
+            text = "Alert at: "
+            textSize = 12f
+            setTextColor(tintedColor(themeCoordinator.textColor, 180))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        timePickerRow.addView(timePill)
+        reminderCard.addView(timePickerRow)
+
+        reminderSwitch.setOnCheckedChangeListener { _, isChecked ->
+            reminderEnabled = isChecked
+            timePickerRow.visibility = if (isChecked) View.VISIBLE else View.GONE
+        }
+
+        inputsBox.addView(reminderCard)
 
         scrollContainer.addView(inputsBox)
         content.addView(scrollContainer)
 
         val btnRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(6), 0, 0)
         }
+        val deleteGoalBtn = Button(host).apply {
+            text = "Delete"
+            setTextColor(Color.parseColor("#EF4444"))
+            background = null
+            setOnClickListener {
+                dialog.dismiss()
+                showConfirmDialog(
+                    title = "Delete Goal?",
+                    message = "Are you sure you want to remove '${goal.title}' from your planner?"
+                ) {
+                    val currentGoals = loadSessionGoalsFromJson(host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("session_goals_json", "[]") ?: "[]").toMutableList()
+                    val updated = currentGoals.filter { it.id != goal.id }
+                    saveSessionGoalsToJson(updated)
+                    GoalReminderScheduler.cancelGoalReminder(host, goal.id)
+                    PlannerHistoryManager.snapshotToday(host, updated)
+                    refreshStatsPanel()
+                }
+            }
+        }
+        btnRow.addView(deleteGoalBtn)
+
+        val spacer = View(host).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) }
+        btnRow.addView(spacer)
+
         btnRow.addView(Button(host).apply {
             text = "Cancel"
             setTextColor(themeCoordinator.textColor)
@@ -3527,8 +4692,29 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     val idx = currentGoals.indexOfFirst { it.id == goal.id }
                     if (idx >= 0) {
                         val oldG = currentGoals[idx]
-                        currentGoals[idx] = PlannerGoal(id = oldG.id, title = newTitle, note = newNote, targetMinutes = newTargetMins, completed = oldG.completed, checkedAt = oldG.checkedAt, createdAt = oldG.createdAt, subjectId = selectedSubjectId)
+                        val scheduledList = if (scheduleEnabled && selectedDays.isNotEmpty() && selectedDays.size < 7) selectedDays.sorted() else emptyList()
+                        val updatedGoal = PlannerGoal(
+                            id = oldG.id,
+                            title = newTitle,
+                            note = newNote,
+                            targetMinutes = newTargetMins,
+                            completed = oldG.completed,
+                            checkedAt = oldG.checkedAt,
+                            createdAt = oldG.createdAt,
+                            subjectId = if (subjectEnabled) selectedSubjectId else null,
+                            subTopic = if (subjectEnabled) selectedSubTopic else null,
+                            scheduledDays = scheduledList,
+                            reminderEnabled = reminderEnabled,
+                            reminderHour = reminderHour,
+                            reminderMinute = reminderMinute
+                        )
+                        currentGoals[idx] = updatedGoal
                         saveSessionGoalsToJson(currentGoals)
+                        if (reminderEnabled && !oldG.completed) {
+                            GoalReminderScheduler.scheduleGoalReminder(host, updatedGoal)
+                        } else {
+                            GoalReminderScheduler.cancelGoalReminder(host, oldG.id)
+                        }
                         refreshStatsPanel()
                     }
                 }
@@ -3540,7 +4726,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         dialog.setContentView(content)
         dialog.window?.apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-            setLayout((host.resources.displayMetrics.widthPixels * 0.90f).toInt(), (host.resources.displayMetrics.heightPixels * 0.80f).toInt().coerceAtMost(android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+            setLayout((host.resources.displayMetrics.widthPixels * 0.90f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         dialog.show()
     }
@@ -4005,30 +5191,94 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
 
             fun openSubjectPickerMenu() {
-                val popup = android.widget.PopupMenu(host, subjectSelectBtn)
-                for (i in availableSubjects.indices) {
-                    val s = availableSubjects[i]
-                    popup.menu.add(0, i, i, "${s.iconEmoji} ${s.name}")
+                val dialog = Dialog(host)
+                dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+                val dialogLayout = LinearLayout(host).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = themeCoordinator.createDialogBackground(20f)
+                    setPadding(dp(18), dp(18), dp(18), dp(16))
                 }
-                popup.menu.add(0, 9999, 9999, "+ Add New Subject...")
-                popup.setOnMenuItemClickListener { menuItem ->
-                    if (menuItem.itemId == 9999) {
+                dialogLayout.addView(TextView(host).apply {
+                    text = "Select Subject"
+                    setTextColor(themeCoordinator.textColor)
+                    textSize = 16f
+                    typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    setPadding(0, 0, 0, dp(12))
+                })
+
+                val scroll = ScrollView(host).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+                    isVerticalScrollBarEnabled = false
+                }
+                val itemsList = LinearLayout(host).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
+
+                for (s in availableSubjects) {
+                    val isCur = s.id == chosenSubId
+                    val item = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = if (isCur) {
+                            themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
+                        } else {
+                            rippleBackground(tintedColor(themeCoordinator.textColor, 15))
+                        }
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 0, 0, dp(6))
+                        }
+                        isClickable = true
+                        setOnClickListener {
+                            chosenSubId = s.id
+                            updateSubjectLabel()
+                            dialog.dismiss()
+                        }
+                    }
+                    item.addView(TextView(host).apply {
+                        text = "${s.iconEmoji}  ${s.name}"
+                        setTextColor(if (isCur) Color.WHITE else themeCoordinator.textColor)
+                        textSize = 14f
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = isCur)
+                    })
+                    itemsList.addView(item)
+                }
+
+                val addRow = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 12f)
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, dp(4), 0, dp(6))
+                    }
+                    isClickable = true
+                    setOnClickListener {
+                        dialog.dismiss()
                         showAddCustomSubjectDialog { newSub ->
                             availableSubjects.clear()
                             availableSubjects.addAll(SubjectTagManager.getAllSubjects(host))
                             chosenSubId = newSub.id
                             updateSubjectLabel()
                         }
-                    } else {
-                        val sel = availableSubjects.getOrNull(menuItem.itemId)
-                        if (sel != null) {
-                            chosenSubId = sel.id
-                            updateSubjectLabel()
-                        }
                     }
-                    true
                 }
-                popup.show()
+                addRow.addView(TextView(host).apply {
+                    text = "＋ Add New Subject..."
+                    setTextColor(themeCoordinator.primaryColor)
+                    textSize = 14f
+                    typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                })
+                itemsList.addView(addRow)
+                scroll.addView(itemsList)
+                dialogLayout.addView(scroll)
+
+                dialog.setContentView(dialogLayout)
+                dialog.window?.apply {
+                    setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+                    setLayout((host.resources.displayMetrics.widthPixels * 0.85f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+                }
+                dialog.show()
             }
 
             subjectSelectBtn.setOnClickListener { openSubjectPickerMenu() }

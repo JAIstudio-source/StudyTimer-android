@@ -36,8 +36,8 @@ android {
         minSdk = 28
         targetSdk = 34
         
-        versionCode = 43
-        versionName = "3.2.0"
+        versionCode = 45
+        versionName = "3.3.1"
 
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -62,9 +62,8 @@ android {
 
     buildTypes {
         getByName("debug") {
-            applicationIdSuffix = ".debug"
-            versionNameSuffix = "-debug"
-            manifestPlaceholders["appName"] = "StudyTimer (Debug)"
+            manifestPlaceholders["appName"] = "StudyTimer"
+            signingConfig = signingConfigs.getByName("release")
         }
 
         getByName("release") {
@@ -102,10 +101,11 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
-    // Credential Manager & Google Sign-In
+    // Credential Manager & Google Play Services Auth
     implementation("androidx.credentials:credentials:1.2.1")
     implementation("androidx.credentials:credentials-play-services-auth:1.2.1")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.0")
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
     implementation("androidx.browser:browser:1.8.0")
 
     testImplementation("junit:junit:4.13.2")

@@ -1,6 +1,8 @@
 package com.madeby.JAI
 
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.view.MotionEvent
@@ -10,6 +12,19 @@ import androidx.appcompat.app.AppCompatActivity
 class SplashActivity : AppCompatActivity() {
 
     private lateinit var videoView: VideoView
+
+    override fun attachBaseContext(newBase: Context) {
+        val config = Configuration(newBase.resources.configuration)
+        config.fontScale = config.fontScale.coerceIn(0.85f, 1.05f)
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
+    override fun applyOverrideConfiguration(overrideConfiguration: Configuration?) {
+        if (overrideConfiguration != null) {
+            overrideConfiguration.fontScale = overrideConfiguration.fontScale.coerceIn(0.85f, 1.05f)
+        }
+        super.applyOverrideConfiguration(overrideConfiguration)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

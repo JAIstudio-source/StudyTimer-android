@@ -243,10 +243,10 @@
     <string name="below_threshold">&lt; %1$s</string>
     <!-- Timer states -->
     <string name="break_prefix">Break: %1$s</string>
-    <string name="resume_deep_focus">Resume Studying</string>
-    <string name="take_a_break">Take a Break</string>
+    <string name="resume_deep_focus">Resume</string>
+    <string name="take_a_break">Break</string>
     <string name="ready_to_track">Ready when you are</string>
-    <string name="start_focus">Start Studying</string>
+    <string name="start_focus">Start</string>
     <string name="learning_time">Focus Time</string>
     <string name="break_in_progress">Break Time</string>
     <string name="paused">Paused</string>

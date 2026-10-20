@@ -188,20 +188,35 @@ class TimerService : Service() {
             )
         }
 
+        val activeSub = try {
+            SubjectTagManager.getSelectedSubject(this)
+        } catch (_: Exception) {
+            null
+        }
+        val subDisplayName = if (activeSub != null && activeSub.name.isNotBlank() && activeSub.id != "general") {
+            activeSub.name.trim()
+        } else {
+            ""
+        }
+
         val title = when (currentTimerState) {
             TimerState.STUDYING -> {
                 if (timerMode == "COUNTDOWN" && focusRemainingSecs < 0L) {
-                    "🔥 Overtime Focus"
+                    if (subDisplayName.isNotEmpty()) "🔥 Overtime Focus • $subDisplayName" else "🔥 Overtime Focus"
                 } else if (timerMode == "LECTURE" && lectureModeEnabled) {
                     val lid = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("active_lecture_subject_id", null)
                     val subName = if (lid != null) SubjectTagManager.resolveSubject(this, lid).name else ""
                     if (subName.isNotBlank()) "🎓 Class: $subName" else "🎓 Class in Session"
                 } else {
-                    getString(R.string.notif_title_studying)
+                    if (subDisplayName.isNotEmpty()) "📖 $subDisplayName" else getString(R.string.notif_title_studying)
                 }
             }
-            TimerState.BREAK -> getString(R.string.notif_title_break)
-            TimerState.PAUSED -> getString(R.string.notif_title_paused)
+            TimerState.BREAK -> {
+                if (subDisplayName.isNotEmpty()) "☕ Break • $subDisplayName" else getString(R.string.notif_title_break)
+            }
+            TimerState.PAUSED -> {
+                if (subDisplayName.isNotEmpty()) "⏸️ Paused • $subDisplayName" else getString(R.string.notif_title_paused)
+            }
             TimerState.LECTURE_ENDED -> "Class Ended"
             TimerState.IDLE -> "Class Schedule Ready"
         }
@@ -981,6 +996,13 @@ class TimerService : Service() {
                                 }
                                 serviceScope.launch {
                                     LeaderboardManager.syncStudyProgress(this@TimerService, chunk, isStudying = true, sub.name, sub.colorHex)
+                                    StudyRoomManager.updateRoomPresenceIfActive(
+                                        this@TimerService,
+                                        isStudying = true,
+                                        subject = sub.name,
+                                        colorHex = sub.colorHex,
+                                        elapsedSeconds = accumulatedStudy.toInt()
+                                    )
                                 }
                             }
                             if (timerMode == "COUNTDOWN" || (timerMode == "LECTURE" && lectureModeEnabled)) {

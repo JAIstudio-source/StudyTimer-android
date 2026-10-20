@@ -61,6 +61,7 @@ object ProfileSyncService {
 
         val rawUserId = AuthManager.getUserId(context)
         val userEmail = AuthManager.getUserEmail(context) ?: ""
+        val isLoggedIn = AuthManager.isLoggedIn(context) && !AuthManager.isGuest(context) && !rawUserId.isNullOrBlank()
         val userId = if (!rawUserId.isNullOrBlank()) {
             rawUserId
         } else {
@@ -73,8 +74,8 @@ object ProfileSyncService {
         var uploadedPublicPhotoUrl: String? = null
         val avatarFile = if (isPhotoChanged) LocalAvatarManager.getAvatarFile(context) else null
 
-        // Step 2: If photo was actually changed, upload compressed image to Supabase Storage
-        if (isPhotoChanged && avatarFile != null && avatarFile.exists() && avatarFile.length() > 0) {
+        // Step 2: If photo was changed AND user is authenticated, upload compressed image to Supabase Storage
+        if (isLoggedIn && isPhotoChanged && avatarFile != null && avatarFile.exists() && avatarFile.length() > 0) {
             try {
                 uploadedPublicPhotoUrl = uploadAvatarToSupabaseStorage(userId, avatarFile)
             } catch (e: Exception) {
@@ -94,11 +95,11 @@ object ProfileSyncService {
             fallbackPresetEmoji
         }
 
-        val newStatus = if (isNameChanged || isPhotoChanged) ModerationStatus.PENDING_APPROVAL else currentProfile.moderationStatus
-        val pendingName = if (isNameChanged) displayName.trim() else null
+        val newStatus = if (isLoggedIn && (isNameChanged || isPhotoChanged)) ModerationStatus.PENDING_APPROVAL else currentProfile.moderationStatus
+        val pendingName = if (isLoggedIn && isNameChanged) displayName.trim() else null
 
         val updatedProfile = currentProfile.copy(
-            displayName = if (isNameChanged) currentProfile.displayName else displayName.trim(),
+            displayName = if (isLoggedIn && isNameChanged) currentProfile.displayName else displayName.trim(),
             pendingDisplayName = pendingName,
             bio = bio.trim().take(150),
             targetExam = targetExam.trim().take(40),
@@ -106,7 +107,7 @@ object ProfileSyncService {
             avatarPresetId = avatarPresetId,
             avatarUrl = effectivePublicAvatar,
             moderationStatus = newStatus,
-            rejectionReason = if (isNameChanged) null else currentProfile.rejectionReason,
+            rejectionReason = if (isLoggedIn && isNameChanged) null else currentProfile.rejectionReason,
             updatedAt = System.currentTimeMillis()
         )
 
@@ -117,7 +118,6 @@ object ProfileSyncService {
         LocalAvatarManager.markAvatarPendingUpload(context, false)
 
         // Step 3: Push to Supabase Cloud user_sync_data (if logged in)
-        val isLoggedIn = AuthManager.isLoggedIn(context) && !rawUserId.isNullOrBlank()
         if (isLoggedIn) {
             try {
                 val supabaseUrl = BuildConfig.SUPABASE_URL
@@ -174,8 +174,8 @@ object ProfileSyncService {
             }
         }
 
-        // Step 4: Direct guaranteed Telegram Bot Dispatch (Only send changed info; photo only if changed)
-        val requiresModeration = isNameChanged || isBioChanged || isPhotoChanged
+        // Step 4: Direct guaranteed Telegram Bot Dispatch (Only for logged-in authenticated users)
+        val requiresModeration = isLoggedIn && (isNameChanged || isBioChanged || isPhotoChanged)
         if (requiresModeration) {
             try {
                 sendDirectTelegramApprovalCard(
@@ -195,14 +195,14 @@ object ProfileSyncService {
             }
         }
 
-        val successMsg = if (isNameChanged || isPhotoChanged) {
+        val successMsg = if (isLoggedIn && (isNameChanged || isPhotoChanged)) {
             "✓ Profile submitted for review! Changes will update shortly."
         } else {
             "✓ Profile updated successfully."
         }
 
         return@withContext SubmissionResult.Success(
-            isAutoApproved = !isNameChanged && !isPhotoChanged,
+            isAutoApproved = !isLoggedIn || (!isNameChanged && !isPhotoChanged),
             message = successMsg
         )
     }

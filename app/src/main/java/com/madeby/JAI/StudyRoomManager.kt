@@ -35,6 +35,7 @@ object StudyRoomManager {
     private const val TAG = "StudyRoomManager"
     private const val PREFS_NAME = "studytimer_study_rooms"
     private const val KEY_ACTIVE_ROOM = "active_room_json"
+    private const val KEY_LAST_JOINED_ROOM = "last_joined_room_json"
     private const val KEY_USER_ROOMS = "user_created_rooms_json"
     private const val KEY_DEV_MOCK_ACTIVE = "dev_mock_active"
     private const val KEY_DEV_MOCK_ROOMS = "dev_mock_rooms_json"
@@ -82,6 +83,25 @@ object StudyRoomManager {
         }
     }
 
+    fun getLastJoinedRoom(context: Context): StudyRoom? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString(KEY_LAST_JOINED_ROOM, null) ?: return null
+        return try {
+            val json = JSONObject(raw)
+            StudyRoom(
+                code = json.getString("code"),
+                name = json.getString("name"),
+                creatorName = json.optString("creatorName", "Student"),
+                memberCount = json.optInt("memberCount", 1),
+                category = json.optString("category", "General"),
+                isPrivate = json.optBoolean("isPrivate", false),
+                createdAt = json.optLong("createdAt", System.currentTimeMillis())
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun setActiveRoom(context: Context, room: StudyRoom?) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (room == null) {
@@ -96,7 +116,10 @@ object StudyRoomManager {
                 put("isPrivate", room.isPrivate)
                 put("createdAt", room.createdAt)
             }
-            prefs.edit().putString(KEY_ACTIVE_ROOM, json.toString()).apply()
+            prefs.edit()
+                .putString(KEY_ACTIVE_ROOM, json.toString())
+                .putString(KEY_LAST_JOINED_ROOM, json.toString())
+                .apply()
         }
     }
 
@@ -490,9 +513,11 @@ object StudyRoomManager {
 
         val target = if (category != "All") {
             openRooms.firstOrNull { it.category.equals(category, ignoreCase = true) }
+                ?: openRooms.maxByOrNull { it.memberCount }
                 ?: openRooms.firstOrNull()
         } else {
-            openRooms.firstOrNull()
+            // Prioritize most populated room to avoid fracturing small communities
+            openRooms.maxByOrNull { it.memberCount } ?: openRooms.firstOrNull()
         }
 
         if (target != null) {

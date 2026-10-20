@@ -211,4 +211,54 @@ object DialogFactory {
         dialog.show()
         return dialog
     }
+
+    /**
+     * Shows a standardized informative / alert dialog styled with glassmorphism.
+     */
+    fun showInfoDialog(
+        context: Context,
+        themeCoordinator: ThemeCoordinator,
+        title: String,
+        message: String,
+        buttonText: String = "OK"
+    ): Dialog {
+        val (dialog, root) = createBaseDialog(context, themeCoordinator)
+
+        root.addView(TextView(context).apply {
+            text = title
+            setTextColor(themeCoordinator.textColor)
+            textSize = 18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+
+        root.addView(TextView(context).apply {
+            text = message
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.85f
+            textSize = 13.5f
+            setPadding(0, dp(context, 10), 0, dp(context, 18))
+        })
+
+        val btnRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+
+        btnRow.addView(TextView(context).apply {
+            text = buttonText
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(dp(context, 18), dp(context, 10), dp(context, 18), dp(context, 10))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(context, 16).toFloat()
+                setColor(themeCoordinator.primaryColor)
+            }
+            setOnClickListener { dialog.dismiss() }
+        })
+
+        root.addView(btnRow)
+        dialog.show()
+        return dialog
+    }
 }

@@ -46,12 +46,12 @@ object TimerModeBottomSheet {
                 val corner = dp(24).toFloat()
                 cornerRadii = floatArrayOf(corner, corner, corner, corner, 0f, 0f, 0f, 0f)
                 val bgCol = if (isDark) {
-                    if (theme.activeBgMode == "ECLIPSE") 0xFF161922.toInt() else 0xFF12141C.toInt()
+                    if (theme.activeBgMode == "ECLIPSE") 0xF0101726.toInt() else 0xEE0D0F15.toInt()
                 } else {
-                    0xFFFFFFFF.toInt()
+                    0xF5FFFFFF.toInt()
                 }
                 setColor(bgCol)
-                setStroke(dp(1), if (isDark) 0xFF2A2E3D.toInt() else 0xFFE2E8F0.toInt())
+                setStroke(dp(1), if (isDark) 0x38FFFFFF.toInt() else 0x40CBD5E1.toInt())
             }
             setPadding(dp(20), dp(16), dp(20), dp(24))
         }
@@ -95,8 +95,17 @@ object TimerModeBottomSheet {
         headerRow.addView(closeBtn)
         root.addView(headerRow)
 
-        val scroll = ScrollView(activity).apply {
-            isVerticalScrollBarEnabled = false
+        val screenHeight = activity.resources.displayMetrics.heightPixels
+        val maxScrollHeight = (screenHeight * 0.72f).toInt().coerceIn(dp(360), dp(580))
+
+        val scroll = androidx.core.widget.NestedScrollView(activity).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                maxScrollHeight
+            )
         }
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -113,10 +122,10 @@ object TimerModeBottomSheet {
 
         var currentMode = sharedPrefs.getString("timer_mode", "SUBJECT") ?: "SUBJECT"
         val modes = listOf(
-            Triple("STOPWATCH", "⏱️ Stopwatch", "Continuous count-up focus timer without limits"),
-            Triple("SUBJECT", "📘 Subject Wise", "Track time tagged to specific subjects & topics"),
-            Triple("COUNTDOWN", "🍅 Pomodoro", "Structured study & break interval cycles"),
-            Triple("LECTURE", "🏛️ Lecture / Classes", "Sync with your custom class timetable")
+            Triple("STOPWATCH", "Stopwatch", "Continuous count-up focus timer without limits"),
+            Triple("SUBJECT", "Subject Wise", "Track time tagged to specific subjects & topics"),
+            Triple("COUNTDOWN", "Pomodoro", "Structured study & break interval cycles"),
+            Triple("LECTURE", "Lecture / Classes", "Sync with your custom class timetable")
         )
 
         val modePillsContainer = LinearLayout(activity).apply {
@@ -158,7 +167,13 @@ object TimerModeBottomSheet {
                         }
                         if (key == "COUNTDOWN") {
                             val pomoMins = sharedPrefs.safeLong("study_interval_minutes", 25L)
-                            editor.putLong("focus_countdown_secs", pomoMins * 60L)
+                            val workSecs = pomoMins * 60L
+                            editor.putLong("focus_countdown_secs", workSecs)
+                            editor.putLong("focus_remaining_secs", workSecs)
+                            if (activity.currentTimerState == TimerState.IDLE) {
+                                activity.focusCountdownSecs = workSecs
+                                activity.focusRemainingSecs = workSecs
+                            }
                         }
                         editor.apply()
                         refreshModes()
@@ -224,8 +239,8 @@ object TimerModeBottomSheet {
 
         for ((label, times) in presets) {
             val (workM, breakM) = times
-            val curStudyM = sharedPrefs.getInt("pomodoro_study_minutes", 25)
-            val curBreakM = sharedPrefs.getInt("pomodoro_break_minutes", 5)
+            val curStudyM = sharedPrefs.safeLong("study_interval_minutes", 25L).toInt()
+            val curBreakM = sharedPrefs.safeLong("break_interval_minutes", 5L).toInt()
             val isCurrentPreset = (curStudyM == workM && curBreakM == breakM)
 
             val presetBtn = TextView(activity).apply {
@@ -250,10 +265,25 @@ object TimerModeBottomSheet {
                 }
                 setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    val workSecs = workM * 60L
+                    val breakSecs = breakM * 60L
                     sharedPrefs.edit()
+                        .putString("timer_mode", "COUNTDOWN")
+                        .putString("timerMode", "COUNTDOWN")
+                        .putLong("study_interval_minutes", workM.toLong())
+                        .putLong("break_interval_minutes", breakM.toLong())
+                        .putLong("focus_countdown_secs", workSecs)
+                        .putLong("break_countdown_secs", breakSecs)
+                        .putLong("focus_remaining_secs", workSecs)
+                        .putLong("break_remaining_secs", breakSecs)
                         .putInt("pomodoro_study_minutes", workM)
                         .putInt("pomodoro_break_minutes", breakM)
                         .apply()
+                    activity.timerMode = "COUNTDOWN"
+                    if (activity.currentTimerState == TimerState.IDLE) {
+                        activity.focusCountdownSecs = workSecs
+                        activity.focusRemainingSecs = workSecs
+                    }
                     dialog.dismiss()
                     onModeChanged()
                 }
@@ -289,7 +319,7 @@ object TimerModeBottomSheet {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         flipCol.addView(TextView(activity).apply {
-            text = "📱 Flip-to-Focus Gesture"
+            text = "Flip-to-Focus Gesture"
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(textColor)
@@ -305,6 +335,10 @@ object TimerModeBottomSheet {
             isChecked = FlipToFocusManager.isEnabled(activity)
             setOnCheckedChangeListener { _, isChecked ->
                 FlipToFocusManager.setEnabled(activity, isChecked)
+                (activity as? MainActivity)?.let { mainActivity ->
+                    mainActivity.syncFlipToFocusState()
+                    mainActivity.tabPageCache.remove(mainActivity.settingsTabKey(AppSettingsTab.TIMER))
+                }
             }
         }
         flipRow.addView(flipSwitch)
@@ -328,7 +362,7 @@ object TimerModeBottomSheet {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         breakCol.addView(TextView(activity).apply {
-            text = "☕ Auto-Start Breaks"
+            text = "Auto-Start Breaks"
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(textColor)
@@ -351,6 +385,8 @@ object TimerModeBottomSheet {
 
         scroll.addView(content)
         root.addView(scroll)
+
+        FontStyleManager.applyRecursively(root)
 
         dialog.setContentView(root)
         dialog.window?.apply {

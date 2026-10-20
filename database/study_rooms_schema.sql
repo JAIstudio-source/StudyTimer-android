@@ -771,6 +771,135 @@ BEGIN
 END;
 $$;
 
+-- =========================================================================
+-- 11. Admin v2.0 Telemetry, Moderation & Anti-Cheat RPC Suite
+-- =========================================================================
+
+-- 11.1 Clustered Crash Summary RPC
+CREATE OR REPLACE FUNCTION public.admin_get_crash_summary(p_limit INT DEFAULT 20)
+RETURNS TABLE (
+    exception_type TEXT,
+    occurrences BIGINT,
+    affected_devices BIGINT,
+    latest_app_version TEXT,
+    last_crashed_at TIMESTAMPTZ
+)
+LANGUAGE sql
+SECURITY DEFINER
+AS $$
+    SELECT 
+        exception_type,
+        COUNT(*) AS occurrences,
+        COUNT(DISTINCT COALESCE(device_hardware_id, anonymous_id)) AS affected_devices,
+        MAX(app_version) AS latest_app_version,
+        MAX(created_at) AS last_crashed_at
+    FROM public.app_crash_reports
+    GROUP BY exception_type
+    ORDER BY occurrences DESC
+    LIMIT LEAST(GREATEST(COALESCE(p_limit, 20), 1), 100);
+$$;
+
+-- 11.2 Purge Ghost Installs (>14 days inactive, 0 study seconds)
+CREATE OR REPLACE FUNCTION public.admin_purge_ghost_cohorts(p_days_inactive INT DEFAULT 14)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_deleted_count INT;
+    v_cutoff_ms BIGINT;
+BEGIN
+    v_cutoff_ms := (EXTRACT(EPOCH FROM (NOW() - (p_days_inactive || ' days')::INTERVAL)) * 1000)::BIGINT;
+    
+    DELETE FROM public.app_user_cohorts
+    WHERE (total_study_secs IS NULL OR total_study_secs < 60)
+      AND (last_active_at IS NULL OR last_active_at <= v_cutoff_ms);
+    
+    GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
+    
+    RETURN jsonb_build_object(
+        'success', true,
+        'deleted_ghosts', v_deleted_count,
+        'cutoff_days', p_days_inactive
+    );
+END;
+$$;
+
+-- 11.3 Moderate User Profile & Sync with Leaderboard
+CREATE OR REPLACE FUNCTION public.admin_moderate_user_profile(
+    p_user_id TEXT,
+    p_new_status TEXT,
+    p_rejection_reason TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_status TEXT;
+    v_clean_name TEXT;
+BEGIN
+    v_status := LOWER(TRIM(p_new_status));
+    
+    IF v_status = 'rejected' THEN
+        v_clean_name := 'Student';
+    END IF;
+
+    UPDATE public.user_sync_data
+    SET profile_status = v_status,
+        user_name = COALESCE(v_clean_name, user_name),
+        pending_profile_json = NULL,
+        updated_at = (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+    WHERE user_id = p_user_id;
+
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User record not found in user_sync_data');
+    END IF;
+
+    -- Cascade to daily_leaderboard
+    UPDATE public.daily_leaderboard
+    SET user_name = COALESCE(v_clean_name, user_name),
+        is_banned = (v_status = 'banned')
+    WHERE user_id = p_user_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'user_id', p_user_id,
+        'profile_status', v_status,
+        'reason', p_rejection_reason
+    );
+END;
+$$;
+
+-- 11.4 Toggle Student Shadowban
+CREATE OR REPLACE FUNCTION public.admin_toggle_user_shadowban(
+    p_user_id TEXT,
+    p_is_banned BOOLEAN,
+    p_ban_reason TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    UPDATE public.daily_leaderboard
+    SET is_banned = p_is_banned
+    WHERE user_id = p_user_id;
+
+    UPDATE public.user_sync_data
+    SET profile_status = CASE WHEN p_is_banned THEN 'banned' ELSE 'approved' END,
+        updated_at = (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT
+    WHERE user_id = p_user_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'user_id', p_user_id,
+        'is_banned', p_is_banned,
+        'reason', p_ban_reason
+    );
+END;
+$$;
+
 -- Reload PostgREST Schema Cache
 NOTIFY pgrst, 'reload schema';
 

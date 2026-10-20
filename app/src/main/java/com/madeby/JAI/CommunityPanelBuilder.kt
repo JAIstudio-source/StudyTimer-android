@@ -23,6 +23,9 @@ import android.widget.TextView
 import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -41,14 +44,17 @@ class CommunityPanelBuilder(private val host: MainActivity) {
     private fun dp(v: Int): Int = (v * density).toInt()
 
     private val themeCoordinator get() = host.themeCoordinator
-    private var activeSegment = CommunitySegment.ROOMS
+    private var activeSegment = CommunitySegment.LEADERBOARD
     private var selectedCategory: String = "All"
     private val categories = listOf("All", "General", "Coding", "Exams", "Pomodoro", "Silent")
     private var isBrowsingExplore = false
     private var rootContentHost: FrameLayout? = null
     private var updateSegmentStylesFunc: (() -> Unit)? = null
+    private var roomPollingJob: Job? = null
 
     fun switchSegment(segment: CommunitySegment) {
+        roomPollingJob?.cancel()
+        roomPollingJob = null
         activeSegment = segment
         updateSegmentStylesFunc?.invoke()
         val ch = rootContentHost ?: return
@@ -58,9 +64,10 @@ class CommunityPanelBuilder(private val host: MainActivity) {
         } else {
             renderLeaderboardView(ch)
         }
+        FontStyleManager.applyRecursively(ch)
     }
 
-    fun build(target: ViewGroup = host.panelContainer, initialSegment: CommunitySegment = CommunitySegment.ROOMS) {
+    fun build(target: ViewGroup = host.panelContainer, initialSegment: CommunitySegment = CommunitySegment.LEADERBOARD) {
         activeSegment = initialSegment
 
         val root = LinearLayout(host).apply {
@@ -163,13 +170,14 @@ class CommunityPanelBuilder(private val host: MainActivity) {
             }
         }
 
-        switcherContainer.addView(roomsTab)
         switcherContainer.addView(leaderboardTab)
+        switcherContainer.addView(roomsTab)
         root.addView(switcherContainer)
         root.addView(contentHost)
 
         renderContent()
 
+        FontStyleManager.applyRecursively(root)
         target.removeAllViews()
         target.addView(root)
     }
@@ -192,7 +200,9 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
         }
 
         val content = LinearLayout(host).apply {
@@ -244,6 +254,8 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(12), dp(6), dp(12), dp(6))
                 setOnClickListener {
                     CoroutineScope(Dispatchers.Main).launch {
+                        roomPollingJob?.cancel()
+                        roomPollingJob = null
                         StudyRoomManager.leaveRoom(host, activeRoom.code)
                         AppToast.show(host, "Left study room")
                         renderRoomsView(container)
@@ -368,6 +380,8 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                     leftMargin = dp(6)
                 }
                 setOnClickListener {
+                    roomPollingJob?.cancel()
+                    roomPollingJob = null
                     isBrowsingExplore = true
                     renderRoomsView(container)
                 }
@@ -396,7 +410,24 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(10), dp(4), dp(10), dp(4))
                 visibility = View.GONE
             }
+
+            val refreshBtn = TextView(host).apply {
+                text = "↻ Refresh"
+                textSize = 11.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(primary)
+                background = themeCoordinator.createGlassChip(host.tintedColor(primary, 25), 8f)
+                setPadding(dp(8), dp(3), dp(8), dp(3))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    rightMargin = dp(8)
+                }
+            }
+
             membersHeaderRow.addView(membersLabel)
+            membersHeaderRow.addView(refreshBtn)
             membersHeaderRow.addView(activeCountBadge)
             roomCard.addView(membersHeaderRow)
 
@@ -445,90 +476,23 @@ class CommunityPanelBuilder(private val host: MainActivity) {
             })
             content.addView(focusCard)
 
-            // Load real members asynchronously
-            CoroutineScope(Dispatchers.Main).launch {
-                val result = StudyRoomManager.fetchRoomMembers(host, activeRoom)
-                val rawMembers = result.getOrElse { emptyList() }
-                // Sort: self first, then active studying peers, then resting peers
-                val members = rawMembers.sortedWith(
-                    compareByDescending<StudyRoomMember> { it.isSelf }
-                        .thenByDescending { it.isStudying }
-                )
-                val studyingCount = members.count { it.isStudying }
-                membersLabel.text = "Study Partners (${members.size})"
-                if (studyingCount > 0) {
-                    activeCountBadge.text = "$studyingCount Studying"
-                    activeCountBadge.visibility = View.VISIBLE
-                } else {
-                    activeCountBadge.visibility = View.GONE
-                }
+            refreshBtn.setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                refreshMembersList(activeRoom, membersContainer, membersLabel, activeCountBadge, forceRefresh = true)
+                AppToast.show(host, "Refreshed live study partners")
+            }
 
-                membersContainer.removeAllViews()
+            // Initial load of study partners
+            refreshMembersList(activeRoom, membersContainer, membersLabel, activeCountBadge, forceRefresh = false)
 
-                for (m in members) {
-                    val memberRow = LinearLayout(host).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(dp(8), dp(8), dp(8), dp(8))
-                        val outVal = android.util.TypedValue()
-                        host.theme.resolveAttribute(android.R.attr.selectableItemBackground, outVal, true)
-                        setBackgroundResource(outVal.resourceId)
-                        isClickable = true
-                        isFocusable = true
-                        setOnClickListener {
-                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                            showMemberProfileDialog(m)
-                        }
+            // Live presence polling loop while this room is open (every 12 seconds)
+            roomPollingJob?.cancel()
+            roomPollingJob = CoroutineScope(Dispatchers.Main).launch {
+                while (isActive && activeSegment == CommunitySegment.ROOMS && !isBrowsingExplore && StudyRoomManager.getActiveRoom(host)?.code == activeRoom.code) {
+                    delay(12_000L)
+                    if (isActive && activeSegment == CommunitySegment.ROOMS && !isBrowsingExplore) {
+                        refreshMembersList(activeRoom, membersContainer, membersLabel, activeCountBadge, forceRefresh = true)
                     }
-
-                    val avatar = TextView(host).apply {
-                        text = m.avatarEmoji
-                        textSize = 14f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        setTextColor(if (isDark) Color.WHITE else 0xFF1E293B.toInt())
-                        gravity = Gravity.CENTER
-                        background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(if (isDark) 0xFF334155.toInt() else 0xFFE2E8F0.toInt())
-                        }
-                        layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
-                            rightMargin = dp(10)
-                        }
-                    }
-                    memberRow.addView(avatar)
-
-                    val infoCol = LinearLayout(host).apply {
-                        orientation = LinearLayout.VERTICAL
-                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                    }
-                    infoCol.addView(TextView(host).apply {
-                        val cleanName = m.displayName.replace("(You)", "").trim()
-                        text = if (m.isSelf) "$cleanName (You)" else cleanName
-                        textSize = 13.5f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        setTextColor(textColor)
-                    })
-                    infoCol.addView(TextView(host).apply {
-                        val durationH = m.elapsedMinutes / 60
-                        val durationM = m.elapsedMinutes % 60
-                        val durStr = if (durationH > 0) "${durationH}h ${durationM}m" else "${durationM}m"
-                        val sub = m.currentSubject ?: "Focusing"
-                        text = "$durStr today • $sub"
-                        textSize = 11.5f
-                        setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
-                    })
-                    memberRow.addView(infoCol)
-
-                    val statusDot = TextView(host).apply {
-                        text = if (m.isStudying) "Studying" else "Resting"
-                        textSize = 11f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                        setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
-                        background = themeCoordinator.createGlassChip(host.tintedColor(textColor, 14), 8f)
-                        setPadding(dp(8), dp(3), dp(8), dp(3))
-                    }
-                    memberRow.addView(statusDot)
-                    membersContainer.addView(memberRow)
                 }
             }
 
@@ -839,6 +803,77 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 setTextColor(primary)
             })
             content.addView(miniLeaderboard)
+        }
+
+        // Quick Rejoin Last Room Card (If available and user is not in an active room)
+        val lastRoom = StudyRoomManager.getLastJoinedRoom(host)
+        if (activeRoom == null && lastRoom != null) {
+            val quickRejoinCard = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = themeCoordinator.createCardBackground()
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(12)
+                }
+            }
+
+            val rejoinCol = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            rejoinCol.addView(TextView(host).apply {
+                text = "RECENT STUDY ROOM"
+                textSize = 10f
+                letterSpacing = 0.12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(primary)
+            })
+            rejoinCol.addView(TextView(host).apply {
+                text = lastRoom.name
+                textSize = 14.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(textColor)
+            })
+            rejoinCol.addView(TextView(host).apply {
+                text = "#${lastRoom.code} • ${lastRoom.category}"
+                textSize = 11.5f
+                alpha = 0.7f
+                setTextColor(textColor)
+            })
+            quickRejoinCard.addView(rejoinCol)
+
+            val rejoinBtn = TextView(host).apply {
+                text = "Rejoin"
+                textSize = 12.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(primary)
+                }
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    ensureLoggedIn("rejoin this study room") {
+                        CoroutineScope(Dispatchers.Main).launch {
+                            val joinRes = StudyRoomManager.joinRoom(host, lastRoom.code)
+                            if (joinRes.isSuccess) {
+                                AppToast.show(host, "Rejoined ${lastRoom.name}")
+                                isBrowsingExplore = false
+                                renderRoomsView(container)
+                            } else {
+                                AppToast.show(host, "Could not rejoin: ${joinRes.exceptionOrNull()?.message ?: "Error"}")
+                            }
+                        }
+                    }
+                }
+            }
+            quickRejoinCard.addView(rejoinBtn)
+            content.addView(quickRejoinCard)
         }
 
         // Section: Category Filter Chips Row
@@ -1865,6 +1900,54 @@ class CommunityPanelBuilder(private val host: MainActivity) {
             dialogRoot.addView(editProfileBtn)
         }
 
+        if (!isSelf) {
+            val cheerLabel = TextView(host).apply {
+                text = "Cheer On Study Partner"
+                textSize = 11.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(primary)
+                setPadding(0, 0, 0, dp(8))
+            }
+            dialogRoot.addView(cheerLabel)
+
+            val cheerRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(14)
+                }
+            }
+
+            fun addCheerBtn(label: String, cheerText: String) {
+                val btn = TextView(host).apply {
+                    text = label
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(textColor)
+                    background = themeCoordinator.createGlassChip(host.tintedColor(primary, 30), 10f)
+                    setPadding(dp(10), dp(8), dp(10), dp(8))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        setMargins(dp(3), 0, dp(3), 0)
+                    }
+                    gravity = Gravity.CENTER
+                    setOnClickListener {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        dialog.dismiss()
+                        AppToast.show(host, "$cheerText sent to ${m.displayName}! 🎉")
+                    }
+                }
+                cheerRow.addView(btn)
+            }
+
+            addCheerBtn("👏 High Five", "High five")
+            addCheerBtn("🔥 Keep Going", "Motivation")
+            addCheerBtn("☕ Coffee", "Coffee break cheer")
+            dialogRoot.addView(cheerRow)
+        }
+
         val closeBtn = Button(host).apply {
             text = "Close"
             setTextColor(Color.WHITE)
@@ -1898,6 +1981,104 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 setColor(LocalAvatarManager.getGoogleAvatarColor(m.displayName))
             }
             layoutParams = FrameLayout.LayoutParams(sizePx, sizePx, Gravity.CENTER)
+        }
+    }
+    private fun refreshMembersList(
+        room: StudyRoom,
+        membersContainer: LinearLayout,
+        membersLabel: TextView,
+        activeCountBadge: TextView,
+        forceRefresh: Boolean = false
+    ) {
+        val isDark = themeCoordinator.isDarkMode()
+        val textColor = themeCoordinator.textColor
+
+        CoroutineScope(Dispatchers.Main).launch {
+            val result = StudyRoomManager.fetchRoomMembers(host, room, forceRefresh = forceRefresh)
+            val rawMembers = result.getOrElse { emptyList() }
+            val members = rawMembers.sortedWith(
+                compareByDescending<StudyRoomMember> { it.isSelf }
+                    .thenByDescending { it.isStudying }
+            )
+            val studyingCount = members.count { it.isStudying }
+            membersLabel.text = "Study Partners (${members.size})"
+            if (studyingCount > 0) {
+                activeCountBadge.text = "$studyingCount Studying"
+                activeCountBadge.visibility = View.VISIBLE
+            } else {
+                activeCountBadge.visibility = View.GONE
+            }
+
+            membersContainer.removeAllViews()
+
+            for (m in members) {
+                val memberRow = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    val outVal = android.util.TypedValue()
+                    host.theme.resolveAttribute(android.R.attr.selectableItemBackground, outVal, true)
+                    setBackgroundResource(outVal.resourceId)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        showMemberProfileDialog(m)
+                    }
+                }
+
+                val avatar = TextView(host).apply {
+                    text = m.avatarEmoji
+                    textSize = 14f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(if (isDark) Color.WHITE else 0xFF1E293B.toInt())
+                    gravity = Gravity.CENTER
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(if (isDark) 0xFF334155.toInt() else 0xFFE2E8F0.toInt())
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                        rightMargin = dp(10)
+                    }
+                }
+                memberRow.addView(avatar)
+
+                val infoCol = LinearLayout(host).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                infoCol.addView(TextView(host).apply {
+                    val cleanName = m.displayName.replace("(You)", "").trim()
+                    text = if (m.isSelf) "$cleanName (You)" else cleanName
+                    textSize = 13.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(textColor)
+                })
+                infoCol.addView(TextView(host).apply {
+                    val durationH = m.elapsedMinutes / 60
+                    val durationM = m.elapsedMinutes % 60
+                    val durStr = if (durationH > 0) "${durationH}h ${durationM}m" else "${durationM}m"
+                    val sub = m.currentSubject ?: "Focusing"
+                    text = "$durStr today • $sub"
+                    textSize = 11.5f
+                    setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
+                })
+                memberRow.addView(infoCol)
+
+                val statusDot = TextView(host).apply {
+                    text = if (m.isStudying) "Studying" else "Resting"
+                    textSize = 11f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    setTextColor(if (m.isStudying) 0xFF10B981.toInt() else (if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt()))
+                    background = themeCoordinator.createGlassChip(
+                        if (m.isStudying) 0x2210B981.toInt() else host.tintedColor(textColor, 14),
+                        8f
+                    )
+                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                }
+                memberRow.addView(statusDot)
+                membersContainer.addView(memberRow)
+            }
         }
     }
 }

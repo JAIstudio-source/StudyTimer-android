@@ -11,6 +11,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
@@ -60,7 +61,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             val container = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
                 background = themeCoordinator.createDialogBackground(28f)
-                setPadding(dp(22), dp(22), dp(22), dp(20))
+                setPadding(dp(22), dp(22), dp(22), dp(24))
                 layoutParams = LinearLayout.LayoutParams(
                     (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(420)),
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -78,7 +79,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             container.addView(title)
 
             val subtitle = TextView(host).apply {
-                text = "Tap to select · Hold to edit or delete"
+                text = "Tap to select • Tap 📖 Chapters to manage topics"
                 textSize = 12f
                 setTextColor(themeCoordinator.textColor)
                 alpha = 0.5f
@@ -87,7 +88,14 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
             container.addView(subtitle)
 
-            val scrollContainer = ScrollView(host).apply {
+            val maxScrollHeight = (host.resources.displayMetrics.heightPixels * 0.42f).toInt()
+            val scrollContainer = object : ScrollView(host) {
+                override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                    val customHeightSpec = View.MeasureSpec.makeMeasureSpec(maxScrollHeight, View.MeasureSpec.AT_MOST)
+                    super.onMeasure(widthMeasureSpec, customHeightSpec)
+                }
+            }.apply {
+                isFillViewport = true
                 isVerticalScrollBarEnabled = true
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 layoutParams = LinearLayout.LayoutParams(
@@ -107,21 +115,31 @@ class SubjectDialogHelper(private val host: MainActivity) {
             val currentSelectedSubj = SubjectTagManager.getSelectedSubject(host)
             val subjectsList = SubjectTagManager.getAllSubjects(host)
 
+            fun isLightColor(color: Int): Boolean {
+                val r = Color.red(color) / 255.0
+                val g = Color.green(color) / 255.0
+                val b = Color.blue(color) / 255.0
+                val lum = 0.299 * r + 0.587 * g + 0.114 * b
+                return lum > 0.65
+            }
+
             fun createSubjectCard(subj: SubjectTag, isSelected: Boolean): View {
+                val baseColor = try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                val contentTextColor = if (isLightColor(baseColor)) 0xFF0F172A.toInt() else Color.WHITE
                 return Button(host).apply {
-                    text = if (isSelected) "✓ ${subj.iconEmoji} ${subj.name}" else "${subj.iconEmoji} ${subj.name}"
+                    text = if (isSelected) "✓ ${subj.name}" else subj.name
                     textSize = 12.5f
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(Color.WHITE)
-                    setPadding(dp(8), dp(10), dp(8), dp(10))
+                    isAllCaps = false
+                    typeface = themeCoordinator.getAppTypeface(isBold = true)
+                    setTextColor(contentTextColor)
+                    setPadding(dp(8), dp(6), dp(8), dp(6))
                     background = GradientDrawable().apply {
-                        val baseColor = try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
                         setColor(baseColor)
-                        cornerRadius = dp(12).toFloat()
+                        cornerRadius = dp(14).toFloat()
                         if (isSelected) {
-                            setStroke(dp(2), Color.WHITE)
+                            setStroke(dp(2), if (isLightColor(baseColor)) 0xFF0F172A.toInt() else Color.WHITE)
                         }
                     }
                     layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
@@ -137,9 +155,16 @@ class SubjectDialogHelper(private val host: MainActivity) {
                             StudyWidgetProvider.refresh(host)
                             host.invalidateStatsCache()
                         }
+                        val subTopics = SubjectTagManager.getSubTopics(host, subj.id)
                         dialog.dismiss()
-                        host.navigateToPanel(AppPanel.FOCUS)
-                        AppToast.show(host, "Subject selected: ${subj.name}")
+                        if (subTopics.isNotEmpty()) {
+                            showSubTopicPickerDialog(subj) {
+                                host.navigateToPanel(AppPanel.FOCUS)
+                            }
+                        } else {
+                            host.navigateToPanel(AppPanel.FOCUS)
+                            AppToast.show(host, "Subject selected: ${subj.name}")
+                        }
                     }
                     setOnLongClickListener {
                         dialog.dismiss()
@@ -190,21 +215,230 @@ class SubjectDialogHelper(private val host: MainActivity) {
             scrollContainer.addView(subjectsListContainer)
             container.addView(scrollContainer)
 
-            val addBtn = Button(host).apply {
-                text = "Add Custom Subject"
-                textSize = 13.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(themeCoordinator.primaryColor)
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 14f)
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            val bottomActionRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
                     setMargins(0, dp(14), 0, 0)
                 }
+            }
+
+            val addBtn = TextView(host).apply {
+                text = "+ Add"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                isSingleLine = true
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.primaryColor)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 14f)
+                layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                    setMargins(0, 0, dp(3), 0)
+                }
+                isClickable = true
+                isFocusable = true
                 setOnClickListener {
                     dialog.dismiss()
                     showAddCustomSubjectDialog()
                 }
             }
-            container.addView(addBtn)
+            bottomActionRow.addView(addBtn)
+
+            val chaptersBtn = TextView(host).apply {
+                text = "📖 Chapters"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                isSingleLine = true
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.accentColor)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, 35), 14f)
+                layoutParams = LinearLayout.LayoutParams(0, dp(42), 1.15f).apply {
+                    setMargins(dp(3), 0, dp(3), 0)
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    showSubTopicPickerDialog(currentSelectedSubj) {
+                        host.navigateToPanel(AppPanel.FOCUS)
+                    }
+                }
+            }
+            bottomActionRow.addView(chaptersBtn)
+
+            val manageBtn = TextView(host).apply {
+                text = "Manage"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                isSingleLine = true
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                includeFontPadding = false
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.textColor)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 14f)
+                layoutParams = LinearLayout.LayoutParams(0, dp(42), 0.95f).apply {
+                    setMargins(dp(3), 0, 0, 0)
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    dialog.dismiss()
+                    showManageSubjectsDialog()
+                }
+            }
+            bottomActionRow.addView(manageBtn)
+
+            container.addView(bottomActionRow)
+
+            dialog.setContentView(container)
+            dialog.show()
+        } catch (_: Exception) {}
+    }
+
+    fun showManageSubjectsDialog() {
+        try {
+            val dialog = Dialog(host)
+            dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+            val container = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                background = themeCoordinator.createDialogBackground(26f)
+                setPadding(dp(20), dp(20), dp(20), dp(18))
+                layoutParams = LinearLayout.LayoutParams(
+                    (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(400)),
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+
+            val title = TextView(host).apply {
+                text = "Manage Subjects"
+                textSize = 17f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.textColor)
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(4))
+            }
+            container.addView(title)
+
+            val subtitle = TextView(host).apply {
+                text = "Edit name, color, chapters, or remove subjects"
+                textSize = 12f
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.55f
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(12))
+            }
+            container.addView(subtitle)
+
+            val scrollContainer = ScrollView(host).apply {
+                isFillViewport = true
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
+                    setMargins(0, 0, 0, dp(10))
+                }
+            }
+
+            val listContainer = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+
+            val subjectsList = SubjectTagManager.getAllSubjects(host)
+            for (subj in subjectsList) {
+                val row = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 18), 12f)
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, dp(3), 0, dp(3))
+                    }
+                }
+
+                val baseColor = try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                val colorDot = View(host).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(baseColor)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(12), dp(12)).apply {
+                        rightMargin = dp(10)
+                    }
+                }
+                row.addView(colorDot)
+
+                val nameView = TextView(host).apply {
+                    text = subj.name
+                    textSize = 13.5f
+                    typeface = themeCoordinator.getAppTypeface(isBold = true)
+                    setTextColor(themeCoordinator.textColor)
+                    setSingleLine(true)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                row.addView(nameView)
+
+                val editBtn = TextView(host).apply {
+                    text = "Edit"
+                    textSize = 12.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.primaryColor)
+                    setPadding(dp(10), dp(4), dp(8), dp(4))
+                    setOnClickListener {
+                        dialog.dismiss()
+                        showEditSubjectDialog(subj) {
+                            showManageSubjectsDialog()
+                        }
+                    }
+                }
+                row.addView(editBtn)
+
+                val deleteBtn = TextView(host).apply {
+                    text = "Delete"
+                    textSize = 12.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(Color.parseColor("#EF4444"))
+                    setPadding(dp(8), dp(4), dp(4), dp(4))
+                    setOnClickListener {
+                        dialog.dismiss()
+                        showDeleteSubjectConfirmDialog(subj)
+                    }
+                }
+                row.addView(deleteBtn)
+
+                listContainer.addView(row)
+            }
+
+            scrollContainer.addView(listContainer)
+            container.addView(scrollContainer)
+
+            val closeBtn = Button(host).apply {
+                text = "Done"
+                textSize = 13.5f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.textColor)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 14f)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
+                    setMargins(0, dp(6), 0, 0)
+                }
+                setOnClickListener {
+                    dialog.dismiss()
+                    showSubjectPickerDialog()
+                }
+            }
+            container.addView(closeBtn)
 
             dialog.setContentView(container)
             dialog.show()
@@ -237,8 +471,24 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
             container.addView(title)
 
+            val subTopicsBtn = Button(host).apply {
+                text = "Chapters & Sub-Topics"
+                textSize = 13.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(themeCoordinator.textColor)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, dp(10))
+                }
+                setOnClickListener {
+                    dialog.dismiss()
+                    showSubTopicPickerDialog(subj)
+                }
+            }
+            container.addView(subTopicsBtn)
+
             val editBtn = Button(host).apply {
-                text = "✏️ Edit Name, Emoji & Color"
+                text = "Edit Subject"
                 textSize = 13.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setTextColor(Color.WHITE)
@@ -260,7 +510,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             if (subj.id != "general") {
                 val deleteBtn = Button(host).apply {
-                    text = "🗑️ Delete Subject"
+                    text = "Delete Subject"
                     textSize = 13.5f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(0xFFEF4444.toInt())
@@ -273,6 +523,230 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 }
                 container.addView(deleteBtn)
             }
+
+            dialog.setContentView(container)
+            dialog.show()
+        } catch (_: Exception) {}
+    }
+
+    fun showSubTopicPickerDialog(subj: SubjectTag, onSelected: ((String?) -> Unit)? = null) {
+        try {
+            val dialog = Dialog(host)
+            dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+            val container = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                background = themeCoordinator.createDialogBackground(26f)
+                setPadding(dp(22), dp(22), dp(22), dp(20))
+                layoutParams = LinearLayout.LayoutParams(
+                    (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(400)),
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+
+            val title = TextView(host).apply {
+                text = "${subj.iconEmoji} ${subj.name}"
+                textSize = 17.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(themeCoordinator.textColor)
+                gravity = Gravity.CENTER
+            }
+            container.addView(title)
+
+            val subtitle = TextView(host).apply {
+                text = "Select Chapter / Sub-Topic"
+                textSize = 12.5f
+                setTextColor(tintedColor(themeCoordinator.textColor, 140))
+                gravity = Gravity.CENTER
+                setPadding(0, dp(2), 0, dp(14))
+            }
+            container.addView(subtitle)
+
+            val listScroll = ScrollView(host).apply {
+                isFillViewport = true
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(260).coerceAtMost((host.resources.displayMetrics.heightPixels * 0.40f).toInt())
+                )
+            }
+            val topicsContainer = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+
+            val currentSubTopic = SubjectTagManager.getSelectedSubTopic(host, subj.id)
+            val allTopics = SubjectTagManager.getSubTopics(host, subj.id).toMutableList()
+            val studyTotals = SubjectTagManager.getSubTopicStudyTotals(host, subj.id)
+
+            fun formatTopicDuration(secs: Long): String {
+                if (secs <= 0L) return ""
+                val h = secs / 3600
+                val m = (secs % 3600) / 60
+                return if (h > 0) "${h}h ${m}m" else "${m}m"
+            }
+
+            fun populateTopicRows() {
+                topicsContainer.removeAllViews()
+
+                // Row for All / General (Unassigned)
+                val allRow = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    val isSelected = currentSubTopic.isNullOrBlank()
+                    background = if (isSelected) {
+                        GradientDrawable().apply {
+                            cornerRadius = dp(12).toFloat()
+                            setColor(try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor })
+                        }
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 12f)
+                    }
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, 0, 0, dp(6))
+                    }
+                    setOnClickListener {
+                        SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
+                        dialog.dismiss()
+                        onSelected?.invoke(null)
+                        host.buildCurrentPanel()
+                        AppToast.show(host, "Studying: ${subj.name} (All Topics)")
+                    }
+                }
+                allRow.addView(TextView(host).apply {
+                    text = if (currentSubTopic.isNullOrBlank()) "✓ All Chapters / Topics" else "All Chapters / Topics"
+                    textSize = 13.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(if (currentSubTopic.isNullOrBlank()) Color.WHITE else themeCoordinator.textColor)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                topicsContainer.addView(allRow)
+
+                for (topic in allTopics) {
+                    val isSelected = topic.equals(currentSubTopic, ignoreCase = true)
+                    val durSecs = studyTotals[topic] ?: 0L
+                    val durText = formatTopicDuration(durSecs)
+
+                    val row = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = if (isSelected) {
+                            GradientDrawable().apply {
+                                cornerRadius = dp(12).toFloat()
+                                setColor(try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor })
+                            }
+                        } else {
+                            themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 12f)
+                        }
+                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, 0, dp(6))
+                        }
+                        setOnClickListener {
+                            SubjectTagManager.setSelectedSubTopic(host, subj.id, topic)
+                            dialog.dismiss()
+                            onSelected?.invoke(topic)
+                            host.buildCurrentPanel()
+                            AppToast.show(host, "Studying: ${subj.name} • $topic")
+                        }
+                    }
+
+                    row.addView(TextView(host).apply {
+                        text = if (isSelected) "✓ $topic" else topic
+                        textSize = 13.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    })
+
+                    if (durText.isNotEmpty()) {
+                        row.addView(TextView(host).apply {
+                            text = durText
+                            textSize = 12f
+                            setTextColor(if (isSelected) Color.WHITE else tintedColor(themeCoordinator.textColor, 160))
+                            setPadding(dp(6), 0, dp(6), 0)
+                        })
+                    }
+
+                    val delBtn = TextView(host).apply {
+                        text = "✕"
+                        textSize = 12f
+                        setTextColor(if (isSelected) Color.WHITE else 0xFFEF4444.toInt())
+                        setPadding(dp(8), dp(4), dp(4), dp(4))
+                        setOnClickListener {
+                            SubjectTagManager.removeSubTopic(host, subj.id, topic)
+                            allTopics.remove(topic)
+                            if (topic.equals(currentSubTopic, ignoreCase = true)) {
+                                SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
+                            }
+                            populateTopicRows()
+                        }
+                    }
+                    row.addView(delBtn)
+
+                    topicsContainer.addView(row)
+                }
+            }
+
+            populateTopicRows()
+            listScroll.addView(topicsContainer)
+            container.addView(listScroll)
+
+            // Add new Sub-Topic Row
+            val addRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(10), 0, 0)
+            }
+            val input = EditText(host).apply {
+                hint = "+ Add chapter / topic"
+                setHintTextColor(tintedColor(themeCoordinator.textColor, 120))
+                setTextColor(themeCoordinator.textColor)
+                textSize = 13f
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 10f)
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    setMargins(0, 0, dp(8), 0)
+                }
+            }
+            val addBtn = Button(host).apply {
+                text = "Add"
+                textSize = 12.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(themeCoordinator.primaryColor)
+                }
+                setPadding(dp(14), dp(8), dp(14), dp(8))
+                setOnClickListener {
+                    val name = input.text.toString().trim()
+                    if (name.isNotEmpty()) {
+                        if (SubjectTagManager.addSubTopic(host, subj.id, name)) {
+                            allTopics.add(name)
+                            input.setText("")
+                            populateTopicRows()
+                        } else {
+                            AppToast.show(host, "Topic already exists")
+                        }
+                    }
+                }
+            }
+            addRow.addView(input)
+            addRow.addView(addBtn)
+            container.addView(addRow)
 
             dialog.setContentView(container)
             dialog.show()
@@ -659,7 +1133,9 @@ class SubjectDialogHelper(private val host: MainActivity) {
             container.addView(saveBtn)
 
             val dialogScroll = android.widget.ScrollView(host).apply {
-                isVerticalScrollBarEnabled = false
+                isFillViewport = true
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 addView(container)
             }
             dialog.setContentView(dialogScroll)
@@ -974,10 +1450,12 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
             addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS or WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
             statusBarColor = Color.TRANSPARENT
             navigationBarColor = Color.TRANSPARENT
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(themeCoordinator.bgColor))
+            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
             setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+            decorView.setPadding(0, 0, 0, 0)
             try {
                 val isLight = themeCoordinator.activeBgMode == "LIGHT"
                 val decor = peekDecorView() ?: decorView
@@ -999,11 +1477,15 @@ class SubjectDialogHelper(private val host: MainActivity) {
         val sdfMonthFmt = SimpleDateFormat("MMMM yyyy", Locale.getDefault())
         val todayKey = SubjectTagManager.getTodayKey()
 
+        val rootContainer = WallpaperManager.buildWallpaperContainer(host, themeCoordinator)
+
         val rootLayout = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(themeCoordinator.bgColor)
+            setBackgroundColor(Color.TRANSPARENT)
             setPadding(dp(16), host.getStatusBarHeight() + dp(4), dp(16), dp(16))
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
+        rootContainer.addView(rootLayout)
 
         val headerRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1088,7 +1570,9 @@ class SubjectDialogHelper(private val host: MainActivity) {
         rootLayout.addView(dateNavRow)
 
         val scrollView = ScrollView(host).apply {
-            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
 
@@ -1199,7 +1683,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 }
             }
             summaryRow.addView(TextView(host).apply {
-                text = "🔥 ${formatDuration(totalSecsAllModal)}"
+                text = formatDuration(totalSecsAllModal)
                 setTextColor(themeCoordinator.primaryColor)
                 textSize = 13f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1219,14 +1703,14 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
             if (currentPeriod != SubjectTagManager.SubjectStatsPeriod.TODAY && totalSecsAllModal > 0L) {
                 summaryRow.addView(TextView(host).apply {
-                    text = "  •  ⚡ ~${formatDuration(dailyAvg)}/day"
+                    text = "  •  ~${formatDuration(dailyAvg)}/day"
                     setTextColor(themeCoordinator.textColor)
                     alpha = 0.8f
                     textSize = 12f
                 })
             }
             summaryRow.addView(TextView(host).apply {
-                text = "  •  📚 ${activeSubjectsSorted.size} subjects"
+                text = "  •  ${activeSubjectsSorted.size} subjects"
                 setTextColor(themeCoordinator.textColor)
                 alpha = 0.65f
                 textSize = 12f
@@ -1342,9 +1826,9 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
                         val quotaTag = TextView(host).apply {
                             text = if (isReached) {
-                                "🎯 Target Reached! ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%) 🎉"
+                                "Target Reached: ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
                             } else {
-                                "🎯 Weekly Goal: ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
+                                "Weekly Goal: ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
                             }
                             setTextColor(if (isReached) Color.parseColor("#10B981") else themeCoordinator.primaryColor)
                             textSize = 12f
@@ -1513,7 +1997,16 @@ class SubjectDialogHelper(private val host: MainActivity) {
         }
 
         updateDateView()
-        dialog.setContentView(rootLayout)
+        dialog.setContentView(rootContainer)
+        dialog.setOnShowListener {
+            dialog.window?.setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+            dialog.window?.decorView?.setPadding(0, 0, 0, 0)
+        }
+        dialog.setOnDismissListener {
+            for (i in 0 until rootContainer.childCount) {
+                (rootContainer.getChildAt(i) as? LiveWallpaperView)?.release()
+            }
+        }
         dialog.show()
     }
 
@@ -1684,7 +2177,9 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             // ScrollView with subjects list
             val scrollView = ScrollView(host).apply {
-                isVerticalScrollBarEnabled = false
+                isFillViewport = true
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(260))
             }
             val listContainer = LinearLayout(host).apply { orientation = LinearLayout.VERTICAL }

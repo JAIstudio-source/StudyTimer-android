@@ -38,7 +38,8 @@ class HeatmapView @JvmOverloads constructor(
     private var topPad = 0f
     private var monthRowH = 0f
     private var rowH = 0f
-    private val minCellSize = 18f * resources.displayMetrics.density
+    private var startX = 0f
+    private val minCellSize = 14f * resources.displayMetrics.density
 
     private var primary = Color.HSVToColor(floatArrayOf(190f, 0.65f, 0.95f))
     private var textColor = Color.WHITE
@@ -75,7 +76,7 @@ class HeatmapView @JvmOverloads constructor(
     }
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
-        textSize = 9f * resources.displayMetrics.density
+        textSize = 10f * resources.displayMetrics.density
     }
     private val monthSdf = SimpleDateFormat("MMM", Locale.getDefault())
     private val dateSdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -96,68 +97,122 @@ class HeatmapView @JvmOverloads constructor(
         cells.putAll(data)
         todayStr = dateSdf.format(Date())
 
-        val todayCal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-        }
-        val thisWeekMonday = WeekHelper.mondayOf(todayCal)
-        val start = Calendar.getInstance().apply {
-            timeInMillis = thisWeekMonday.timeInMillis - 25L * 7L * 86400000L
-        }
-
-        numCols = 26
-        dayDates.clear()
-        monthHeaders.clear()
-        var lastMonthStr: String? = null
-        for (col in 0 until numCols) {
-            var colMonthStr: String? = null
-            for (row in 0..6) {
-                val c = Calendar.getInstance().apply {
-                    timeInMillis = start.timeInMillis + (col * 7L + row) * 86400000L
-                }
-                val dStr = dateSdf.format(c.time)
-                dayDates.add(dStr)
-                if (row == 0) {
-                    val mStr = monthSdf.format(c.time)
-                    if (col == 0 || mStr != lastMonthStr) {
-                        colMonthStr = mStr
-                        lastMonthStr = mStr
-                    }
-                }
-            }
-            monthHeaders.add(colMonthStr)
-        }
+        computeRollingDates(26)
 
         requestLayout()
         invalidate()
     }
 
-    private val monthHeaders = ArrayList<String?>()
+    private val monthHeaders = ArrayList<Pair<Int, String>>()
+
+    private fun computeRollingDates(targetCols: Int) {
+        numCols = max(26, targetCols)
+        val todayCal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+
+        // Find the date user started studying (earliest date with recorded study focus > 0)
+        val earliestStudyDateStr = cells.filter { it.value > 0L }.keys.minOrNull()
+        val startCal = if (!earliestStudyDateStr.isNullOrBlank()) {
+            try {
+                val parsed = dateSdf.parse(earliestStudyDateStr)
+                Calendar.getInstance().apply {
+                    time = parsed!!
+                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                }
+            } catch (_: Exception) {
+                (todayCal.clone() as Calendar)
+            }
+        } else {
+            (todayCal.clone() as Calendar)
+        }
+
+        // Start strictly from that day's whole column (Monday of that start date's week)
+        val userStartMonday = WeekHelper.mondayOf(startCal)
+        val todayMonday = WeekHelper.mondayOf(todayCal)
+
+        val weeksSinceUserStart = ((todayMonday.timeInMillis - userStartMonday.timeInMillis) / (7L * 86400000L)).toInt().coerceAtLeast(0)
+
+        // Maintain at least 3 future columns runway on the right
+        val minFutureRunway = 3
+        val maxTodayCol = (numCols - 1 - minFutureRunway).coerceAtLeast(1)
+
+        val startMonday = if (weeksSinceUserStart > maxTodayCol) {
+            // When near to filling whole: move one column at a time without resetting whole map
+            val overflowWeeks = weeksSinceUserStart - maxTodayCol
+            Calendar.getInstance().apply {
+                timeInMillis = userStartMonday.timeInMillis + (overflowWeeks * 7L) * 86400000L
+            }
+        } else {
+            // Starts with the column of the start date
+            userStartMonday
+        }
+
+        dayDates.clear()
+        monthHeaders.clear()
+
+        var lastMonth = -1
+        var lastLabelCol = -99
+        for (col in 0 until numCols) {
+            val colStartCal = Calendar.getInstance().apply {
+                timeInMillis = startMonday.timeInMillis + (col * 7L) * 86400000L
+            }
+            val m = colStartCal.get(Calendar.MONTH)
+            if (col == 0 || (m != lastMonth && (col - lastLabelCol) >= 3)) {
+                val mName = monthSdf.format(colStartCal.time)
+                monthHeaders.add(Pair(col, mName))
+                lastMonth = m
+                lastLabelCol = col
+            }
+
+            for (row in 0..6) {
+                val c = Calendar.getInstance().apply {
+                    timeInMillis = startMonday.timeInMillis + (col * 7L + row) * 86400000L
+                }
+                dayDates.add(dateSdf.format(c.time))
+            }
+        }
+    }
 
     fun getTodayScrollX(viewportWidth: Int): Int {
         val todayIdx = dayDates.indexOf(todayStr)
-        val todayCol = if (todayIdx >= 0) todayIdx / 7 else numCols - 1
-        val todayX = labelW + todayCol * (cellSize + gapPx) + cellSize / 2f
+        val todayCol = if (todayIdx >= 0) todayIdx / 7 else 0
+        val todayX = startX + labelW + todayCol * (cellSize + gapPx) + cellSize / 2f
         val scrollX = (todayX - viewportWidth / 2f).toInt()
         return max(0, scrollX)
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         val width = MeasureSpec.getSize(widthMeasureSpec)
-        gapPx = 2f * resources.displayMetrics.density
-        labelW = 20f * resources.displayMetrics.density
-        topPad = 4f * resources.displayMetrics.density
-        monthRowH = 16f * resources.displayMetrics.density
-        val gridW = width - labelW
-        cellSize = if (forcedCellSize > 0f) {
-            forcedCellSize
+        val density = resources.displayMetrics.density
+        gapPx = 3f * density
+        labelW = 18f * density
+        topPad = 6f * density
+        monthRowH = 18f * density
+
+        if (forcedCellSize > 0f) {
+            cellSize = forcedCellSize
+            if (numCols < 26) {
+                computeRollingDates(26)
+            }
+            rowH = cellSize + gapPx
+            val totalGridW = labelW + numCols * (cellSize + gapPx) - gapPx
+            startX = 0f
+            val height = (topPad + monthRowH + 7 * rowH + 6 * density).toInt()
+            setMeasuredDimension((startX + totalGridW).toInt(), height)
         } else {
-            floor((gridW - (numCols - 1) * gapPx) / numCols).toFloat()
+            val targetCols = 26
+            if (targetCols != numCols || dayDates.isEmpty()) {
+                computeRollingDates(targetCols)
+            }
+            cellSize = 18f * density
+            rowH = cellSize + gapPx
+            val totalGridW = labelW + numCols * (cellSize + gapPx) - gapPx
+            startX = 0f
+            val measuredW = max(width.toFloat(), totalGridW).toInt()
+            val height = (topPad + monthRowH + 7 * rowH + 6 * density).toInt()
+            setMeasuredDimension(measuredW, height)
         }
-        cellSize = max(cellSize, minCellSize)
-        rowH = cellSize + gapPx
-        val contentW = (labelW + numCols * (cellSize + gapPx) - gapPx).toInt()
-        val height = (topPad + monthRowH + 7 * rowH + 4 * resources.displayMetrics.density).toInt()
-        setMeasuredDimension(max(contentW, width), height)
     }
 
     private fun levelFor(focus: Long, dateStr: String): Int {
@@ -196,31 +251,31 @@ class HeatmapView @JvmOverloads constructor(
     }
 
     private val cellRect = RectF()
-    private val cellRadius by lazy { 2.5f * resources.displayMetrics.density }
+    private val cellRadius by lazy { 4f * resources.displayMetrics.density }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
         val isLight = isTextDark(textColor)
 
-        for (col in 0 until numCols) {
-            val header = monthHeaders.getOrNull(col)
-            if (header != null) {
-                val x = labelW + col * (cellSize + gapPx)
-                textPaint.color = headerTextColor
-                canvas.drawText(header, x + cellSize / 2f, topPad + monthRowH - 3f * resources.displayMetrics.density, textPaint)
-            }
+        textPaint.color = headerTextColor
+        val oldAlign = textPaint.textAlign
+        textPaint.textAlign = Paint.Align.LEFT
+        for ((col, mName) in monthHeaders) {
+            val colX = startX + labelW + col * (cellSize + gapPx)
+            canvas.drawText(mName, colX, topPad + monthRowH - 4f * resources.displayMetrics.density, textPaint)
         }
+        textPaint.textAlign = oldAlign
 
         for (row in 0..6) {
             textPaint.color = rowTextColor
             val ly = topPad + monthRowH + row * rowH + cellSize / 2f + textPaint.textSize / 3f
-            canvas.drawText(weekdayLetters[row], labelW / 2f, ly, textPaint)
+            canvas.drawText(weekdayLetters[row], startX + labelW / 2f, ly, textPaint)
 
             for (col in 0 until numCols) {
                 val idx = col * 7 + row
                 val dateStr = dayDates.getOrNull(idx) ?: continue
-                val x = labelW + col * (cellSize + gapPx)
+                val x = startX + labelW + col * (cellSize + gapPx)
                 val y = topPad + monthRowH + row * rowH
                 val future = dateStr > todayStr
                 val lvl = levelFor(cells[dateStr] ?: 0L, dateStr)
@@ -229,17 +284,13 @@ class HeatmapView @JvmOverloads constructor(
                 if (future) {
                     paint.color = futureColor
                     canvas.drawRoundRect(cellRect, cellRadius, cellRadius, paint)
-                    if (isLight) {
-                        strokeCellPaint.color = 0xFFE2E8F0.toInt()
-                        canvas.drawRoundRect(cellRect, cellRadius, cellRadius, strokeCellPaint)
-                    }
+                    strokeCellPaint.color = if (isLight) 0xFFE2E8F0.toInt() else Color.argb(18, 255, 255, 255)
+                    canvas.drawRoundRect(cellRect, cellRadius, cellRadius, strokeCellPaint)
                 } else if (lvl <= 0) {
                     paint.color = emptyColor
                     canvas.drawRoundRect(cellRect, cellRadius, cellRadius, paint)
-                    if (isLight) {
-                        strokeCellPaint.color = 0xFFCBD5E1.toInt()
-                        canvas.drawRoundRect(cellRect, cellRadius, cellRadius, strokeCellPaint)
-                    }
+                    strokeCellPaint.color = if (isLight) 0xFFCBD5E1.toInt() else Color.argb(20, 255, 255, 255)
+                    canvas.drawRoundRect(cellRect, cellRadius, cellRadius, strokeCellPaint)
                 } else {
                     paint.color = levelColor(lvl)
                     canvas.drawRoundRect(cellRect, cellRadius, cellRadius, paint)
@@ -254,7 +305,7 @@ class HeatmapView @JvmOverloads constructor(
     }
 
     private fun handleTap(x: Float, y: Float) {
-        val col = floor((x - labelW) / (cellSize + gapPx)).toInt()
+        val col = floor((x - startX - labelW) / (cellSize + gapPx)).toInt()
         val row = floor((y - topPad - monthRowH) / rowH).toInt()
         if (col in 0 until numCols && row in 0..6) {
             val idx = col * 7 + row
@@ -265,7 +316,7 @@ class HeatmapView @JvmOverloads constructor(
     }
 
     private fun handleLongClick(x: Float, y: Float) {
-        val col = floor((x - labelW) / (cellSize + gapPx)).toInt()
+        val col = floor((x - startX - labelW) / (cellSize + gapPx)).toInt()
         val row = floor((y - topPad - monthRowH) / rowH).toInt()
         if (col in 0 until numCols && row in 0..6) {
             val idx = col * 7 + row

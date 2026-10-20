@@ -43,7 +43,12 @@ data class PlannerGoal(
     val completed: Boolean = false,
     val checkedAt: Long = 0L,
     val createdAt: Long = System.currentTimeMillis(),
-    val subjectId: String? = null
+    val subjectId: String? = null,
+    val reminderEnabled: Boolean = false,
+    val reminderHour: Int = 20,
+    val reminderMinute: Int = 0,
+    val subTopic: String? = null,
+    val scheduledDays: List<Int> = emptyList() // 1=Mon..7=Sun; empty = every day
 )
 
 /**
@@ -61,7 +66,10 @@ data class PlannerGoalSnapshot(
     val checkedAt: Long = 0L,
     val isAchieved: Boolean = true,
     val subjectId: String? = null,
-    val note: String = ""
+    val note: String = "",
+    val subTopic: String? = null,
+    val scheduledDays: List<Int> = emptyList(),
+    val actualMinutes: Int = 0
 )
 
 data class PlannerDayRecord(

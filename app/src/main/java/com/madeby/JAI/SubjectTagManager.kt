@@ -245,6 +245,102 @@ object SubjectTagManager {
         } catch (_: Exception) {}
     }
 
+    private const val KEY_SELECTED_SUBTOPIC_JSON = "subject_selected_subtopic_json"
+    private const val KEY_SUBTOPIC_STUDY_TIME_JSON = "subject_subtopic_study_time_json"
+
+    fun getSelectedSubTopic(context: Context, subjectId: String): String? {
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SELECTED_SUBTOPIC_JSON, "{}") ?: "{}"
+        return try {
+            val json = JSONObject(raw)
+            val st = json.optString(subjectId, "").trim()
+            if (st.isNotEmpty()) st else null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun setSelectedSubTopic(context: Context, subjectId: String, subTopic: String?) {
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SELECTED_SUBTOPIC_JSON, "{}") ?: "{}"
+        try {
+            val json = JSONObject(raw)
+            if (subTopic.isNullOrBlank()) {
+                json.remove(subjectId)
+            } else {
+                json.put(subjectId, subTopic.trim())
+            }
+            prefs.edit().putString(KEY_SELECTED_SUBTOPIC_JSON, json.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun recordSubTopicStudyTime(context: Context, subjectId: String, subTopic: String, seconds: Long) {
+        if (seconds <= 0L || subTopic.isBlank()) return
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SUBTOPIC_STUDY_TIME_JSON, "{}") ?: "{}"
+        try {
+            val json = JSONObject(raw)
+            val subObj = json.optJSONObject(subjectId) ?: JSONObject()
+            val cleanTopic = subTopic.trim()
+            val cur = subObj.optLong(cleanTopic, 0L)
+            subObj.put(cleanTopic, cur + seconds)
+            json.put(subjectId, subObj)
+            prefs.edit().putString(KEY_SUBTOPIC_STUDY_TIME_JSON, json.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    private const val KEY_DAILY_SUBTOPIC_DURATIONS = "daily_subtopic_durations_json"
+
+    fun recordDailySubTopicStudyTime(context: Context, subjectId: String, subTopic: String, seconds: Long, dateKey: String = getTodayKey()) {
+        if (seconds <= 0L || subTopic.isBlank()) return
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_DAILY_SUBTOPIC_DURATIONS, "{}") ?: "{}"
+        try {
+            val json = JSONObject(raw)
+            val dayObj = json.optJSONObject(dateKey) ?: JSONObject()
+            val subObj = dayObj.optJSONObject(subjectId) ?: JSONObject()
+            val cleanTopic = subTopic.trim()
+            val cur = subObj.optLong(cleanTopic, 0L)
+            subObj.put(cleanTopic, cur + seconds)
+            dayObj.put(subjectId, subObj)
+            json.put(dateKey, dayObj)
+            prefs.edit().putString(KEY_DAILY_SUBTOPIC_DURATIONS, json.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getDailySubTopicDurations(context: Context, subjectId: String, dateKey: String = getTodayKey()): Map<String, Long> {
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_DAILY_SUBTOPIC_DURATIONS, "{}") ?: "{}"
+        val result = mutableMapOf<String, Long>()
+        try {
+            val json = JSONObject(raw)
+            val dayObj = json.optJSONObject(dateKey) ?: return emptyMap()
+            val subObj = dayObj.optJSONObject(subjectId) ?: return emptyMap()
+            val keys = subObj.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                result[k] = subObj.optLong(k, 0L)
+            }
+        } catch (_: Exception) {}
+        return result
+    }
+
+    fun getSubTopicStudyTotals(context: Context, subjectId: String): Map<String, Long> {
+        val prefs = getPrefs(context)
+        val raw = prefs.getString(KEY_SUBTOPIC_STUDY_TIME_JSON, "{}") ?: "{}"
+        val result = mutableMapOf<String, Long>()
+        try {
+            val json = JSONObject(raw)
+            val subObj = json.optJSONObject(subjectId) ?: return emptyMap()
+            val keys = subObj.keys()
+            while (keys.hasNext()) {
+                val k = keys.next()
+                result[k] = subObj.optLong(k, 0L)
+            }
+        } catch (_: Exception) {}
+        return result
+    }
+
     fun getWeeklyTargetHours(context: Context, subjectId: String): Float {
         val prefs = getPrefs(context)
         val raw = prefs.getString(KEY_SUBJECT_WEEKLY_TARGETS_JSON, "{}") ?: "{}"
@@ -563,9 +659,14 @@ object SubjectTagManager {
         } catch (_: Exception) {}
     }
 
-    fun recordSubjectStudyTime(context: Context, subjectId: String, durationSecs: Long, dateKey: String = getTodayKey()) {
+    fun recordSubjectStudyTime(context: Context, subjectId: String, durationSecs: Long, dateKey: String = getTodayKey(), subTopic: String? = null) {
         if (durationSecs == 0L) return
         adjustSubjectStudyTime(context, subjectId, durationSecs, dateKey)
+        val st = subTopic ?: getSelectedSubTopic(context, subjectId)
+        if (!st.isNullOrBlank()) {
+            recordSubTopicStudyTime(context, subjectId, st, durationSecs)
+            recordDailySubTopicStudyTime(context, subjectId, st, durationSecs, dateKey)
+        }
     }
 
     fun finalizePomoGraceReallocation(context: Context, targetSubjectId: String) {

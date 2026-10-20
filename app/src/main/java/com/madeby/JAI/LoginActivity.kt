@@ -1,6 +1,8 @@
 package com.madeby.JAI
 
+import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -33,8 +35,74 @@ import java.net.URL
 
 class LoginActivity : AppCompatActivity() {
 
+    override fun attachBaseContext(newBase: Context) {
+        val config = Configuration(newBase.resources.configuration)
+        config.fontScale = config.fontScale.coerceIn(0.85f, 1.05f)
+        super.attachBaseContext(newBase.createConfigurationContext(config))
+    }
+
+    override fun applyOverrideConfiguration(overrideConfiguration: Configuration?) {
+        if (overrideConfiguration != null) {
+            overrideConfiguration.fontScale = overrideConfiguration.fontScale.coerceIn(0.85f, 1.05f)
+        }
+        super.applyOverrideConfiguration(overrideConfiguration)
+    }
+
     private lateinit var btnGoogleSignIn: MaterialButton
     private lateinit var btnGuest: MaterialButton
+
+    private val googleSignInLauncher = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val data = result.data
+        if (data != null) {
+            val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(data)
+            try {
+                val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+                val idToken = account?.idToken
+                val displayName = account?.displayName ?: account?.email?.substringBefore("@") ?: "Student"
+                val email = account?.email ?: ""
+                val avatarUrl = account?.photoUrl?.toString()
+
+                if (!idToken.isNullOrBlank()) {
+                    exchangeTokenWithSupabase(idToken, displayName, email, avatarUrl)
+                } else if (email.isNotBlank()) {
+                    // ID token empty locally but account authenticated: complete login directly
+                    completeLoginAndSync(email, displayName, null, account?.id ?: email, avatarUrl)
+                } else {
+                    AppToast.show(this, "Connecting with Google via browser...")
+                    launchBrowserOAuth()
+                }
+            } catch (e: com.google.android.gms.common.api.ApiException) {
+                Log.e("LoginActivity", "Google Sign-In failed: code=${e.statusCode}", e)
+                when (e.statusCode) {
+                    com.google.android.gms.common.api.CommonStatusCodes.CANCELED -> {
+                        // User explicitly pressed back on account chooser
+                    }
+                    10 -> {
+                        AppToast.show(this, "Connecting via secure browser...")
+                        launchBrowserOAuth()
+                    }
+                    12501, 12500, 12502 -> {
+                        // Play services abort or failed: fallback seamlessly to web OAuth
+                        AppToast.show(this, "Completing Google Sign-In...")
+                        launchBrowserOAuth()
+                    }
+                    com.google.android.gms.common.api.CommonStatusCodes.NETWORK_ERROR, 7 -> {
+                        AppToast.show(this, "Network error. Opening browser sign-in...", Toast.LENGTH_LONG)
+                        launchBrowserOAuth()
+                    }
+                    else -> {
+                        AppToast.show(this, "Opening browser sign-in...")
+                        launchBrowserOAuth()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("LoginActivity", "Unexpected error processing Google Sign-In", e)
+                launchBrowserOAuth()
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,14 +112,22 @@ class LoginActivity : AppCompatActivity() {
 
         btnGoogleSignIn = findViewById(R.id.btnGoogleSignIn)
         btnGuest = findViewById(R.id.btnGuest)
+        val btnBrowserSignIn = findViewById<TextView?>(R.id.btnBrowserSignIn)
 
         attachPressScale(btnGoogleSignIn, 0.97f)
         attachPressScale(btnGuest, 0.97f)
+        btnBrowserSignIn?.let { attachPressScale(it, 0.97f) }
 
         btnGoogleSignIn.setOnClickListener {
             val epoch = System.currentTimeMillis()
             AuthManager.recordTermsConsent(this, epochMillis = epoch)
             performGoogleSignIn()
+        }
+
+        btnBrowserSignIn?.setOnClickListener {
+            val epoch = System.currentTimeMillis()
+            AuthManager.recordTermsConsent(this, epochMillis = epoch)
+            launchBrowserOAuth()
         }
 
         btnGuest.setOnClickListener {
@@ -101,6 +177,7 @@ class LoginActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
+        setIntent(intent)
         intent?.data?.let { handleDeepLink(it) }
     }
 
@@ -193,41 +270,38 @@ class LoginActivity : AppCompatActivity() {
             return
         }
 
-        val credentialManager = CredentialManager.create(this)
+        try {
+            val gso = com.google.android.gms.auth.api.signin.GoogleSignInOptions.Builder(
+                com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN
+            )
+                .requestIdToken(googleClientId)
+                .requestEmail()
+                .requestProfile()
+                .build()
 
-        val googleIdOption = GetGoogleIdOption.Builder()
-            .setFilterByAuthorizedAccounts(false)
-            .setServerClientId(googleClientId)
-            .setAutoSelectEnabled(false)
-            .build()
-
-        val request = GetCredentialRequest.Builder()
-            .addCredentialOption(googleIdOption)
-            .build()
-
-        lifecycleScope.launch {
-            try {
-                val result = credentialManager.getCredential(
-                    request = request,
-                    context = this@LoginActivity
-                )
-                val credential = result.credential
-                val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
-                val idToken = googleIdTokenCredential.idToken
-                val displayName = googleIdTokenCredential.displayName ?: googleIdTokenCredential.id
-                val googleEmail = googleIdTokenCredential.id
-
-                // Exchange Google ID Token with Supabase Auth API
-                exchangeTokenWithSupabase(idToken, displayName, googleEmail)
-
-            } catch (e: GetCredentialException) {
-                Log.e("LoginActivity", "Credential Manager failed", e)
-                // Fallback to browser OAuth flow if Credential Manager fails or user cancels
-                launchBrowserOAuth()
-            } catch (e: Exception) {
-                Log.e("LoginActivity", "Google Sign-In failed", e)
-                AppToast.show(this@LoginActivity, "Sign-In cancelled or failed: ${e.localizedMessage}")
+            val client = com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(this, gso)
+            var hasLaunched = false
+            fun doLaunch() {
+                if (!hasLaunched) {
+                    hasLaunched = true
+                    try {
+                        googleSignInLauncher.launch(client.signInIntent)
+                    } catch (ex: Exception) {
+                        Log.e("LoginActivity", "Failed to launch Google Sign-In intent", ex)
+                        launchBrowserOAuth()
+                    }
+                }
             }
+            val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+            val timeoutRunnable = Runnable { doLaunch() }
+            timeoutHandler.postDelayed(timeoutRunnable, 1000L)
+            client.signOut().addOnCompleteListener {
+                timeoutHandler.removeCallbacks(timeoutRunnable)
+                doLaunch()
+            }
+        } catch (e: Exception) {
+            Log.e("LoginActivity", "Error launching Google Sign-In popup", e)
+            launchBrowserOAuth()
         }
     }
 
@@ -239,8 +313,24 @@ class LoginActivity : AppCompatActivity() {
         }
         val redirectUri = "studytimer://login-callback"
         val authUrl = "$supabaseUrl/auth/v1/authorize?provider=google&redirect_to=$redirectUri"
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
-        startActivity(intent)
+        try {
+            val customTabsIntent = CustomTabsIntent.Builder()
+                .setShowTitle(true)
+                .setDefaultColorSchemeParams(
+                    androidx.browser.customtabs.CustomTabColorSchemeParams.Builder()
+                        .setToolbarColor(Color.BLACK)
+                        .build()
+                )
+                .build()
+            customTabsIntent.launchUrl(this, Uri.parse(authUrl))
+        } catch (_: Exception) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(authUrl))
+                startActivity(intent)
+            } catch (ex: Exception) {
+                AppToast.show(this, "Could not open browser for sign-in: ${ex.message}")
+            }
+        }
     }
 
     private fun completeLoginAndSync(email: String, name: String, accessToken: String?, userId: String, avatarUrl: String? = null) {
@@ -263,44 +353,48 @@ class LoginActivity : AppCompatActivity() {
         }
 
         lifecycleScope.launch(Dispatchers.IO) {
-            // Record consent to Supabase with exact immutable timestamp
-            TermsConsentManager.syncConsentToServer(
-                this@LoginActivity,
-                userId = userId,
-                email = email,
-                name = name,
-                termsVersion = AuthManager.getTermsVersion(this@LoginActivity)
-            )
+            try {
+                // Record consent to Supabase with exact immutable timestamp
+                TermsConsentManager.syncConsentToServer(
+                    this@LoginActivity,
+                    userId = userId,
+                    email = email,
+                    name = name,
+                    termsVersion = AuthManager.getTermsVersion(this@LoginActivity)
+                )
 
-            if (!avatarUrl.isNullOrBlank()) {
-                LocalAvatarManager.downloadAndSaveRemoteAvatar(this@LoginActivity, avatarUrl)
-            }
-            val (remoteMeta, rawRecord) = CloudSyncManager.fetchRemoteMetadata(this@LoginActivity)
-            if (remoteMeta != null && remoteMeta.updatedAt > 0L && rawRecord != null) {
-                if (wasGuest && hasLocalData) {
-                    // Smart non-destructive merge so guest progress merges seamlessly with the account
-                    CloudSyncManager.mergeCloudAndLocalData(this@LoginActivity, rawRecord)
-                } else {
-                    CloudSyncManager.restoreDataFromCloud(this@LoginActivity)
+                if (!avatarUrl.isNullOrBlank()) {
+                    LocalAvatarManager.downloadAndSaveRemoteAvatar(this@LoginActivity, avatarUrl)
                 }
-            } else {
-                // Fresh cloud account with no existing backup: upload local study data to the account
-                CloudSyncManager.syncDataToCloud(this@LoginActivity, force = true)
-            }
-
-            withContext(Dispatchers.Main) {
-                AppToast.show(this@LoginActivity, "Welcome, $name!")
-                proceedToMain()
+                val (remoteMeta, rawRecord) = CloudSyncManager.fetchRemoteMetadata(this@LoginActivity)
+                if (remoteMeta != null && remoteMeta.updatedAt > 0L && rawRecord != null) {
+                    if (wasGuest && hasLocalData) {
+                        // Smart non-destructive merge so guest progress merges seamlessly with the account
+                        CloudSyncManager.mergeCloudAndLocalData(this@LoginActivity, rawRecord)
+                    } else {
+                        CloudSyncManager.restoreDataFromCloud(this@LoginActivity)
+                    }
+                } else {
+                    // Fresh cloud account with no existing backup: upload local study data to the account
+                    CloudSyncManager.syncDataToCloud(this@LoginActivity, force = true)
+                }
+            } catch (e: Exception) {
+                Log.e("LoginActivity", "Post-login sync error", e)
+            } finally {
+                withContext(Dispatchers.Main) {
+                    AppToast.show(this@LoginActivity, "Welcome, $name!")
+                    proceedToMain()
+                }
             }
         }
     }
 
-    private fun exchangeTokenWithSupabase(idToken: String, displayName: String, googleEmail: String) {
+    private fun exchangeTokenWithSupabase(idToken: String, displayName: String, googleEmail: String, googleAvatarUrl: String? = null) {
         val supabaseUrl = BuildConfig.SUPABASE_URL
         val anonKey = BuildConfig.SUPABASE_ANON_KEY
 
         if (supabaseUrl.isBlank() || anonKey.isBlank()) {
-            completeLoginAndSync(googleEmail, displayName, idToken, googleEmail)
+            completeLoginAndSync(googleEmail, displayName, idToken, googleEmail, googleAvatarUrl)
             return
         }
 
@@ -338,19 +432,20 @@ class LoginActivity : AppCompatActivity() {
                     val avatarUrl = metaObj?.optString("avatar_url")?.takeIf { it.isNotBlank() }
                         ?: metaObj?.optString("picture")?.takeIf { it.isNotBlank() }
                         ?: metaObj?.optString("avatar")?.takeIf { it.isNotBlank() }
+                        ?: googleAvatarUrl
 
                     withContext(Dispatchers.Main) {
                         completeLoginAndSync(email, fetchedName, accessToken, userId, avatarUrl)
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        completeLoginAndSync(googleEmail, displayName, idToken, googleEmail)
+                        completeLoginAndSync(googleEmail, displayName, idToken, googleEmail, googleAvatarUrl)
                     }
                 }
             } catch (e: Exception) {
                 Log.e("LoginActivity", "Supabase token exchange error", e)
                 withContext(Dispatchers.Main) {
-                    completeLoginAndSync(googleEmail, displayName, idToken, googleEmail)
+                    completeLoginAndSync(googleEmail, displayName, idToken, googleEmail, googleAvatarUrl)
                 }
             }
         }
@@ -358,16 +453,38 @@ class LoginActivity : AppCompatActivity() {
 
     private fun handleDeepLink(uri: Uri) {
         if (uri.scheme == "studytimer" && uri.host == "login-callback") {
-            val fragment = uri.fragment ?: uri.query ?: ""
+            val fragment = uri.fragment ?: ""
+            val query = uri.query ?: ""
             var accessToken: String? = null
+
+            // Check fragment (e.g. #access_token=...&refresh_token=...)
             if (fragment.contains("access_token=")) {
                 val params = fragment.split("&")
                 for (p in params) {
-                    if (p.startsWith("access_token=")) accessToken = p.substringAfter("access_token=")
+                    if (p.startsWith("access_token=")) {
+                        accessToken = try {
+                            java.net.URLDecoder.decode(p.substringAfter("access_token="), "UTF-8")
+                        } catch (_: Exception) {
+                            p.substringAfter("access_token=")
+                        }
+                    }
                 }
             }
+
+            // Check query parameters (e.g. ?access_token=...)
+            if (accessToken.isNullOrBlank() && query.contains("access_token=")) {
+                accessToken = uri.getQueryParameter("access_token")
+            }
+
             if (!accessToken.isNullOrBlank()) {
                 fetchSupabaseProfileAndCompleteLogin(accessToken)
+            } else {
+                val errorDesc = uri.getQueryParameter("error_description")
+                    ?: if (fragment.contains("error_description=")) fragment.substringAfter("error_description=").substringBefore("&") else null
+                if (!errorDesc.isNullOrBlank()) {
+                    val cleanError = try { java.net.URLDecoder.decode(errorDesc, "UTF-8") } catch (_: Exception) { errorDesc }
+                    AppToast.show(this, "Sign-In notice: $cleanError")
+                }
             }
         }
     }

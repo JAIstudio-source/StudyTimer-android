@@ -36,8 +36,8 @@ class StudyBottomNavBar @JvmOverloads constructor(
 
     private val destinations = listOf(
         TabDestination(AppPanel.FOCUS, "Focus", R.drawable.ic_clock),
-        TabDestination(AppPanel.STATS, "Insights", R.drawable.ic_insights),
         TabDestination(AppPanel.PLANNER, "Planner", R.drawable.ic_check_circle),
+        TabDestination(AppPanel.STATS, "Insights", R.drawable.ic_insights),
         TabDestination(AppPanel.COMMUNITY, "Community", R.drawable.ic_trophy_placeholder)
     )
 
@@ -105,28 +105,36 @@ class StudyBottomNavBar @JvmOverloads constructor(
         isDarkTheme = themeCoordinator.isDarkMode()
         primaryAccentColor = themeCoordinator.primaryColor
 
-        // Background adapts to theme
+        // Background adapts to theme - Obsidian Frosted Floating Island
         val bgDrawable = GradientDrawable().apply {
             cornerRadius = 28f * density
             if (isDarkTheme) {
                 if (themeCoordinator.activeBgMode == "ECLIPSE") {
-                    setColor(0xFF161922.toInt())
-                    setStroke(dp(1), 0xFF2A2E3D.toInt())
+                    setColor(0xF0141824.toInt())
+                    setStroke((1f * density).toInt(), Color.argb(35, 255, 255, 255))
+                } else if (themeCoordinator.activeBgMode == "OLED") {
+                    setColor(0xF508090D.toInt())
+                    setStroke((1f * density).toInt(), Color.argb(28, 255, 255, 255))
                 } else {
-                    setColor(0xFF10121A.toInt())
-                    setStroke(dp(1), 0xFF202330.toInt())
+                    setColor(0xF011141E.toInt())
+                    setStroke((1f * density).toInt(), Color.argb(32, 255, 255, 255))
                 }
             } else {
-                setColor(0xFFFFFFFF.toInt())
-                setStroke(dp(1), 0xFFCBD5E1.toInt())
+                setColor(0xF5FFFFFF.toInt())
+                setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
             }
         }
         background = bgDrawable
 
-        // Indicator styling
+        // Indicator styling with glowing active pill
         (indicatorView.background as? GradientDrawable)?.apply {
-            setColor(tintWithAlpha(primaryAccentColor, if (isDarkTheme) 0.18f else 0.12f))
-            setStroke(dp(1), tintWithAlpha(primaryAccentColor, if (isDarkTheme) 0.50f else 0.35f))
+            setColor(tintWithAlpha(primaryAccentColor, if (isDarkTheme) 0.22f else 0.14f))
+            setStroke((1f * density).toInt(), tintWithAlpha(primaryAccentColor, if (isDarkTheme) 0.65f else 0.40f))
+        }
+
+        val customTf = themeCoordinator.getAppTypeface(isBold = true)
+        for (lbl in labelViews) {
+            lbl.typeface = customTf
         }
 
         updateTabStyles(activeIndex, animated = false)
@@ -160,7 +168,7 @@ class StudyBottomNavBar @JvmOverloads constructor(
             val label = TextView(context).apply {
                 text = dest.label
                 textSize = 11f
-                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+                typeface = FontStyleManager.getBoldTypeface(context)
                 gravity = Gravity.CENTER
             }
 

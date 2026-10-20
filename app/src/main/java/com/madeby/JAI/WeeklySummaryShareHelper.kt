@@ -470,7 +470,9 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
         }
 
         val scroll = ScrollView(host).apply {
-            isVerticalScrollBarEnabled = false
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (host.resources.displayMetrics.heightPixels * 0.40f).toInt())
         }
         val optionsBox = LinearLayout(host).apply { orientation = LinearLayout.VERTICAL }

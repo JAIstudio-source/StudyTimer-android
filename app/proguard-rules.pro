@@ -25,6 +25,7 @@
 -keep class com.madeby.JAI.SubjectTag { *; }
 -keep class com.madeby.JAI.UserProfile { *; }
 -keep class com.madeby.JAI.SessionGoal { *; }
+-keep class com.madeby.JAI.WallpaperPreset { *; }
 
 # Keep enum values (needed for valueOf deserialization)
 -keepclassmembers enum com.madeby.JAI.** {

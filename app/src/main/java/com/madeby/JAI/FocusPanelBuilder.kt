@@ -12,10 +12,15 @@ import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class FocusPanelBuilder(private val host: MainActivity) {
 
@@ -37,7 +42,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 }
             }
 
-            // 2. Active Subject & Task Header (Consolidated, Minimal)
+            // 2. Active Subject & Task Header (Unified Session Capsule)
             val timerModeSetting = sharedPrefs.getString("timer_mode", "SUBJECT") ?: "SUBJECT"
             val showSubjectTagging = sharedPrefs.getBoolean("enable_subject_tagging", true) && timerModeSetting != "STOPWATCH"
 
@@ -49,112 +54,200 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(0, dp(4), 0, dp(6))
+                    setMargins(0, dp(2), 0, dp(4))
                 }
             }
             extraControlsContainer = controlsContainer
 
-            val subjectRow = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER
+            val isLectureRunning = timerModeSetting == "LECTURE" &&
+                (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.PAUSED) &&
+                sharedPrefs.getBoolean("lecture_mode_enabled", false)
+            val lectureSubId = sharedPrefs.getString("active_lecture_subject_id", null)
+            val activeSubject = if (isLectureRunning && lectureSubId != null) {
+                SubjectTagManager.resolveSubject(this, lectureSubId)
+            } else {
+                SubjectTagManager.getSelectedSubject(this)
             }
 
+            val subjectColor = try {
+                Color.parseColor(activeSubject.colorHex)
+            } catch (_: Exception) {
+                themeCoordinator.primaryColor
+            }
+
+            val modeLabel = when (timerModeSetting) {
+                "STOPWATCH" -> "Stopwatch"
+                "SUBJECT" -> "Subject Wise"
+                "COUNTDOWN" -> {
+                    val pStudy = sharedPrefs.safeLong("study_interval_minutes", 25L).toInt()
+                    val pBreak = sharedPrefs.safeLong("break_interval_minutes", 5L).toInt()
+                    "$pStudy/$pBreak Pomodoro"
+                }
+                "LECTURE" -> "Lecture"
+                else -> "Focus"
+            }
+
+            val activeSubTopic = SubjectTagManager.getSelectedSubTopic(this, activeSubject.id)
+            val activeGoalTitle = sharedPrefs.getString("active_planner_goal_title", null)
+
+            // INTERACTIVE GLASS CAPSULE ROW (DISTINCT PILL BUTTONS)
+            val sessionScrollWrapper = HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                overScrollMode = View.OVER_SCROLL_NEVER
+                isFillViewport = false
+                clipToPadding = false
+                setPadding(dp(4), dp(2), dp(4), dp(2))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    topMargin = dp(2)
+                    bottomMargin = dp(4)
+                }
+            }
+
+            val sessionPillsRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+
+            // 1. Subject Pill Button: Colored Dot with outer ring + Bold Name + Dropdown Chevron
             if (showSubjectTagging) {
-                val isLectureRunning = timerModeSetting == "LECTURE" &&
-                    (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.PAUSED) &&
-                    sharedPrefs.getBoolean("lecture_mode_enabled", false)
-                val lectureSubId = sharedPrefs.getString("active_lecture_subject_id", null)
-                val activeSubject = if (isLectureRunning && lectureSubId != null) {
-                    SubjectTagManager.resolveSubject(this, lectureSubId)
-                } else {
-                    SubjectTagManager.getSelectedSubject(this)
-                }
-
-                val subjectColor = try {
-                    Color.parseColor(activeSubject.colorHex)
-                } catch (_: Exception) {
-                    themeCoordinator.primaryColor
-                }
-
-                val subjectTagBtn = TextView(this).apply {
-                    text = if (isLectureRunning) "🔒 ${activeSubject.iconEmoji} ${activeSubject.name}" else "${activeSubject.iconEmoji} ${activeSubject.name}  ▾"
-                    textSize = 13.5f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    if (!themeCoordinator.isDarkMode() || isPomoWhite) {
-                        val softBg = Color.argb(32, Color.red(subjectColor), Color.green(subjectColor), Color.blue(subjectColor))
-                        val strokeCol = Color.argb(160, Color.red(subjectColor), Color.green(subjectColor), Color.blue(subjectColor))
-                        val textColorDark = run {
-                            val hsv = FloatArray(3)
-                            Color.colorToHSV(subjectColor, hsv)
-                            hsv[1] = (hsv[1] * 1.15f).coerceAtMost(1f)
-                            hsv[2] = (hsv[2] * 0.72f).coerceAtLeast(0.2f)
-                            Color.HSVToColor(hsv)
-                        }
-                        setTextColor(textColorDark)
-                        background = GradientDrawable().apply {
-                            cornerRadius = dp(18).toFloat()
-                            setColor(softBg)
-                            setStroke(dp(1), strokeCol)
+                val subjectPill = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                    isFocusable = true
+                    contentDescription = "Selected study subject: ${activeSubject.name}. Tap to change subject."
+                    
+                    val pillBg = if (isPomoWhite) {
+                        GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setColor(0xFFF1F5F9.toInt())
+                            setStroke(dp(2), tintedColor(subjectColor, 180))
                         }
                     } else {
-                        setTextColor(themeCoordinator.textColor)
-                        background = themeCoordinator.createGlassChip(tintedColor(subjectColor, 90), 18f)
+                        GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setColor(if (themeCoordinator.isDarkMode()) 0x331E293B.toInt() else 0x25FFFFFF.toInt())
+                            setStroke(dp(2), tintedColor(subjectColor, 220))
+                        }
                     }
-                    setPadding(dp(18), dp(7), dp(18), dp(7))
-                    setSingleLine(true)
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    gravity = Gravity.CENTER
+                    background = pillBg
+                    setPadding(dp(10), dp(6), dp(10), dp(6))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        dp(38)
+                    ).apply {
+                        marginEnd = dp(6)
+                    }
                     setOnClickListener {
+                        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                         if (isLectureRunning) {
                             AppToast.show(host, "Subject tag is locked to the scheduled class")
                         } else {
                             host.showSubjectPickerDialog()
                         }
                     }
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                }
-                subjectRow.addView(subjectTagBtn)
-            }
-            controlsContainer.addView(subjectRow)
-
-            // Subtitle: Active Task/Goal (if armed from Planner)
-            val activeGoalTitle = sharedPrefs.getString("active_planner_goal_title", null)
-            if (!activeGoalTitle.isNullOrBlank()) {
-                val taskSubtitleRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    background = if (isPomoWhite) {
-                        GradientDrawable().apply {
-                            cornerRadius = dp(14).toFloat()
-                            setColor(0xFFF1F5F9.toInt())
-                            setStroke(dp(1), 0xFFCBD5E1.toInt())
-                        }
-                    } else {
-                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, if (themeCoordinator.isDarkMode()) 60 else 120), 14f)
-                    }
-                    setPadding(dp(12), dp(4), dp(8), dp(4))
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                        setMargins(0, dp(6), 0, 0)
-                    }
                 }
 
-                val taskText = TextView(this).apply {
-                    val displayTitle = if (activeGoalTitle.length > 26) activeGoalTitle.take(24) + "…" else activeGoalTitle
-                    text = "🎯 $displayTitle"
-                    textSize = 12f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                // Glowing color dot indicator with outer ring
+                val dotContainer = FrameLayout(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(12), dp(12)).apply {
+                        rightMargin = dp(6)
+                    }
+                }
+                val outerRing = View(this).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(tintedColor(subjectColor, 60))
+                    }
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                }
+                val innerDot = View(this).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(subjectColor)
+                    }
+                    val dotSize = dp(7)
+                    layoutParams = FrameLayout.LayoutParams(dotSize, dotSize, Gravity.CENTER)
+                }
+                dotContainer.addView(outerRing)
+                dotContainer.addView(innerDot)
+                subjectPill.addView(dotContainer)
+
+                val subjectText = TextView(this).apply {
+                    text = activeSubject.name
+                    textSize = 12.5f
+                    typeface = themeCoordinator.getAppTypeface(isBold = true)
                     setTextColor(if (isPomoWhite) 0xFF0F172A.toInt() else themeCoordinator.textColor)
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
+                    maxWidth = dp(110)
+                }
+                subjectPill.addView(subjectText)
+
+                val dropdownChevron = TextView(this).apply {
+                    text = " ▾"
+                    textSize = 11f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(subjectColor)
+                }
+                subjectPill.addView(dropdownChevron)
+
+                sessionPillsRow.addView(subjectPill)
+            }
+
+            // 2. Middle Section: Active Planner Goal or Sub-topic Pill
+            if (!activeGoalTitle.isNullOrBlank()) {
+                val goalPill = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                    isFocusable = true
+                    val pillBg = GradientDrawable().apply {
+                        cornerRadius = dp(16).toFloat()
+                        setColor(if (isPomoWhite) 0xFFF1F5F9.toInt() else 0x25FFFFFF.toInt())
+                        setStroke(dp(1), tintedColor(themeCoordinator.accentColor, 180))
+                    }
+                    background = pillBg
+                    setPadding(dp(10), dp(6), dp(8), dp(6))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        dp(38)
+                    ).apply {
+                        marginEnd = dp(6)
+                    }
                     setOnClickListener {
+                        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         navigateToPanel(AppPanel.PLANNER)
                     }
                 }
-                taskSubtitleRow.addView(taskText)
+                val goalIcon = TextView(this).apply {
+                    text = "🎯 "
+                    textSize = 10f
+                }
+                goalPill.addView(goalIcon)
+
+                val goalText = TextView(this).apply {
+                    text = activeGoalTitle
+                    textSize = 11.5f
+                    typeface = themeCoordinator.getAppTypeface(isBold = false)
+                    setTextColor(themeCoordinator.accentColor)
+                    setSingleLine(true)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    maxWidth = dp(85)
+                }
+                goalPill.addView(goalText)
 
                 val clearGoalBtn = TextView(this).apply {
-                    text = "  ✕"
-                    textSize = 12f
+                    text = " ✕"
+                    textSize = 11f
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(if (isPomoWhite) 0xFF64748B.toInt() else tintedColor(themeCoordinator.textColor, 140))
                     setPadding(dp(4), 0, dp(4), 0)
@@ -166,8 +259,185 @@ class FocusPanelBuilder(private val host: MainActivity) {
                         host.clearActivePlannerGoal()
                     }
                 }
-                taskSubtitleRow.addView(clearGoalBtn)
-                controlsContainer.addView(taskSubtitleRow)
+                goalPill.addView(clearGoalBtn)
+                sessionPillsRow.addView(goalPill)
+            } else if (showSubjectTagging) {
+                val hasSubTopic = !activeSubTopic.isNullOrBlank()
+                val topicLabel = if (hasSubTopic) activeSubTopic else "Chapters"
+                val topicPill = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                    isFocusable = true
+                    contentDescription = "Select chapter / sub-topic. Current: $topicLabel"
+                    val pillBg = GradientDrawable().apply {
+                        cornerRadius = dp(16).toFloat()
+                        setColor(if (isPomoWhite) 0xFFF1F5F9.toInt() else 0x22FFFFFF.toInt())
+                        setStroke(dp(1), if (hasSubTopic) tintedColor(themeCoordinator.primaryColor, 180) else tintedColor(themeCoordinator.textColor, 45))
+                    }
+                    background = pillBg
+                    setPadding(dp(10), dp(6), dp(10), dp(6))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        dp(38)
+                    ).apply {
+                        marginEnd = dp(6)
+                    }
+                    setOnClickListener {
+                        performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        SubjectDialogHelper(host).showSubTopicPickerDialog(activeSubject) {
+                            host.navigateToPanel(AppPanel.FOCUS)
+                        }
+                    }
+                }
+
+                val topicIcon = TextView(this).apply {
+                    text = "📖 "
+                    textSize = 10.5f
+                }
+                topicPill.addView(topicIcon)
+
+                val topicText = TextView(this).apply {
+                    text = topicLabel
+                    textSize = 12f
+                    typeface = themeCoordinator.getAppTypeface(isBold = hasSubTopic)
+                    setTextColor(if (isPomoWhite) 0xFF475569.toInt() else if (hasSubTopic) themeCoordinator.primaryColor else tintedColor(themeCoordinator.textColor, 190))
+                    setSingleLine(true)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    maxWidth = dp(85)
+                }
+                topicPill.addView(topicText)
+
+                val topicChevron = TextView(this).apply {
+                    text = " ▾"
+                    textSize = 10f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(if (hasSubTopic) themeCoordinator.primaryColor else tintedColor(themeCoordinator.textColor, 130))
+                }
+                topicPill.addView(topicChevron)
+
+                sessionPillsRow.addView(topicPill)
+            }
+
+            // 3. Mode Pill Button
+            val modePill = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
+                contentDescription = "Timer Mode: $modeLabel. Tap to switch mode."
+                val pillBg = GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(if (isPomoWhite) 0xFFF1F5F9.toInt() else 0x22FFFFFF.toInt())
+                    setStroke(dp(1), tintedColor(themeCoordinator.primaryColor, 130))
+                }
+                background = pillBg
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(38)
+                )
+                setOnClickListener {
+                    if (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK || currentTimerState == TimerState.PAUSED) {
+                        AppToast.show(this@FocusPanelBuilder.host, "Stop or finish current session to switch timer mode")
+                        return@setOnClickListener
+                    }
+                    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    TimerModeBottomSheet.show(host) {
+                        host.buildCurrentPanel()
+                    }
+                }
+            }
+
+            val modeText = TextView(this).apply {
+                text = "$modeLabel ▾"
+                textSize = 12f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(if (isPomoWhite) 0xFF334155.toInt() else tintedColor(themeCoordinator.textColor, 220))
+            }
+            modePill.addView(modeText)
+            sessionPillsRow.addView(modePill)
+
+            sessionScrollWrapper.addView(sessionPillsRow)
+            host.modeOptionsPill = sessionScrollWrapper
+            controlsContainer.addView(sessionScrollWrapper)
+
+            // 2.5 Connected Room HUD: Strictly and exclusively shown when the user is currently inside a study room
+            val activeRoom = StudyRoomManager.getActiveRoom(this)
+            if (activeRoom != null) {
+                val roomHud = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    isClickable = true
+                    isFocusable = true
+                    val hudBgColor = if (isPomoWhite) {
+                        0xFFF8FAFC.toInt()
+                    } else {
+                        tintedColor(themeCoordinator.primaryColor, if (themeCoordinator.isDarkMode()) 35 else 25)
+                    }
+                    background = themeCoordinator.createGlassChip(hudBgColor, 16f)
+                    setPadding(dp(12), dp(4), dp(12), dp(4))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        gravity = Gravity.CENTER_HORIZONTAL
+                        setMargins(0, dp(4), 0, dp(2))
+                    }
+                }
+
+                val liveDot = TextView(this).apply {
+                    text = "● "
+                    textSize = 9.5f
+                    setTextColor(0xFF10B981.toInt()) // Emerald Green
+                }
+                roomHud.addView(liveDot)
+
+                val roomText = TextView(this).apply {
+                    text = "${activeRoom.name} • Connected"
+                    textSize = 11.5f
+                    typeface = themeCoordinator.getAppTypeface(isBold = true)
+                    setTextColor(if (isPomoWhite) 0xFF0F172A.toInt() else themeCoordinator.textColor)
+                    setSingleLine(true)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    maxWidth = dp(220)
+                }
+                roomHud.addView(roomText)
+
+                val roomActionIcon = TextView(this).apply {
+                    text = " ↗"
+                    textSize = 11f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(themeCoordinator.primaryColor)
+                }
+                roomHud.addView(roomActionIcon)
+
+                roomHud.setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    host.defaultCommunitySegment = CommunityPanelBuilder.CommunitySegment.ROOMS
+                    host.navigateToPanel(AppPanel.COMMUNITY)
+                }
+
+                controlsContainer.addView(roomHud)
+
+                // Asynchronously fetch members to display studying peer status
+                CoroutineScope(Dispatchers.Main).launch {
+                    val membersRes = StudyRoomManager.fetchRoomMembers(host, activeRoom)
+                    val members = membersRes.getOrElse { emptyList() }
+                    val peers = members.filterNot { it.isSelf }
+                    val studyingPeers = peers.filter { it.isStudying }
+
+                    val detailStr = when {
+                        studyingPeers.isNotEmpty() -> {
+                            val names = studyingPeers.take(2).joinToString(", ") { it.displayName }
+                            val remaining = studyingPeers.size - 2
+                            if (remaining > 0) "$names +$remaining studying" else "$names studying"
+                        }
+                        peers.isNotEmpty() -> "${peers.size} in room"
+                        else -> "Co-study active"
+                    }
+                    roomText.text = "${activeRoom.name} • $detailStr"
+                }
             }
 
             // 3. Center Clocks & Ring Wrapper
@@ -190,17 +460,19 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             val savedTimerMode = sharedPrefs.getString("timer_mode", "SUBJECT") ?: "SUBJECT"
+            val isPomodoro = (savedTimerMode == "COUNTDOWN")
             timerRing = TimerRingView(this).apply {
-                visibility = if (!isLandscape && (savedTimerMode == "COUNTDOWN" || savedTimerMode == "LECTURE")) View.VISIBLE else View.GONE
+                visibility = if (!isLandscape && isPomodoro) View.VISIBLE else View.GONE
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER)
             }
 
             statusBadge = TextView(this).apply {
-                textSize = if (isLandscape) 12f else 13.5f
-                setPadding(dp(16), dp(4), dp(16), dp(4))
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                textSize = if (isLandscape) 12.5f else 14f
+                letterSpacing = 0.04f
+                setPadding(dp(18), dp(6), dp(18), dp(6))
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
                 gravity = Gravity.CENTER
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110))
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 18f)
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             }
 
@@ -208,15 +480,15 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                    setMargins(0, if (isLandscape) dp(4) else dp(6), 0, 0)
+                    setMargins(0, if (isLandscape) dp(4) else dp(8), 0, 0)
                 }
                 addView(statusBadge)
 
                 if (savedTimerMode == "LECTURE") {
                     val timetableBtn = TextView(host).apply {
-                        text = "📅 Class Timetable"
+                        text = "Class Timetable"
                         textSize = 13f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        typeface = themeCoordinator.getAppTypeface(isBold = true)
                         setTextColor(themeCoordinator.accentColor)
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, 120), 20f)
                         setPadding(dp(16), dp(6), dp(16), dp(6))
@@ -230,17 +502,19 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 }
             }
 
+            val selectedTypeface = FontStyleManager.getTypeface(this)
+
             studyTimerDisplay = TextView(this).apply {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = if (isLandscape) 104f else 54f
-                typeface = Typeface.MONOSPACE
+                textSize = if (isLandscape) 110f else if (isPomodoro) 64f else 78f
+                typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
                 setPadding(0, 0, 0, 5)
                 if (themeCoordinator.isGlassStyle() && !pureWhiteTimerEnabled() && !isPomoWhite) {
-                    setShadowLayer(14f, 0f, 0f, tintedColor(themeCoordinator.primaryColor, 90))
+                    setShadowLayer(16f, 0f, 0f, tintedColor(themeCoordinator.primaryColor, 90))
                 }
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
             }
@@ -249,11 +523,11 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = if (isLandscape) 20f else 20f
-                typeface = Typeface.MONOSPACE
+                textSize = if (isLandscape) 26f else 22f
+                typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, if (isLandscape) 8 else 40)
+                setPadding(0, 0, 0, if (isLandscape) 10 else 44)
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
             }
 
@@ -261,6 +535,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 override fun onDown(e: MotionEvent): Boolean = true
 
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    host.dismissGestureHint()
                     if (isLandscape) {
                         toggleLandscapeControls()
                         return true
@@ -271,6 +546,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 }
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
+                    host.dismissGestureHint()
                     if (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK) {
                         handlePause()
                         try { centerClocksWrapper.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } catch (_: Exception) {}
@@ -292,55 +568,80 @@ class FocusPanelBuilder(private val host: MainActivity) {
             centerClocksWrapper.addView(studyTimerDisplay)
             centerClocksWrapper.addView(breakTimerDisplay)
 
+            val isGestureHintDismissed = sharedPrefs.getBoolean("gesture_hint_dismissed", false)
+            val gestureHint = TextView(this).apply {
+                text = "Double-tap to pause • Tap for fullscreen"
+                textSize = 11.5f
+                letterSpacing = 0.04f
+                setTextColor(tintedColor(themeCoordinator.textColor, if (themeCoordinator.isDarkMode()) 95 else 115))
+                gravity = Gravity.CENTER
+                visibility = if (isLandscape || isGestureHintDismissed || currentTimerState != TimerState.IDLE) View.GONE else View.VISIBLE
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+                ).apply {
+                    bottomMargin = dp(76)
+                }
+            }
+            host.gestureHintView = gestureHint
+            centerClocksWrapper.addView(gestureHint)
+
             // 4. Primary Action Controls
             controlActionContainer = LinearLayout(this).apply {
-                orientation = if (isLandscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(if (isLandscape) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    if (isLandscape) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
                     if (isLandscape) gravity = Gravity.CENTER_HORIZONTAL
-                    setMargins(0, if (isLandscape) dp(4) else dp(8), 0, if (isLandscape) dp(12) else dp(84))
+                    setMargins(0, if (isLandscape) dp(6) else dp(10), 0, if (isLandscape) dp(12) else dp(88))
                 }
             }
 
             mainBtn = Button(this).apply {
                 textSize = 14.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(dp(20), dp(11), dp(20), dp(11))
-                minimumHeight = dp(46)
+                letterSpacing = 0.02f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                minimumHeight = dp(48)
                 isSoundEffectsEnabled = false
-                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(140) else LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(28), dp(4), dp(28), dp(4))
+                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(160) else 0, dp(48), if (isLandscape) 0f else 1f).apply {
+                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(4), 0, dp(4), 0)
                 }
                 setOnClickListener { handleStateToggle() }
                 applyBubbleTouchAnimation(this)
             }
 
             pauseBtn = Button(this).apply {
-                text = getString(R.string.btn_pause)
-                textSize = 14.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(dp(20), dp(11), dp(20), dp(11))
-                minimumHeight = dp(46)
+                text = "Pause"
+                textSize = 14f
+                letterSpacing = 0.02f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                minimumHeight = dp(48)
                 isSoundEffectsEnabled = false
-                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(130) else LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(28), dp(4), dp(28), dp(4))
+                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(150) else 0, dp(48), if (isLandscape) 0f else 1f).apply {
+                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(4), 0, dp(4), 0)
                 }
                 setOnClickListener { handlePause() }
                 applyBubbleTouchAnimation(this)
             }
 
             stopBtn = HoldRingButton(this).apply {
-                text = getString(R.string.btn_hold_to_end)
+                text = "Finish"
                 ringColor = themeCoordinator.primaryColor
                 setTextColor(themeCoordinator.textColor)
                 textSize = 14f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                letterSpacing = 0.02f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
                 isSoundEffectsEnabled = false
                 background = outlinedButtonBackground()
-                setPadding(dp(20), dp(11), dp(20), dp(11))
-                minimumHeight = dp(46)
-                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(140) else LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(28), dp(4), dp(28), dp(4))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                minimumHeight = dp(48)
+                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(160) else 0, dp(48), if (isLandscape) 0f else 1f).apply {
+                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(4), 0, dp(4), 0)
                 }
                 setOnTouchListener { v, event ->
                     when (event.actionMasked) {
@@ -354,7 +655,21 @@ class FocusPanelBuilder(private val host: MainActivity) {
                             performMicroHapticTick(v, 0f)
                             true
                         }
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        MotionEvent.ACTION_UP -> {
+                            val elapsed = SystemClock.uptimeMillis() - holdStartTime
+                            if (elapsed < 500L) {
+                                AppToast.show(host, "Press and hold to finish session")
+                                try { v.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK) } catch (_: Exception) {}
+                                v.animate().translationX(-8f).setDuration(40).withEndAction {
+                                    v.animate().translationX(8f).setDuration(40).withEndAction {
+                                        v.animate().translationX(0f).setDuration(40).start()
+                                    }.start()
+                                }.start()
+                            }
+                            resetHoldToEnd()
+                            true
+                        }
+                        MotionEvent.ACTION_CANCEL -> {
                             resetHoldToEnd()
                             true
                         }
@@ -369,73 +684,20 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 }
             }
 
-            controlActionContainer.addView(mainBtn)
             controlActionContainer.addView(pauseBtn)
+            controlActionContainer.addView(mainBtn)
             controlActionContainer.addView(stopBtn)
 
-            // 2. Timer Mode Change Menu (At Top)
-            val modeLabel = when (savedTimerMode) {
-                "STOPWATCH" -> "⏱️ Stopwatch ▾"
-                "SUBJECT" -> "📘 Subject Wise ▾"
-                "COUNTDOWN" -> {
-                    val pStudy = sharedPrefs.getInt("pomodoro_study_minutes", 25)
-                    val pBreak = sharedPrefs.getInt("pomodoro_break_minutes", 5)
-                    "🍅 $pStudy/$pBreak Pomodoro ▾"
-                }
-                "LECTURE" -> "🏛️ Lecture ▾"
-                else -> "⏱️ Focus Mode ▾"
-            }
-
-            val modeOptionsPill = TextView(this).apply {
-                text = modeLabel
-                textSize = 12.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(if (isPomoWhite) 0xFF475569.toInt() else tintedColor(themeCoordinator.textColor, 190))
-                gravity = Gravity.CENTER
-                setPadding(dp(16), dp(6), dp(16), dp(6))
-                background = if (isPomoWhite) {
-                    GradientDrawable().apply {
-                        cornerRadius = dp(14).toFloat()
-                        setColor(0xFFF1F5F9.toInt())
-                        setStroke(dp(1), 0xFFCBD5E1.toInt())
-                    }
-                } else {
-                    themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 14f)
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    setMargins(0, dp(2), 0, dp(4))
-                }
-                setOnClickListener {
-                    if (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK || currentTimerState == TimerState.PAUSED) {
-                        AppToast.show(this@FocusPanelBuilder.host, "Stop or finish current session to switch timer mode")
-                        return@setOnClickListener
-                    }
-                    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    TimerModeBottomSheet.show(host) {
-                        host.buildCurrentPanel()
-                    }
-                }
-            }
-            host.modeOptionsPill = modeOptionsPill
-
-            // Assemble into panelContainer in exact order:
+            // Assemble into panelContainer in unified, distraction-free order:
             // 1. Universal Header (Top)
-            // 2. Timer Mode Change Menu (Top)
-            // 3. Center Clocks (Middle)
-            // 4. Subject Menu & Active Task (Bottom, above start timer)
-            // 5. Control Action Container (Start/Pause/Hold to end buttons)
+            // 2. Unified Top Capsule: Subject Tag + Timer Mode + Active Task (Right under header)
+            // 3. Center Clocks (Middle - ample breathing room)
+            // 4. Control Action Container (Start / Pause / End buttons)
             panelContainer.addView(navHeader)
             if (!isLandscape) {
-                panelContainer.addView(modeOptionsPill)
-            }
-            panelContainer.addView(centerClocksWrapper)
-            if (!isLandscape && showSubjectTagging) {
                 panelContainer.addView(extraControlsContainer)
             }
+            panelContainer.addView(centerClocksWrapper)
             panelContainer.addView(controlActionContainer)
 
             updateVisualStyles()

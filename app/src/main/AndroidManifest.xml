@@ -32,7 +32,6 @@
         <activity
             android:name=".LoginActivity"
             android:exported="true"
-            android:noHistory="true"
             android:launchMode="singleTop"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -78,6 +77,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="com.madeby.JAI.ACTION_DAILY_REMIND" />
+                <action android:name="com.madeby.JAI.ACTION_GOAL_ITEM_REMIND" />
             </intent-filter>
         </receiver>
 

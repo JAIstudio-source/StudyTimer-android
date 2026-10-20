@@ -8,6 +8,7 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import androidx.core.widget.NestedScrollView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -201,8 +202,10 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         if (isLoading) {
             buildLeaderboardSkeleton(scrollWrapper)
         } else {
-            val contentScroll = ScrollView(host).apply {
-                isVerticalScrollBarEnabled = false
+            val contentScroll = NestedScrollView(host).apply {
+                isFillViewport = true
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.MATCH_PARENT
@@ -211,7 +214,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
 
             val scrollContent = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(0, 0, 0, dp(16))
+                setPadding(0, 0, 0, dp(48))
             }
 
             // Optional: Show paused participation banner if user has opted out
@@ -345,6 +348,10 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             )
             setColorSchemeColors(host.themeCoordinator.primaryColor)
             setProgressBackgroundColorSchemeColor(if (host.themeCoordinator.isDarkMode()) 0xFF1E293B.toInt() else 0xFFFFFFFF.toInt())
+            setOnChildScrollUpCallback { _, _ ->
+                val activeScroll = (scrollWrapper.getChildAt(0) as? View)
+                activeScroll?.canScrollVertically(-1) == true
+            }
             setOnRefreshListener {
                 val now = System.currentTimeMillis()
                 val elapsed = now - lastManualRefreshTimestamp
@@ -368,6 +375,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         // 4. STICKY BOTTOM BAR (Personal User Card or Guest CTA)
         val bottomBar = buildBottomBar()
         root.addView(bottomBar)
+        FontStyleManager.applyRecursively(root)
     }
 
     private fun loadLeaderboardData(
@@ -410,8 +418,10 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         skeletonShimmerAnimator?.cancel()
         shimmerViews.clear()
 
-        val contentScroll = ScrollView(host).apply {
-            isVerticalScrollBarEnabled = false
+        val contentScroll = NestedScrollView(host).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -420,7 +430,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
 
         val scrollContent = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(16))
+            setPadding(0, 0, 0, dp(48))
         }
 
         // 1. Top 3 Podium Skeleton Cards

@@ -18,6 +18,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -184,7 +185,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 settingsScrollView = existingScrollView
             } else {
                 settingsScrollView = ScrollView(this).apply {
-                    isVerticalScrollBarEnabled = false
+                    isVerticalScrollBarEnabled = true
                     isFillViewport = true
                     isNestedScrollingEnabled = true
                     overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -200,6 +201,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             }
             settingsScrollView.removeAllViews()
             settingsScrollView.addView(layout)
+            settingsScrollView.post { settingsScrollView.scrollTo(0, 0) }
 
             fun createSectionLabel(title: String): TextView {
                 return TextView(this).apply {
@@ -968,45 +970,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 }
                 profileContent.addView(accountBadge)
 
-                if (!isGoogleAuth) {
-                    val signInCard = LinearLayout(this).apply {
-                        orientation = LinearLayout.VERTICAL
-                        background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#4285F4"), 50), 16f)
-                        setPadding(dp(16), dp(14), dp(16), dp(14))
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, dp(4), 0, dp(8))
-                        }
-                    }
-                    signInCard.addView(TextView(this).apply {
-                        text = "Cloud Backup & Sync"
-                        setTextColor(themeCoordinator.textColor)
-                        textSize = 14f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    })
-                    signInCard.addView(TextView(this).apply {
-                        text = "Sign in with Google to automatically back up your study sessions and keep your progress safe across devices."
-                        setTextColor(themeCoordinator.textColor)
-                        alpha = 0.65f
-                        textSize = 12f
-                        setPadding(0, dp(4), 0, dp(12))
-                    })
-                    val googleBtn = Button(this).apply {
-                        text = "Sign in with Google"
-                        setTextColor(Color.WHITE)
-                        textSize = 13.5f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        background = GradientDrawable().apply {
-                            cornerRadius = dp(12).toFloat()
-                            setColor(Color.parseColor("#4285F4"))
-                        }
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46))
-                        setOnClickListener {
-                            startActivity(Intent(this@with, LoginActivity::class.java))
-                        }
-                    }
-                    signInCard.addView(googleBtn)
-                    profileContent.addView(signInCard)
-                } else {
+                if (isGoogleAuth) {
                     val currentProfile = ProfileManager.getProfile(this)
 
                     // --- MODERATION STATUS BANNER ---
@@ -1168,7 +1132,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                 ProfileManager.saveDraftForm(this@with, null, null, track)
                                 for (c in chipViews) {
                                     val sel = c.text == track
-                                    c.typeface = Typeface.create("sans-serif-medium", if (sel) Typeface.BOLD else Typeface.NORMAL)
+                                    c.typeface = themeCoordinator.getAppTypeface(isBold = sel)
                                     c.setTextColor(if (sel) Color.WHITE else themeCoordinator.textColor)
                                     c.background = if (sel) {
                                         themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
@@ -1239,11 +1203,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             // Run local profanity pre-check
                             val check = ProfanityFilter.checkName(inputName)
                             if (!check.isClean) {
-                                androidx.appcompat.app.AlertDialog.Builder(this@with)
-                                    .setTitle("Inappropriate Name")
-                                    .setMessage(check.reason ?: "Display name contains prohibited words.")
-                                    .setPositiveButton("OK", null)
-                                    .show()
+                                DialogFactory.showInfoDialog(
+                                    context = this@with,
+                                    themeCoordinator = themeCoordinator,
+                                    title = "Inappropriate Name",
+                                    message = check.reason ?: "Display name contains prohibited words."
+                                )
                                 return@setOnClickListener
                             }
 
@@ -1385,11 +1350,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                                 navigateToPanel(AppPanel.SETTINGS)
                                             }
                                             is ProfileSyncService.SubmissionResult.RejectedLocally -> {
-                                                androidx.appcompat.app.AlertDialog.Builder(this@with)
-                                                    .setTitle("Name Not Allowed")
-                                                    .setMessage(result.reason)
-                                                    .setPositiveButton("OK", null)
-                                                    .show()
+                                                DialogFactory.showInfoDialog(
+                                                    context = this@with,
+                                                    themeCoordinator = themeCoordinator,
+                                                    title = "Name Not Allowed",
+                                                    message = result.reason
+                                                )
                                             }
                                             is ProfileSyncService.SubmissionResult.NetworkError -> {
                                                 AppToast.show(this@with, result.message, Toast.LENGTH_LONG)
@@ -1425,48 +1391,63 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         setPadding(dp(16), dp(14), dp(16), dp(14))
                     }
 
-                    // Sync Status Row
-                    val syncRow = LinearLayout(this@with).apply {
+                    // Navigation to Cloud & Backup settings (single source of truth)
+                    val cloudNavRow = LinearLayout(this@with).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
-                        setPadding(0, dp(4), 0, dp(12))
+                        setPadding(0, dp(6), 0, dp(12))
+                        isClickable = true
+                        isFocusable = true
+                        val outVal = android.util.TypedValue()
+                        theme.resolveAttribute(android.R.attr.selectableItemBackground, outVal, true)
+                        setBackgroundResource(outVal.resourceId)
+                        setOnClickListener {
+                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            currentSettingsTab = AppSettingsTab.CLOUD
+                            navigateToPanel(AppPanel.SETTINGS)
+                        }
                     }
                     val syncIcon = TextView(this@with).apply {
-                        text = if (isGoogleAuth) "☁" else "○"
-                        textSize = 18f
+                        text = "☁"
+                        textSize = 20f
+                        setTextColor(themeCoordinator.primaryColor)
                         setPadding(0, 0, dp(12), 0)
                     }
-                    syncRow.addView(syncIcon)
+                    cloudNavRow.addView(syncIcon)
 
-                    val lastSyncEpoch = sharedPrefs.getLong("last_cloud_sync_timestamp", 0L)
                     val syncCol = LinearLayout(this@with).apply {
                         orientation = LinearLayout.VERTICAL
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     }
                     syncCol.addView(TextView(this@with).apply {
-                        text = "Cloud Backup"
+                        text = "Cloud & Backup Settings"
                         setTextColor(themeCoordinator.textColor)
-                        textSize = 14f
+                        textSize = 14.5f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     })
                     syncCol.addView(TextView(this@with).apply {
                         text = if (isGoogleAuth) {
-                            if (lastSyncEpoch > 0L) {
-                                val sdf = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
-                                "Connected • Last synced ${sdf.format(Date(lastSyncEpoch))}"
-                            } else {
-                                "Connected • Auto-sync active"
-                            }
+                            "Connected • Tap to manage backups, export & import"
                         } else {
-                            "Offline • Your study sessions are saved safely on this device"
+                            "Offline • Tap to sign in and back up study sessions"
                         }
                         setTextColor(themeCoordinator.textColor)
                         alpha = 0.6f
                         textSize = 11.5f
                         setPadding(0, dp(2), 0, 0)
                     })
-                    syncRow.addView(syncCol)
-                    actionsLayout.addView(syncRow)
+                    cloudNavRow.addView(syncCol)
+
+                    val chevron = TextView(this@with).apply {
+                        text = "Manage ›"
+                        setTextColor(themeCoordinator.primaryColor)
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 12f)
+                        setPadding(dp(10), dp(5), dp(10), dp(5))
+                    }
+                    cloudNavRow.addView(chevron)
+                    actionsLayout.addView(cloudNavRow)
 
                     if (isGoogleAuth) {
                         actionsLayout.addView(createDivider())
@@ -1515,9 +1496,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             // 2b. COMMUNITY & LEADERBOARD SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.COMMUNITY) {
-                // Read-only Public Profile Preview (no editing controls)
-                layout.addView(createSectionLabel("PUBLIC PROFILE PREVIEW"))
-                val previewCard = createSettingsCard()
+                // CARD 1: PUBLIC PROFILE & ROOMS
+                layout.addView(createSectionLabel("PUBLIC PROFILE & ROOMS"))
+                val publicRoomsCard = createSettingsCard()
                 val isGoogleAuth = AuthManager.isLoggedIn(this)
                 val userName = ProfileManager.getEffectiveDisplayName(this).ifBlank { AuthManager.getUserName(this) ?: if (isGoogleAuth) "Google Account User" else "Guest Learner" }
                 val currentProfile = ProfileManager.getProfile(this)
@@ -1641,7 +1622,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 previewRow.addView(infoCol)
                 previewContent.addView(previewRow)
 
-                // Divider and footer hint row with 1-tap navigation to Profile Settings
                 previewContent.addView(createDivider().apply {
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
                         setMargins(0, dp(14), 0, dp(10))
@@ -1677,17 +1657,59 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 previewFooter.addView(editInProfileBtn)
                 previewContent.addView(previewFooter)
 
-                previewCard.addView(previewContent)
-                layout.addView(previewCard)
+                publicRoomsCard.addView(previewContent)
+                publicRoomsCard.addView(createDivider())
 
-                // --- LEADERBOARD & VISIBILITY SETTINGS ---
-                layout.addView(createSectionLabel("LEADERBOARD & VISIBILITY"))
+                val isRoomSound = sharedPrefs.getBoolean("study_room_sound_enabled", true)
+                val roomSoundSwitch = SwitchMaterial(this).apply {
+                    isChecked = isRoomSound
+                    setOnCheckedChangeListener { _, isChecked ->
+                        sharedPrefs.edit().putBoolean("study_room_sound_enabled", isChecked).apply()
+                    }
+                }
+                publicRoomsCard.addView(createSettingsRow(
+                    "🔔",
+                    "Room Audio Alerts",
+                    "Gentle chimes when students join or complete milestone focus sessions",
+                    roomSoundSwitch
+                ))
+                publicRoomsCard.addView(createDivider())
+
+                val isRoomPresence = sharedPrefs.getBoolean("study_room_auto_presence", true)
+                val roomPresenceSwitch = SwitchMaterial(this).apply {
+                    isChecked = isRoomPresence
+                    setOnCheckedChangeListener { _, isChecked ->
+                        sharedPrefs.edit().putBoolean("study_room_auto_presence", isChecked).apply()
+                    }
+                }
+                publicRoomsCard.addView(createSettingsRow(
+                    "👥",
+                    "Study Room Presence",
+                    "Show your avatar and study tag in active study rooms when connected",
+                    roomPresenceSwitch
+                ))
+                publicRoomsCard.addView(createDivider())
+
+                val privatePrivacyRow = createSettingsRow(
+                    "🔒",
+                    "Private Room Isolation",
+                    "Private room codes and participants are shielded from the public directory. Your hours safely sync to your daily total."
+                )
+                publicRoomsCard.addView(privatePrivacyRow)
+                layout.addView(publicRoomsCard)
+
+                // CARD 2: LEADERBOARD & RANKINGS
+                layout.addView(createSectionLabel("LEADERBOARD & RANKINGS"))
                 val leaderboardSettingsCard = createSettingsCard()
 
                 val isParticipating = LeaderboardManager.isParticipating(this)
                 val isShareLive = LeaderboardManager.isLiveStatusSharingEnabled(this)
 
                 var participateSwitchRef: SwitchMaterial? = null
+                val leaderboardSubOptions = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    visibility = if (isParticipating) View.VISIBLE else View.GONE
+                }
 
                 fun promptTurnOffLeaderboard() {
                     DeveloperToolsHelper.showThemedConfirmDialog(
@@ -1703,6 +1725,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     ) {
                         LeaderboardManager.setParticipating(this@with, false)
                         participateSwitchRef?.isChecked = false
+                        leaderboardSubOptions.visibility = View.GONE
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                             LeaderboardManager.removeTodayLeaderboardEntry(this@with)
                         }
@@ -1713,6 +1736,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 fun resumeParticipation() {
                     LeaderboardManager.setParticipating(this@with, true)
                     participateSwitchRef?.isChecked = true
+                    leaderboardSubOptions.visibility = View.VISIBLE
                     AppToast.show(this@with, "Participating in Leaderboard! 🚀")
                     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                         val todayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -1749,9 +1773,10 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                 }
                 leaderboardSettingsCard.addView(partRow)
-                leaderboardSettingsCard.addView(createDivider())
 
-                // Share Live Study Status
+                // Sub-options inside leaderboardSubOptions (Conditional: only visible when participating)
+                leaderboardSubOptions.addView(createDivider())
+
                 val liveSwitch = SwitchMaterial(this).apply {
                     isChecked = isShareLive
                     setOnClickListener {
@@ -1788,66 +1813,26 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         AppToast.show(this@with, "Live study status visible")
                     }
                 }
-                leaderboardSettingsCard.addView(liveRow)
-                leaderboardSettingsCard.addView(createDivider())
+                leaderboardSubOptions.addView(liveRow)
+                leaderboardSubOptions.addView(createDivider())
 
-                // Exam Track Filter Info
                 val examInfoRow = createSettingsRow(
                     "🎯",
                     "Leaderboard Focus Track",
                     "Your global ranking is categorized under \"$targetExam\" (configured in Profile Settings)"
                 )
-                leaderboardSettingsCard.addView(examInfoRow)
+                leaderboardSubOptions.addView(examInfoRow)
+
+                leaderboardSettingsCard.addView(leaderboardSubOptions)
                 layout.addView(leaderboardSettingsCard)
-
-                // --- STUDY ROOMS & SOCIAL SETTINGS ---
-                layout.addView(createSectionLabel("STUDY ROOMS"))
-                val roomsCard = createSettingsCard()
-
-                val isRoomSound = sharedPrefs.getBoolean("study_room_sound_enabled", true)
-                val roomSoundSwitch = SwitchMaterial(this).apply {
-                    isChecked = isRoomSound
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("study_room_sound_enabled", isChecked).apply()
-                    }
-                }
-                roomsCard.addView(createSettingsRow(
-                    "🔔",
-                    "Room Audio Alerts",
-                    "Gentle chimes when students join or complete milestone focus sessions",
-                    roomSoundSwitch
-                ))
-                roomsCard.addView(createDivider())
-
-                val isRoomPresence = sharedPrefs.getBoolean("study_room_auto_presence", true)
-                val roomPresenceSwitch = SwitchMaterial(this).apply {
-                    isChecked = isRoomPresence
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("study_room_auto_presence", isChecked).apply()
-                    }
-                }
-                roomsCard.addView(createSettingsRow(
-                    "👥",
-                    "Study Room Presence",
-                    "Show your avatar and study tag in active study rooms when connected",
-                    roomPresenceSwitch
-                ))
-                roomsCard.addView(createDivider())
-
-                val privatePrivacyRow = createSettingsRow(
-                    "🔒",
-                    "Private Room Isolation",
-                    "Private room codes and participants are shielded from the public directory. Your hours safely sync to your daily total."
-                )
-                roomsCard.addView(privatePrivacyRow)
-                layout.addView(roomsCard)
             }
 
             // ==========================================
             // 3. TIMER & FOCUS CONTROLS SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.TIMER) {
-                layout.addView(createSectionLabel("TIMER STYLE"))
+                // CARD 1: TIMER MODE & DURATIONS
+                layout.addView(createSectionLabel("TIMER MODE & DURATIONS"))
                 val timerModeCard = createSettingsCard()
                 val isLecture = timerMode == "LECTURE"
                 val isStopwatch = timerMode == "STOPWATCH"
@@ -1948,12 +1933,10 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                 }
                 timerModeCard.addView(lectureRow)
-                layout.addView(timerModeCard)
 
-                // 1. CONDITIONAL POMODORO CUSTOMIZER (Render only when COUNTDOWN / Pomodoro is active)
+                // If Pomodoro / Countdown mode is active, merge interval & customization settings into this card
                 if (timerMode == "COUNTDOWN") {
-                    layout.addView(createSectionLabel("STUDY & BREAK TIMERS"))
-                    val intervalCard = createSettingsCard()
+                    timerModeCard.addView(createDivider())
 
                     // Quick Interval Presets Row
                     val presetsRow = LinearLayout(this).apply {
@@ -2005,20 +1988,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         }
                         presetsRow.addView(chip)
                     }
-                    intervalCard.addView(presetsRow)
-                    intervalCard.addView(createDivider())
-
-                    val isFreedomMode = sharedPrefs.getBoolean("pomodoro_freedom_mode", false)
-                    val freedomSwitch = SwitchMaterial(this).apply {
-                        isChecked = isFreedomMode
-                        setOnCheckedChangeListener { _, isChecked ->
-                            sharedPrefs.edit().putBoolean("pomodoro_freedom_mode", isChecked).apply()
-                            tabPageCache.remove(settingsTabKey(AppSettingsTab.TIMER))
-                            navigateToPanel(AppPanel.SETTINGS)
-                        }
-                    }
-                    intervalCard.addView(createSettingsRow("", "Long Sessions", "Study for extended periods without automatic breaks or session limits", freedomSwitch))
-                    intervalCard.addView(createDivider())
+                    timerModeCard.addView(presetsRow)
+                    timerModeCard.addView(createDivider())
 
                     fun formatIntervalValue(valMinutes: Long, unit: String): String {
                         if (unit != "min") return "$valMinutes $unit"
@@ -2081,9 +2052,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             fun performStep() {
                                 val cur = sharedPrefs.safeLong(key, defaultVal)
                                 val multiplier = when {
-                                    holdTicks > 30 -> 12L // fast jump (60 min / step)
-                                    holdTicks > 15 -> 6L  // 30 min jump
-                                    holdTicks > 6 -> 2L   // 10 min jump
+                                    holdTicks > 30 -> 12L
+                                    holdTicks > 15 -> 6L
+                                    holdTicks > 6 -> 2L
                                     else -> 1L
                                 }
                                 val effectiveDelta = delta * multiplier
@@ -2151,16 +2122,24 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         return row
                     }
 
+                    val isFreedomMode = sharedPrefs.getBoolean("pomodoro_freedom_mode", false)
                     val maxFocus = if (isFreedomMode) 1440L else 120L
                     val focusSubtitle = if (isFreedomMode) "Extended continuous focus (up to 24h / 1440m)" else "How long each study session lasts"
-                    intervalCard.addView(makeIntervalStepper("Study Duration", focusSubtitle, "study_interval_minutes", 25L, 5L, maxFocus, 5L, "min"))
-                    intervalCard.addView(createDivider())
-                    intervalCard.addView(makeIntervalStepper("Short Break", if (isFreedomMode) "Standard break (bypassed in Freedom Mode)" else "Quick break between study sessions", "break_interval_minutes", 5L, 1L, 30L, 1L, "min"))
-                    intervalCard.addView(createDivider())
-                    intervalCard.addView(makeIntervalStepper("Long Break", if (isFreedomMode) "Extended rest (bypassed in Freedom Mode)" else "Longer rest after completing multiple sessions", "long_break_minutes", 15L, 5L, 60L, 5L, "min"))
-                    intervalCard.addView(createDivider())
-                    intervalCard.addView(makeIntervalStepper("Sessions Until Long Break", if (isFreedomMode) "Cycle limit (uncapped in Freedom Mode)" else "Number of study sessions before a longer rest", "long_break_interval", 4L, 2L, 10L, 1L, "sessions"))
-                    intervalCard.addView(createDivider())
+                    timerModeCard.addView(makeIntervalStepper("Study Duration", focusSubtitle, "study_interval_minutes", 25L, 5L, maxFocus, 5L, "min"))
+                    timerModeCard.addView(createDivider())
+                    timerModeCard.addView(makeIntervalStepper("Short Break", if (isFreedomMode) "Standard break (bypassed in Freedom Mode)" else "Quick break between study sessions", "break_interval_minutes", 5L, 1L, 30L, 1L, "min"))
+                    timerModeCard.addView(createDivider())
+
+                    // Advanced Break & Automation Options (Conditional: only shown when Freedom Mode is OFF)
+                    val advancedIntervalsLayout = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        visibility = if (isFreedomMode) View.GONE else View.VISIBLE
+                    }
+
+                    advancedIntervalsLayout.addView(makeIntervalStepper("Long Break", "Longer rest after completing multiple sessions", "long_break_minutes", 15L, 5L, 60L, 5L, "min"))
+                    advancedIntervalsLayout.addView(createDivider())
+                    advancedIntervalsLayout.addView(makeIntervalStepper("Sessions Until Long Break", "Number of study sessions before a longer rest", "long_break_interval", 4L, 2L, 10L, 1L, "sessions"))
+                    advancedIntervalsLayout.addView(createDivider())
 
                     val isOvertime = sharedPrefs.getBoolean("pomodoro_overtime_enabled", true)
                     val overtimeSwitch = SwitchMaterial(this).apply {
@@ -2169,8 +2148,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             sharedPrefs.edit().putBoolean("pomodoro_overtime_enabled", isChecked).apply()
                         }
                     }
-                    intervalCard.addView(createSettingsRow("", "Overtime Flow", "Keep timer running past zero so your flow state is never interrupted", overtimeSwitch))
-                    intervalCard.addView(createDivider())
+                    advancedIntervalsLayout.addView(createSettingsRow("", "Overtime Flow", "Keep timer running past zero so your flow state is never interrupted", overtimeSwitch))
+                    advancedIntervalsLayout.addView(createDivider())
 
                     val isAutoBreak = sharedPrefs.getBoolean("pomodoro_auto_break", true)
                     val autoBreakSwitch = SwitchMaterial(this).apply {
@@ -2179,8 +2158,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             sharedPrefs.edit().putBoolean("pomodoro_auto_break", isChecked).apply()
                         }
                     }
-                    intervalCard.addView(createSettingsRow("", "Auto-Start Breaks", "Automatically start rest countdown when focus session finishes", autoBreakSwitch))
-                    intervalCard.addView(createDivider())
+                    advancedIntervalsLayout.addView(createSettingsRow("", "Auto-Start Breaks", "Automatically start rest countdown when focus session finishes", autoBreakSwitch))
+                    advancedIntervalsLayout.addView(createDivider())
 
                     val isAutoFocus = sharedPrefs.getBoolean("pomo_auto_start_focus", true)
                     val autoFocusSwitch = SwitchMaterial(this).apply {
@@ -2189,11 +2168,11 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             sharedPrefs.edit().putBoolean("pomo_auto_start_focus", isChecked).apply()
                         }
                     }
-                    intervalCard.addView(createSettingsRow("", "Auto-Start Next Focus", "Automatically start next study interval when break ends", autoFocusSwitch))
-                    intervalCard.addView(createDivider())
+                    advancedIntervalsLayout.addView(createSettingsRow("", "Auto-Start Next Focus", "Automatically start next study interval when break ends", autoFocusSwitch))
+                    advancedIntervalsLayout.addView(createDivider())
 
                     val isPureWhitePomo = sharedPrefs.getBoolean("pomodoro_pure_white_theme", true)
-                    val pureWhiteSwitch = SwitchMaterial(this).apply {
+                    val pureWhitePomoSwitch = SwitchMaterial(this).apply {
                         isChecked = isPureWhitePomo
                         setOnCheckedChangeListener { _, isChecked ->
                             sharedPrefs.edit().putBoolean("pomodoro_pure_white_theme", isChecked).apply()
@@ -2203,12 +2182,26 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             }
                         }
                     }
-                    intervalCard.addView(createSettingsRow("", "Pure White Theme for Pomodoro", "Minimal pure white theme for Pomodoro timer", pureWhiteSwitch))
-                    layout.addView(intervalCard)
-                }
+                    advancedIntervalsLayout.addView(createSettingsRow("", "Pure White Theme for Pomodoro", "Minimal pure white theme for Pomodoro timer", pureWhitePomoSwitch))
+                    advancedIntervalsLayout.addView(createDivider())
 
-                layout.addView(createSectionLabel("DISPLAY & SCREEN"))
-                val displayCard = createSettingsCard()
+                    timerModeCard.addView(advancedIntervalsLayout)
+
+                    val freedomSwitch = SwitchMaterial(this).apply {
+                        isChecked = isFreedomMode
+                        setOnCheckedChangeListener { _, isChecked ->
+                            sharedPrefs.edit().putBoolean("pomodoro_freedom_mode", isChecked).apply()
+                            advancedIntervalsLayout.visibility = if (isChecked) View.GONE else View.VISIBLE
+                        }
+                    }
+                    timerModeCard.addView(createSettingsRow("", "Long Sessions", "Study for extended periods without automatic breaks or session limits", freedomSwitch))
+                }
+                layout.addView(timerModeCard)
+
+                // CARD 2: DISPLAY & GESTURES
+                layout.addView(createSectionLabel("DISPLAY & GESTURES"))
+                val displayGestureCard = createSettingsCard()
+
                 val isKeepScreenOn = sharedPrefs.getBoolean("keep_screen_on", true)
                 val keepScreenOnSwitch = SwitchMaterial(this).apply {
                     isChecked = isKeepScreenOn
@@ -2217,19 +2210,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         updateKeepScreenOn()
                     }
                 }
-                displayCard.addView(createSettingsRow("", getString(R.string.keep_screen_on), getString(R.string.keep_screen_on_sub), keepScreenOnSwitch))
-                displayCard.addView(createDivider())
-
-                val isPauseButtonEnabled = sharedPrefs.getBoolean("show_pause_button", true)
-                val pauseButtonSwitch = SwitchMaterial(this).apply {
-                    isChecked = isPauseButtonEnabled
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("show_pause_button", isChecked).apply()
-                        if (currentPanel == AppPanel.FOCUS) updateVisualStyles()
-                    }
-                }
-                displayCard.addView(createSettingsRow("", getString(R.string.pause_button), getString(R.string.pause_button_sub), pauseButtonSwitch))
-                displayCard.addView(createDivider())
+                displayGestureCard.addView(createSettingsRow("", getString(R.string.keep_screen_on), getString(R.string.keep_screen_on_sub), keepScreenOnSwitch))
+                displayGestureCard.addView(createDivider())
 
                 val isLandscapeStopwatchEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
                 val landscapeSwitch = SwitchMaterial(this).apply {
@@ -2245,8 +2227,19 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         }
                     }
                 }
-                displayCard.addView(createSettingsRow("", "Landscape Fullscreen", "Sideways fullscreen distraction-free clock", landscapeSwitch))
-                displayCard.addView(createDivider())
+                displayGestureCard.addView(createSettingsRow("", "Landscape Fullscreen", "Sideways fullscreen distraction-free clock", landscapeSwitch))
+                displayGestureCard.addView(createDivider())
+
+                val isPauseButtonEnabled = sharedPrefs.getBoolean("show_pause_button", true)
+                val pauseButtonSwitch = SwitchMaterial(this).apply {
+                    isChecked = isPauseButtonEnabled
+                    setOnCheckedChangeListener { _, isChecked ->
+                        sharedPrefs.edit().putBoolean("show_pause_button", isChecked).apply()
+                        if (currentPanel == AppPanel.FOCUS) updateVisualStyles()
+                    }
+                }
+                displayGestureCard.addView(createSettingsRow("", getString(R.string.pause_button), getString(R.string.pause_button_sub), pauseButtonSwitch))
+                displayGestureCard.addView(createDivider())
 
                 val isPureWhite = sharedPrefs.getBoolean("pureWhiteTimer", true)
                 val pureWhiteSwitch = SwitchMaterial(this).apply {
@@ -2257,61 +2250,45 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         tabPageCache.clear()
                     }
                 }
-                displayCard.addView(createSettingsRow("", "Pure White Clock", "Clean white timer digits instead of accent color", pureWhiteSwitch))
-                layout.addView(displayCard)
+                displayGestureCard.addView(createSettingsRow("", "Pure White Clock", "Clean white timer digits instead of accent color", pureWhiteSwitch))
+                displayGestureCard.addView(createDivider())
 
-                layout.addView(createSectionLabel("PHYSICAL GESTURES"))
-                val gestureCard = createSettingsCard()
+                // Physical Gestures (Flip to Focus + Conditional Auto-Pause on Face Up)
                 val isFlipEnabled = FlipToFocusManager.isEnabled(this)
+                val pauseFaceUpContainer = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    visibility = if (isFlipEnabled) View.VISIBLE else View.GONE
+                }
+
+                val isPauseFaceUp = FlipToFocusManager.isPauseOnFaceUp(this)
+                val pauseFaceUpSwitch = SwitchMaterial(this).apply {
+                    isChecked = isPauseFaceUp
+                    setOnCheckedChangeListener { _, isChecked ->
+                        FlipToFocusManager.setPauseOnFaceUp(this@with, isChecked)
+                    }
+                }
+                pauseFaceUpContainer.addView(createDivider())
+                pauseFaceUpContainer.addView(createSettingsRow("", "Auto-Pause on Face Up", "Pause the timer when picking up or turning the phone face up", pauseFaceUpSwitch))
+
                 val flipSwitch = SwitchMaterial(this).apply {
                     isChecked = isFlipEnabled
                     setOnCheckedChangeListener { _, isChecked ->
                         FlipToFocusManager.setEnabled(this@with, isChecked)
-                        if (isChecked) {
-                            FlipToFocusManager.setContext(this@with)
-                            FlipToFocusManager.start(
-                                context = this@with,
-                                onFaceDown = {
-                                    if (currentTimerState == TimerState.IDLE || currentTimerState == TimerState.PAUSED) {
-                                        handleStateToggle()
-                                    }
-                                },
-                                onFaceUp = {
-                                    if (FlipToFocusManager.isPauseOnFaceUp(this@with) && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK)) {
-                                        handleStateToggle()
-                                    }
-                                }
-                            )
-                        } else {
-                            FlipToFocusManager.stop()
-                        }
-                        tabPageCache.remove(settingsTabKey(AppSettingsTab.TIMER))
-                        navigateToPanel(AppPanel.SETTINGS)
+                        this@with.syncFlipToFocusState()
+                        pauseFaceUpContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
                     }
                 }
-                gestureCard.addView(createSettingsRow("", "Flip to Focus", "Turn phone face down on your desk to automatically start focusing", flipSwitch))
+                displayGestureCard.addView(createSettingsRow("", "Flip to Focus", "Turn phone face down on your desk to automatically start focusing", flipSwitch))
+                displayGestureCard.addView(pauseFaceUpContainer)
+                displayGestureCard.addView(createDivider())
 
-                if (isFlipEnabled) {
-                    gestureCard.addView(createDivider())
-                    val isPauseFaceUp = FlipToFocusManager.isPauseOnFaceUp(this)
-                    val pauseFaceUpSwitch = SwitchMaterial(this).apply {
-                        isChecked = isPauseFaceUp
-                        setOnCheckedChangeListener { _, isChecked ->
-                            FlipToFocusManager.setPauseOnFaceUp(this@with, isChecked)
-                        }
-                    }
-                    gestureCard.addView(createSettingsRow("", "Auto-Pause on Face Up", "Pause the timer when picking up or turning the phone face up", pauseFaceUpSwitch))
-                }
-                layout.addView(gestureCard)
-
-                layout.addView(createSectionLabel("ADJUST STUDY TIME"))
-                val adjustCard = createSettingsCard()
+                // Quick Study Time Adjust
                 val adjustRow = createSettingsRow("", "Adjust Today's Study Time", "Add missed study minutes or correct today's total")
                 adjustRow.setOnClickListener {
                     DeveloperToolsHelper.showAdjustTodayTimeDialog(host, themeCoordinator, isDeveloperExtended = false)
                 }
-                adjustCard.addView(adjustRow)
-                layout.addView(adjustCard)
+                displayGestureCard.addView(adjustRow)
+                layout.addView(displayGestureCard)
             }
 
             // ==========================================
@@ -2394,9 +2371,13 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             // ==========================================
             // 5. PLANNER & GOALS SUB-SCREEN
             // ==========================================
+            // ==========================================
+            // 5. PLANNER & GOALS SUB-SCREEN
+            // ==========================================
             else if (currentSettingsTab == AppSettingsTab.PLANNER) {
-                layout.addView(createSectionLabel("DAILY GOALS & STREAKS"))
-                val goalCard = createSettingsCard()
+                // CARD 1: DAILY GOALS & REMINDERS
+                layout.addView(createSectionLabel("DAILY GOALS & REMINDERS"))
+                val goalReminderCard = createSettingsCard()
                 val goalValueText = TextView(this).apply {
                     textSize = 15f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -2443,8 +2424,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 controls.addView(goalValueText)
                 controls.addView(makeGoalStepBtn("+", 900L))
                 goalRow.addView(controls)
-                goalCard.addView(goalRow)
-                goalCard.addView(createDivider())
+                goalReminderCard.addView(goalRow)
+                goalReminderCard.addView(createDivider())
 
                 val isStreakGoalBased = sharedPrefs.getBoolean("streak_uses_daily_goal", false)
                 val streakGoalSwitch = SwitchMaterial(this).apply {
@@ -2453,12 +2434,15 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         sharedPrefs.edit().putBoolean("streak_uses_daily_goal", isChecked).apply()
                     }
                 }
-                goalCard.addView(createSettingsRow("", getString(R.string.streak_uses_goal), getString(R.string.streak_uses_goal_sub), streakGoalSwitch))
-                layout.addView(goalCard)
+                goalReminderCard.addView(createSettingsRow("", getString(R.string.streak_uses_goal), getString(R.string.streak_uses_goal_sub), streakGoalSwitch))
+                goalReminderCard.addView(createDivider())
 
-                layout.addView(createSectionLabel("STUDY REMINDERS"))
-                val reminderCard = createSettingsCard()
                 val reminderEnabled = sharedPrefs.getBoolean("reminder_enabled", true)
+                val reminderTimeContainer = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    visibility = if (reminderEnabled) View.VISIBLE else View.GONE
+                }
+
                 val reminderSwitch = SwitchMaterial(this).apply {
                     isChecked = reminderEnabled
                     setOnCheckedChangeListener { _, isChecked ->
@@ -2468,10 +2452,10 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         } else {
                             GoalReminderScheduler.cancel(context)
                         }
+                        reminderTimeContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
                     }
                 }
-                reminderCard.addView(createSettingsRow("", "Daily Goal Reminder", "Evening notification if daily goal is not reached", reminderSwitch))
-                reminderCard.addView(createDivider())
+                goalReminderCard.addView(createSettingsRow("", "Daily Goal Reminder", "Evening notification if daily goal is not reached", reminderSwitch))
 
                 val remHour = sharedPrefs.safeInt("reminder_hour", 20)
                 val remMinute = sharedPrefs.safeInt("reminder_minute", 0)
@@ -2521,31 +2505,36 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 })
                 timeRow.addView(timeTextCol)
                 timeRow.addView(timeLabel)
-                reminderCard.addView(timeRow)
-                layout.addView(reminderCard)
 
-                layout.addView(createSectionLabel("PLANNER TOOLS & HABITS"))
-                val plannerCard = createSettingsCard()
+                reminderTimeContainer.addView(createDivider())
+                reminderTimeContainer.addView(timeRow)
+                goalReminderCard.addView(reminderTimeContainer)
+
+                layout.addView(goalReminderCard)
+
+                // CARD 2: HABITS & TOOLS
+                layout.addView(createSectionLabel("HABITS & TOOLS"))
+                val habitsToolsCard = createSettingsCard()
                 val matrixRow = createSettingsRow("", "Goal & Habit Matrix", "Weekly matrix & consistency grid")
                 matrixRow.setOnClickListener {
                     showPlannerMatrixDialog()
                 }
-                plannerCard.addView(matrixRow)
-                plannerCard.addView(createDivider())
+                habitsToolsCard.addView(matrixRow)
+                habitsToolsCard.addView(createDivider())
 
                 val yesterdayRow = createSettingsRow("", "Yesterday's Goals", "Review or adjust previous day's completed goals")
                 yesterdayRow.setOnClickListener {
                     showEditYesterdayGoalsDialog()
                 }
-                plannerCard.addView(yesterdayRow)
-                plannerCard.addView(createDivider())
+                habitsToolsCard.addView(yesterdayRow)
+                habitsToolsCard.addView(createDivider())
 
                 val plannerThemeRow = createSettingsRow("", "Planner Palette", "Choose custom colors for your daily planner goals")
                 plannerThemeRow.setOnClickListener {
                     showPlannerThemePickerDialog()
                 }
-                plannerCard.addView(plannerThemeRow)
-                layout.addView(plannerCard)
+                habitsToolsCard.addView(plannerThemeRow)
+                layout.addView(habitsToolsCard)
             }
 
             // ==========================================
@@ -2716,6 +2705,125 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 modeCard.addView(lightRow)
                 layout.addView(modeCard)
 
+                // ==========================================
+                // ==========================================
+                // WALLPAPERS & AMBIENT BACKGROUNDS
+                // ==========================================
+                // ==========================================
+                // WALLPAPER & AMBIENT BACKGROUNDS
+                // ==========================================
+                layout.addView(createSectionLabel("WALLPAPER & AMBIENCE"))
+                val wallpaperCard = createSettingsCard()
+                val wallpaperType = WallpaperManager.getWallpaperType(this)
+                val activePresetId = WallpaperManager.getActivePresetId(this)
+
+                val currentTitle = when (wallpaperType) {
+                    WallpaperManager.TYPE_PRESET -> WallpaperManager.getPresetById(this, activePresetId)?.title ?: "Preset Wallpaper"
+                    WallpaperManager.TYPE_STATIC -> "Custom Photo"
+                    WallpaperManager.TYPE_LIVE_AURORA -> "Aurora Wave (Live)"
+                    WallpaperManager.TYPE_LIVE_COSMIC -> "Cosmic Stars (Live)"
+                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> "Lofi Rain (Live)"
+                    WallpaperManager.TYPE_LIVE_VIDEO -> "Custom Video Loop"
+                    else -> "Solid Theme Background"
+                }
+
+                val wallpaperRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    isClickable = true
+                    isFocusable = true
+                }
+
+                // Small Thumbnail / Preview Box on Left of Row
+                val heroPreviewContainer = FrameLayout(this).apply {
+                    clipToOutline = true
+                    outlineProvider = object : android.view.ViewOutlineProvider() {
+                        override fun getOutline(view: View, outline: android.graphics.Outline) {
+                            outline.setRoundRect(0, 0, view.width, view.height, dp(10).toFloat())
+                        }
+                    }
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(10).toFloat()
+                        setColor(0xFF1E293B.toInt())
+                        setStroke(dp(1), 0x22FFFFFF)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                        rightMargin = dp(14)
+                    }
+                }
+
+                val heroPreviewImg = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                }
+
+                when (wallpaperType) {
+                    WallpaperManager.TYPE_PRESET -> {
+                        val preset = WallpaperManager.getPresetById(this, activePresetId)
+                        val thumb = if (preset != null) WallpaperManager.loadPresetThumbnail(this, preset) else null
+                        if (thumb != null) {
+                            heroPreviewImg.setImageBitmap(thumb)
+                        } else {
+                            heroPreviewImg.setBackgroundColor(0xFF334155.toInt())
+                        }
+                    }
+                    WallpaperManager.TYPE_STATIC -> {
+                        val file = WallpaperManager.getCustomWallpaperFile(this)
+                        if (file.exists()) {
+                            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
+                            val bm = android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
+                            if (bm != null) heroPreviewImg.setImageBitmap(bm)
+                        }
+                    }
+                    WallpaperManager.TYPE_LIVE_AURORA -> heroPreviewImg.setBackgroundColor(0xFF065F46.toInt())
+                    WallpaperManager.TYPE_LIVE_COSMIC -> heroPreviewImg.setBackgroundColor(0xFF1E1B4B.toInt())
+                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> heroPreviewImg.setBackgroundColor(0xFF1E293B.toInt())
+                    WallpaperManager.TYPE_LIVE_VIDEO -> heroPreviewImg.setBackgroundColor(0xFF1E1E2E.toInt())
+                    else -> heroPreviewImg.setBackgroundColor(if (themeCoordinator.isDarkMode()) 0xFF000000.toInt() else 0xFFF1F5F9.toInt())
+                }
+                heroPreviewContainer.addView(heroPreviewImg)
+                wallpaperRow.addView(heroPreviewContainer)
+
+                // Text Description in Row
+                val heroTextLayout = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+
+                val heroTitle = TextView(this).apply {
+                    text = "Select Wallpaper"
+                    textSize = 15f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.textColor)
+                }
+                heroTextLayout.addView(heroTitle)
+
+                val heroSub = TextView(this).apply {
+                    text = "Active: $currentTitle • Tap to change"
+                    textSize = 12f
+                    setTextColor(tintedColor(themeCoordinator.textColor, 140))
+                    setPadding(0, dp(2), 0, 0)
+                }
+                heroTextLayout.addView(heroSub)
+                wallpaperRow.addView(heroTextLayout)
+
+                val browseArrow = TextView(this).apply {
+                    text = "Choose ›"
+                    textSize = 13f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.primaryColor)
+                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                }
+                wallpaperRow.addView(browseArrow)
+
+                wallpaperRow.setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    showWallpaperGalleryDialog()
+                }
+                wallpaperCard.addView(wallpaperRow)
+                layout.addView(wallpaperCard)
+
                 layout.addView(createSectionLabel("CARD STYLES"))
                 val styleCard = createSettingsCard()
                 val isBubble = themeCoordinator.isBubbleStyle()
@@ -2747,6 +2855,35 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 }
                 styleCard.addView(classicRow)
                 layout.addView(styleCard)
+
+                // ==========================================
+                // 20+ FONT STYLE SELECTOR
+                // ==========================================
+                layout.addView(createSectionLabel("FONT & TYPOGRAPHY"))
+                val fontCard = createSettingsCard()
+                val currentFontId = FontStyleManager.getSelectedFontId(this)
+                val currentFontItem = FontStyleManager.FONT_OPTIONS.find { it.id == currentFontId } ?: FontStyleManager.FONT_OPTIONS[0]
+
+                val fontBadge = TextView(this).apply {
+                    text = currentFontItem.displayName
+                    textSize = 13f
+                    typeface = FontStyleManager.getTypeface(this@with, currentFontItem.id)
+                    setTextColor(themeCoordinator.primaryColor)
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 12f)
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                }
+
+                val fontRow = createSettingsRow(
+                    "",
+                    "Timer & App Font Style",
+                    "${currentFontItem.category} • ${currentFontItem.displayName}",
+                    fontBadge
+                )
+                fontRow.setOnClickListener {
+                    showFontSelectionDialog()
+                }
+                fontCard.addView(fontRow)
+                layout.addView(fontCard)
 
                 // ==========================================
                 // RANDOM THEME / ACCENT GENERATOR
@@ -3053,7 +3190,146 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             settingsRoot.addView(settingsRootLayout, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             settingsRoot.addView(settingsBackFab)
 
+            FontStyleManager.applyRecursively(settingsRoot)
             target.addView(settingsRoot)
+        }
+    }
+
+    private fun showFontSelectionDialog() {
+        with(host) {
+            val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this, R.style.TransparentBottomSheetDialogTheme)
+            val dialogLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = themeCoordinator.createDialogBackground(28f)
+                setPadding(dp(20), dp(18), dp(20), dp(24))
+            }
+
+            // Header Row
+            val headerRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(12))
+            }
+            val titleText = TextView(this).apply {
+                text = "Choose Font Style (20+)"
+                textSize = 17f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(themeCoordinator.textColor)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val closeBtn = TextView(this).apply {
+                text = "✕"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.6f
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                setOnClickListener { dialog.dismiss() }
+            }
+            headerRow.addView(titleText)
+            headerRow.addView(closeBtn)
+            dialogLayout.addView(headerRow)
+
+            val maxScrollHeight = (resources.displayMetrics.heightPixels * 0.55f).toInt()
+            val scroll = androidx.core.widget.NestedScrollView(this).apply {
+                isFillViewport = true
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, maxScrollHeight)
+            }
+            val listLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+
+            val currentSelectedId = FontStyleManager.getSelectedFontId(this)
+            var currentCategory = ""
+
+            for (item in FontStyleManager.FONT_OPTIONS) {
+                if (item.category != currentCategory) {
+                    currentCategory = item.category
+                    val catLabel = TextView(this).apply {
+                        text = currentCategory.uppercase()
+                        textSize = 11f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        setTextColor(themeCoordinator.primaryColor)
+                        letterSpacing = 0.08f
+                        setPadding(dp(4), dp(12), dp(4), dp(4))
+                    }
+                    listLayout.addView(catLabel)
+                }
+
+                val isSelected = item.id == currentSelectedId
+                val itemRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = if (isSelected) {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 45), 14f)
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 12), 14f)
+                    }
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, dp(4), 0, dp(4))
+                    }
+                    isClickable = true
+                    setOnClickListener {
+                        FontStyleManager.setSelectedFontId(host, item.id)
+                        performMicroHaptic(this)
+                        dialog.dismiss()
+                        tabPageCache.clear()
+                        navigateToPanel(AppPanel.SETTINGS)
+                        AppToast.show(host, "${item.displayName} applied!")
+                    }
+                }
+
+                val textCol = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val nameLabel = TextView(this).apply {
+                    text = item.displayName
+                    textSize = 14f
+                    typeface = FontStyleManager.getTypeface(host, item.id)
+                    setTextColor(if (isSelected) themeCoordinator.primaryColor else themeCoordinator.textColor)
+                }
+                val previewLabel = TextView(this).apply {
+                    text = item.sampleText
+                    textSize = 12f
+                    typeface = FontStyleManager.getTypeface(host, item.id)
+                    setTextColor(themeCoordinator.textColor)
+                    alpha = if (isSelected) 0.85f else 0.5f
+                    setPadding(0, dp(2), 0, 0)
+                }
+                textCol.addView(nameLabel)
+                textCol.addView(previewLabel)
+                itemRow.addView(textCol)
+
+                if (isSelected) {
+                    val checkmark = TextView(this).apply {
+                        text = "✓"
+                        textSize = 16f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(themeCoordinator.primaryColor)
+                        setPadding(dp(8), 0, dp(4), 0)
+                    }
+                    itemRow.addView(checkmark)
+                }
+
+                listLayout.addView(itemRow)
+            }
+
+            scroll.addView(listLayout)
+            dialogLayout.addView(scroll)
+
+            dialog.setContentView(dialogLayout)
+            dialog.show()
+            dialog.window?.let { win ->
+                win.setLayout(
+                    (resources.displayMetrics.widthPixels * 0.92f).toInt().coerceAtMost(dp(420)),
+                    android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+                win.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            }
         }
     }
 }

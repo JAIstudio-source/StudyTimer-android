@@ -8,7 +8,7 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-enum class GoalHistoryStatus { ACHIEVED, DEFICIT, NOT_COMPLETED }
+enum class GoalHistoryStatus { ACHIEVED, DEFICIT, NOT_COMPLETED, NOT_SCHEDULED }
 
 data class GoalInsights(
     val totalDaysTracked: Int,
@@ -44,6 +44,21 @@ object PlannerHistoryManager {
 
     fun getTodayKey(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    }
+
+    fun isGoalScheduledOnDay(scheduledDays: List<Int>, cal: Calendar): Boolean {
+        if (scheduledDays.isEmpty()) return true
+        val dayOfWeek = when (cal.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.MONDAY -> 1
+            Calendar.TUESDAY -> 2
+            Calendar.WEDNESDAY -> 3
+            Calendar.THURSDAY -> 4
+            Calendar.FRIDAY -> 5
+            Calendar.SATURDAY -> 6
+            Calendar.SUNDAY -> 7
+            else -> 1
+        }
+        return scheduledDays.contains(dayOfWeek)
     }
 
     fun getDailyGoalDurations(context: Context, dateKey: String = getTodayKey()): Map<String, Long> {
@@ -82,7 +97,8 @@ object PlannerHistoryManager {
         goals: List<PlannerGoal>,
         totalFocusSecs: Long,
         dailySubjectDurations: Map<String, Long>,
-        dailyGoalDurations: Map<String, Long> = emptyMap()
+        dailyGoalDurations: Map<String, Long> = emptyMap(),
+        dailySubTopicDurations: Map<String, Map<String, Long>> = emptyMap()
     ): Map<String, GoalProgress> {
         val totalFocusMins = (totalFocusSecs / 60).toInt()
         val result = mutableMapOf<String, GoalProgress>()
@@ -99,9 +115,33 @@ object PlannerHistoryManager {
             }
         }
 
-        // 2. Separate remaining subject-tagged goals and untagged goals
-        val remainingSubjectGoals = goals.filter { !goalsWithDedicatedTime.contains(it.id) && !it.subjectId.isNullOrBlank() && it.subjectId != "all" }
-        val remainingUntaggedGoals = goals.filter { !goalsWithDedicatedTime.contains(it.id) && (it.subjectId.isNullOrBlank() || it.subjectId == "all") }
+        // 2. Separate sub-topic goals, subject-tagged goals, and untagged goals
+        val subTopicGoals = goals.filter {
+            !goalsWithDedicatedTime.contains(it.id) &&
+            !it.subjectId.isNullOrBlank() &&
+            it.subjectId != "all" &&
+            !it.subTopic.isNullOrBlank()
+        }
+        val remainingSubjectGoals = goals.filter {
+            !goalsWithDedicatedTime.contains(it.id) &&
+            !it.subjectId.isNullOrBlank() &&
+            it.subjectId != "all" &&
+            it.subTopic.isNullOrBlank()
+        }
+        val remainingUntaggedGoals = goals.filter {
+            !goalsWithDedicatedTime.contains(it.id) &&
+            (it.subjectId.isNullOrBlank() || it.subjectId == "all")
+        }
+
+        // Process sub-topic goals isolated per sub-topic
+        for (g in subTopicGoals) {
+            val subId = g.subjectId!!
+            val topic = g.subTopic!!
+            val topicSecs = dailySubTopicDurations[subId]?.get(topic) ?: 0L
+            val topicMins = (topicSecs / 60).toInt()
+            val isAchieved = if (g.targetMinutes > 0) topicMins >= g.targetMinutes else g.completed
+            result[g.id] = GoalProgress(g.id, actualMinutes = topicMins, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
+        }
 
         // Process remaining subject-tagged goals grouped by subjectId (isolated per subject)
         val groupedSubjectGoals = remainingSubjectGoals.groupBy { it.subjectId!! }
@@ -122,7 +162,6 @@ object PlannerHistoryManager {
                 } else {
                     val allocated: Int
                     if (g.id == lastTargetGoalId) {
-                        // Last goal with target gets all remaining time for this subject
                         allocated = remainingSubjectMins
                         remainingSubjectMins = (remainingSubjectMins - g.targetMinutes).coerceAtLeast(0)
                     } else {
@@ -175,25 +214,44 @@ object PlannerHistoryManager {
         val dailySubjectDurations = SubjectTagManager.getSubjectDurationsForDate(context, dateStr)
         val dailyGoalDurations = getDailyGoalDurations(context, dateStr)
 
-        val progressMap = calculateGoalProgress(goals, dayFocusSecs, dailySubjectDurations, dailyGoalDurations)
+        val dailySubTopicDurations = mutableMapOf<String, Map<String, Long>>()
+        for (g in goals) {
+            val subId = g.subjectId
+            if (!subId.isNullOrBlank() && !dailySubTopicDurations.containsKey(subId)) {
+                dailySubTopicDurations[subId] = SubjectTagManager.getDailySubTopicDurations(context, subId, dateStr)
+            }
+        }
+
+        val progressMap = calculateGoalProgress(goals, dayFocusSecs, dailySubjectDurations, dailyGoalDurations, dailySubTopicDurations)
 
         val array = JSONArray()
         for (g in goals) {
             val prog = progressMap[g.id]
-            val autoCompleted = if (g.targetMinutes > 0) (prog?.isAchieved ?: false) else g.completed
-            val isCompleted = g.completed || autoCompleted
-            val isAchieved = if (g.targetMinutes > 0) (prog?.isAchieved ?: false) else isCompleted
+            val actualMins = prog?.actualMinutes ?: 0
+            val isDurationAchieved = if (g.targetMinutes > 0) (actualMins >= g.targetMinutes) else g.completed
+            val isCompleted = g.completed || isDurationAchieved
+            // Strictly require duration achievement when targetMinutes > 0
+            val isAchieved = if (g.targetMinutes > 0) isDurationAchieved else isCompleted
 
             val obj = JSONObject().apply {
                 put("goalId", g.id)
                 put("title", g.title)
                 put("note", g.note)
                 put("targetMinutes", g.targetMinutes)
+                put("actualMinutes", actualMins)
                 put("completed", isCompleted)
                 put("checkedAt", if (isCompleted && g.checkedAt == 0L) System.currentTimeMillis() else g.checkedAt)
                 put("isAchieved", isAchieved)
                 if (g.subjectId != null) {
                     put("subjectId", g.subjectId)
+                }
+                if (g.subTopic != null) {
+                    put("subTopic", g.subTopic)
+                }
+                if (g.scheduledDays.isNotEmpty()) {
+                    val daysArr = JSONArray()
+                    g.scheduledDays.forEach { daysArr.put(it) }
+                    put("scheduledDays", daysArr)
                 }
             }
             array.put(obj)
@@ -216,6 +274,12 @@ object PlannerHistoryManager {
                 val completed = obj.optBoolean("completed", false)
                 val isAchieved = obj.optBoolean("isAchieved", completed)
                 val subId = if (obj.has("subjectId") && !obj.isNull("subjectId")) obj.optString("subjectId") else null
+                val subTopic = if (obj.has("subTopic") && !obj.isNull("subTopic")) obj.optString("subTopic") else null
+                val daysList = mutableListOf<Int>()
+                val daysArr = obj.optJSONArray("scheduledDays")
+                if (daysArr != null) {
+                    for (d in 0 until daysArr.length()) daysList.add(daysArr.getInt(d))
+                }
                 list.add(
                     PlannerGoalSnapshot(
                         goalId = obj.optString("goalId", ""),
@@ -225,7 +289,10 @@ object PlannerHistoryManager {
                         checkedAt = obj.optLong("checkedAt", 0L),
                         isAchieved = isAchieved,
                         subjectId = subId,
-                        note = obj.optString("note", "")
+                        note = obj.optString("note", ""),
+                        subTopic = subTopic,
+                        scheduledDays = daysList,
+                        actualMinutes = obj.optInt("actualMinutes", 0)
                     )
                 )
             }
@@ -255,28 +322,79 @@ object PlannerHistoryManager {
 
     /**
      * Loads detailed completion status per date ("yyyy-MM-dd" -> GoalHistoryStatus)
-     * for a specific goalId across all saved daily snapshots.
+     * for a specific goal across all relevant calendar days.
+     * Accurately distinguishes between:
+     * - ACHIEVED: Goal completed & target verified (✓)
+     * - DEFICIT: Goal completed early / deficit without meeting duration (✕)
+     * - NOT_COMPLETED: Goal was scheduled but missed / not reached on reset (✕)
+     * - NOT_SCHEDULED: Goal was not meant to be completed on this day (—)
      */
-    fun loadGoalHistoryDetailed(context: Context, goalId: String): Map<String, GoalHistoryStatus> {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    fun loadGoalHistoryDetailed(
+        context: Context,
+        goalId: String,
+        scheduledDays: List<Int> = emptyList(),
+        createdAt: Long = 0L
+    ): Map<String, GoalHistoryStatus> {
         val historyMap = mutableMapOf<String, GoalHistoryStatus>()
-        val allKeys = prefs.all.keys
-        for (key in allKeys) {
-            if (key.endsWith(SNAPSHOT_KEY_SUFFIX)) {
-                val dateStr = key.removeSuffix(SNAPSHOT_KEY_SUFFIX)
-                val rawJson = prefs.getString(key, null) ?: continue
-                val snapshots = parseSnapshots(rawJson)
-                val match = snapshots.firstOrNull { it.goalId == goalId }
-                if (match != null) {
-                    val status = when {
-                        !match.completed -> GoalHistoryStatus.NOT_COMPLETED
-                        match.isAchieved -> GoalHistoryStatus.ACHIEVED
-                        else -> GoalHistoryStatus.DEFICIT
-                    }
-                    historyMap[dateStr] = status
-                }
+        val snapshotsMap = loadGoalSnapshotsMap(context, goalId)
+
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val todayStr = getTodayKey()
+        val todayCal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+        }
+
+        val startCal = Calendar.getInstance().apply {
+            if (createdAt > 0L) {
+                timeInMillis = createdAt
+            } else {
+                add(Calendar.DAY_OF_YEAR, -30)
+            }
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+
+        for (dateStr in snapshotsMap.keys) {
+            val d = runCatching { sdf.parse(dateStr) }.getOrNull()
+            if (d != null && d.before(startCal.time)) {
+                startCal.time = d
             }
         }
+
+        val currCal = startCal.clone() as Calendar
+        while (!currCal.after(todayCal)) {
+            val dateKey = sdf.format(currCal.time)
+            val match = snapshotsMap[dateKey]
+            val isScheduled = isGoalScheduledOnDay(scheduledDays, currCal)
+
+            if (!isScheduled) {
+                historyMap[dateKey] = GoalHistoryStatus.NOT_SCHEDULED
+            } else {
+                if (match != null) {
+                    val status = when {
+                        match.isAchieved || match.completed -> GoalHistoryStatus.ACHIEVED
+                        dateKey == todayStr -> null // Today is active and in-progress: never mark as NOT_COMPLETED or missed
+                        else -> GoalHistoryStatus.NOT_COMPLETED
+                    }
+                    if (status != null) {
+                        historyMap[dateKey] = status
+                    }
+                } else {
+                    if (dateKey == todayStr) {
+                        // Today is in progress - leave unmapped so today ring/active indicator shows
+                    } else {
+                        // Past scheduled date where goal was NOT completed: explicitly mark as NOT_COMPLETED (✕)
+                        historyMap[dateKey] = GoalHistoryStatus.NOT_COMPLETED
+                    }
+                }
+            }
+            currCal.add(Calendar.DAY_OF_YEAR, 1)
+        }
+
         return historyMap
     }
 
@@ -314,19 +432,25 @@ object PlannerHistoryManager {
         return loadGoalHistoryDetailed(context, goalId).mapValues { it.value == GoalHistoryStatus.ACHIEVED }
     }
 
-    fun computeGoalInsights(context: Context, goalId: String): GoalInsights {
-        val history = loadGoalHistory(context, goalId)
-        if (history.isEmpty()) {
+    fun computeGoalInsights(
+        context: Context,
+        goalId: String,
+        scheduledDays: List<Int> = emptyList(),
+        createdAt: Long = 0L
+    ): GoalInsights {
+        val historyDetailed = loadGoalHistoryDetailed(context, goalId, scheduledDays, createdAt)
+        val scheduledOnly = historyDetailed.filter { it.value != GoalHistoryStatus.NOT_SCHEDULED }
+        if (scheduledOnly.isEmpty()) {
             return GoalInsights(0, 0, 0, 0, 0f, "N/A")
         }
 
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val sortedDates = history.keys.mapNotNull {
+        val sortedDates = scheduledOnly.keys.mapNotNull {
             runCatching { sdf.parse(it) }.getOrNull()
         }.sorted()
 
         val totalDays = sortedDates.size
-        val completedDays = history.values.count { it }
+        val completedDays = scheduledOnly.values.count { it == GoalHistoryStatus.ACHIEVED }
         val completionRate = if (totalDays > 0) completedDays.toFloat() / totalDays.toFloat() else 0f
 
         var maxStreak = 0
@@ -334,7 +458,7 @@ object PlannerHistoryManager {
 
         for (d in sortedDates) {
             val dStr = sdf.format(d)
-            if (history[dStr] == true) {
+            if (scheduledOnly[dStr] == GoalHistoryStatus.ACHIEVED) {
                 tempStreak++
                 if (tempStreak > maxStreak) maxStreak = tempStreak
             } else {
@@ -347,12 +471,12 @@ object PlannerHistoryManager {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }
         var checkStr = sdf.format(checkCal.time)
-        if (history[checkStr] != true) {
+        if (scheduledOnly[checkStr] != GoalHistoryStatus.ACHIEVED) {
             checkCal.add(Calendar.DAY_OF_YEAR, -1)
             checkStr = sdf.format(checkCal.time)
         }
 
-        while (history[checkStr] == true) {
+        while (scheduledOnly[checkStr] == GoalHistoryStatus.ACHIEVED) {
             currentStreak++
             checkCal.add(Calendar.DAY_OF_YEAR, -1)
             checkStr = sdf.format(checkCal.time)
@@ -360,12 +484,12 @@ object PlannerHistoryManager {
 
         val weekdayCounts = IntArray(7)
         val weekdayCompletions = IntArray(7)
-        for ((dStr, completed) in history) {
+        for ((dStr, status) in scheduledOnly) {
             val parsed = runCatching { sdf.parse(dStr) }.getOrNull() ?: continue
             val cal = Calendar.getInstance().apply { time = parsed }
             val idx = cal.get(Calendar.DAY_OF_WEEK) - 1
             weekdayCounts[idx]++
-            if (completed) weekdayCompletions[idx]++
+            if (status == GoalHistoryStatus.ACHIEVED) weekdayCompletions[idx]++
         }
 
         val bestIdx = (0 until 7).maxByOrNull {

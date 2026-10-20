@@ -113,7 +113,7 @@ class SystemDialogHelper(private val activity: MainActivity) {
         val pm = activity.getSystemService(Context.POWER_SERVICE) as PowerManager
         if (pm.isIgnoringBatteryOptimizations(activity.packageName)) return
         val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val opens = prefs.getInt("battery_opt_opens", 0) + 1
+        val opens = prefs.safeInt("battery_opt_opens", 0) + 1
         prefs.edit().putInt("battery_opt_opens", opens).apply()
         if (opens % 3 != 0) return
         showBatteryOptimizationDialog()
@@ -227,7 +227,7 @@ class SystemDialogHelper(private val activity: MainActivity) {
         }
         val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         if (!manual) {
-            val launches = prefs.getInt("update_launch_count", 0) + 1
+            val launches = prefs.safeInt("update_launch_count", 0) + 1
             prefs.edit().putInt("update_launch_count", launches).apply()
             if (launches % 5 != 0) return
         }
@@ -248,7 +248,7 @@ class SystemDialogHelper(private val activity: MainActivity) {
                 }
                 return@check
             }
-            if (!manual && prefs.getInt("update_dismissed_version", -1) == info.versionCode) {
+            if (!manual && prefs.safeInt("update_dismissed_version", -1) == info.versionCode) {
                 return@check
             }
             showUpdateAvailableDialog(info)
