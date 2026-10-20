@@ -876,7 +876,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         statsCard.addView(colTime)
 
         val effectiveStreak = if (isCurrent) {
-            host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getInt("current_streak", 0)
+            host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 0)
         } else {
             entry.streakDays
         }
@@ -915,7 +915,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             text = formatStatusLabel(entry)
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(if (entry.isStudying) host.themeCoordinator.primaryColor else host.themeCoordinator.textColor)
+            setTextColor(if (entry.isStudying) Color.parseColor("#10B981") else host.themeCoordinator.textColor)
         })
         statsCard.addView(colStatus)
         dialogRoot.addView(statsCard)
@@ -1320,8 +1320,8 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 text = formatStatusLabel(entry)
                 textSize = 9.5f
                 maxLines = 1
-                setTextColor(host.themeCoordinator.textColor)
-                alpha = if (entry.isStudying) 0.85f else 0.5f
+                setTextColor(if (entry.isStudying) Color.parseColor("#10B981") else host.themeCoordinator.textColor)
+                alpha = if (entry.isStudying) 1.0f else 0.5f
                 setPadding(dp(4), dp(2), dp(4), dp(2))
                 gravity = Gravity.CENTER
             }
@@ -1424,7 +1424,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         }
 
         val rowStreak = if (isCurrent) {
-            host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getInt("current_streak", 0)
+            host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 0)
         } else {
             entry.streakDays
         }
@@ -1466,8 +1466,8 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         val statusView = TextView(host).apply {
             text = formatStatusLabel(entry)
             textSize = 10.5f
-            setTextColor(host.themeCoordinator.textColor)
-            alpha = if (entry.isStudying) 0.85f else 0.55f
+            setTextColor(if (entry.isStudying) Color.parseColor("#10B981") else host.themeCoordinator.textColor)
+            alpha = if (entry.isStudying) 1.0f else 0.55f
         }
         userCol.addView(statusView)
         row.addView(userCol)

@@ -42,14 +42,18 @@ object StudyRoomManager {
     private const val KEY_DEV_MOCK_MEMBERS_PREFIX = "dev_mock_members_"
 
     // In-memory caching to minimize server egress & avoid redundant queries
-    private const val ROOMS_CACHE_TTL_MS = 45_000L // 45 seconds
-    private const val MEMBERS_CACHE_TTL_MS = 15_000L // 15 seconds
+    private const val ROOMS_CACHE_TTL_MS = 30_000L // 30 seconds
+    private const val MEMBERS_CACHE_TTL_MS = 5_000L // 5 seconds (reduced for fresh presence)
 
+    @Volatile
     private var cachedPublicRooms: List<StudyRoom>? = null
+    @Volatile
     private var cachedRoomsTimestamp: Long = 0L
 
-    private val cachedMembers = mutableMapOf<String, Pair<Long, List<StudyRoomMember>>>()
+    private val cachedMembers = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<StudyRoomMember>>>()
+    @Volatile
     private var lastPresenceSyncTimestamp: Long = 0L
+    @Volatile
     private var lastReportedStudyingState: Boolean? = null
 
     private fun JSONObject.putNullable(name: String, value: Any?) {
@@ -291,7 +295,7 @@ object StudyRoomManager {
     }
 
     suspend fun fetchRoomMembers(
-        activity: MainActivity,
+        context: Context,
         room: StudyRoom,
         forceRefresh: Boolean = false
     ): Result<List<StudyRoomMember>> = withContext(Dispatchers.IO) {
@@ -299,8 +303,8 @@ object StudyRoomManager {
         val roomCode = room.code
 
         // 1. If Developer Mock Mode is active, return mock members
-        if (isDevMockActive(activity)) {
-            val devMembers = getDevMockMembers(activity, roomCode)
+        if (isDevMockActive(context)) {
+            val devMembers = getDevMockMembers(context, roomCode)
             return@withContext Result.success(devMembers)
         }
 
@@ -310,12 +314,13 @@ object StudyRoomManager {
             return@withContext Result.success(cached.second)
         }
 
-        val myProfile = ProfileManager.getProfile(activity)
-        val myUserId = getStableUserId(activity)
+        val myProfile = ProfileManager.getProfile(context)
+        val myUserId = getStableUserId(context)
         val myDisplayName = myProfile.displayName.trim().ifEmpty { "Student" }
-        val isStudying = activity.currentTimerState == TimerState.STUDYING
-        val currentSub = SubjectTagManager.getSelectedSubject(activity).name
-        val elapsedMins = (activity.accumulatedStudy / 60).toInt().coerceAtLeast(0)
+        val sharedPrefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val isStudying = (sharedPrefs.safeString("timerState", "IDLE") ?: "IDLE") == "STUDYING"
+        val currentSub = SubjectTagManager.getSelectedSubject(context).name
+        val elapsedMins = (sharedPrefs.safeLong("accumulatedStudy", 0L) / 60).toInt().coerceAtLeast(0)
         val initialLetter = myDisplayName.take(1).uppercase().ifEmpty { "S" }
 
         val selfMember = StudyRoomMember(
@@ -437,12 +442,11 @@ object StudyRoomManager {
             isPrivate = isPrivate
         )
 
-        saveUserCreatedRoomLocally(context, newRoom)
-        setActiveRoom(context, newRoom)
-        cachedPublicRooms = null // Invalidate cache
-
         val creds = getSupabaseCredentials()
         if (creds == null) {
+            saveUserCreatedRoomLocally(context, newRoom)
+            setActiveRoom(context, newRoom)
+            cachedPublicRooms = null
             return@withContext Result.success(newRoom)
         }
 
@@ -476,15 +480,18 @@ object StudyRoomManager {
 
             val responseCode = conn.responseCode
             if (responseCode in 200..299) {
+                saveUserCreatedRoomLocally(context, newRoom)
+                setActiveRoom(context, newRoom)
+                cachedPublicRooms = null
                 Result.success(newRoom)
             } else {
                 val err = conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
                 Log.w(TAG, "create_study_room HTTP $responseCode: $err")
-                Result.success(newRoom) // Saved locally
+                Result.failure(Exception("Failed to create room on server (HTTP $responseCode)"))
             }
         } catch (e: Exception) {
             Log.w(TAG, "create_study_room network error", e)
-            Result.success(newRoom)
+            Result.failure(e)
         }
     }
 
@@ -557,9 +564,11 @@ object StudyRoomManager {
         if (creds == null) {
             // Local fallback
             val userRoom = getUserCreatedRooms(context).find { it.code.equals(cleanCode, ignoreCase = true) }
-                ?: StudyRoom(code = cleanCode, name = "Study Room #$cleanCode", creatorName = "Friend", memberCount = 1)
-            setActiveRoom(context, userRoom)
-            return@withContext Result.success(userRoom)
+            if (userRoom != null) {
+                setActiveRoom(context, userRoom)
+                return@withContext Result.success(userRoom)
+            }
+            return@withContext Result.failure(IllegalStateException("Internet connection required to join study room #$cleanCode"))
         }
 
         val (supabaseUrl, anonKey) = creds

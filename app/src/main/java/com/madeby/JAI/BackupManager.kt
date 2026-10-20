@@ -147,7 +147,7 @@ class BackupManager(private val context: Context) {
     fun hasLocalStudyData(): Boolean {
         try {
             val sharedPrefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val hasStudyKeys = sharedPrefs.all.keys.any { it.endsWith("_focus_total") && (sharedPrefs.getLong(it, 0L) > 0L || sharedPrefs.getInt(it, 0) > 0) }
+            val hasStudyKeys = sharedPrefs.all.keys.any { it.endsWith("_focus_total") && sharedPrefs.safeLong(it, 0L) > 0L }
             val accumulated = sharedPrefs.getLong("accumulatedStudy", 0L) > 0L
             val timelineEntries = TimelineLogger.load(context)
             return hasStudyKeys || accumulated || timelineEntries.isNotEmpty()
@@ -393,35 +393,6 @@ class BackupManager(private val context: Context) {
         "time_format_pref", "custom_display_name", "auth_user_name", "auth_profile_image_uri",
         "profile_bio", "profile_study_target_grade", "profile_field_of_study", "profile_avatar_url"
     )
-
-    fun exportDataToCSV(uri: Uri): Boolean {
-        try {
-            val logs = TimelineLogger.load(context)
-            val sdfDate = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            val sdfTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-
-            val sb = StringBuilder()
-            sb.append("Timestamp,Date,Time,State,ID\n")
-
-            for (item in logs) {
-                val dateStr = sdfDate.format(Date(item.timestamp))
-                val timeStr = sdfTime.format(Date(item.timestamp))
-                val state = item.state
-                val idStr = item.id ?: ""
-
-                sb.append("${item.timestamp},\"$dateStr\",\"$timeStr\",\"$state\",\"$idStr\"\n")
-            }
-
-            val outputStream = context.contentResolver.openOutputStream(uri, "w")
-                ?: return false
-            outputStream.use { stream ->
-                stream.write(sb.toString().toByteArray(Charsets.UTF_8))
-            }
-            return true
-        } catch (_: Exception) {
-            return false
-        }
-    }
 
     private fun sanitizeAndBuildPreferences(sourceJson: JSONObject, editor: android.content.SharedPreferences.Editor) {
         val keys = sourceJson.keys()

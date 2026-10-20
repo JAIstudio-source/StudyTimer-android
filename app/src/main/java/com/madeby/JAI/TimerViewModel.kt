@@ -89,26 +89,16 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTimerState(state: TimerState) {
         _uiState.value = _uiState.value.copy(state = state)
+        prefs.edit().putString("timerState", state.name).apply()
     }
 
     fun setPrePauseState(prePause: TimerState) {
         _uiState.value = _uiState.value.copy(prePauseState = prePause)
+        prefs.edit().putString("pre_pause_state", prePause.name).putString("prePauseState", prePause.name).apply()
     }
 
     fun updateFocusRemaining(secs: Long) {
         _uiState.value = _uiState.value.copy(focusRemainingSecs = secs)
-    }
-
-    fun addAccumulatedStudy(secs: Long) {
-        val newVal = _uiState.value.accumulatedStudy + secs
-        _uiState.value = _uiState.value.copy(accumulatedStudy = newVal)
-        prefs.edit().putLong("accumulatedStudy", newVal).apply()
-    }
-
-    fun addBreakSeconds(secs: Long) {
-        val newVal = _uiState.value.currentBreakSeconds + secs
-        _uiState.value = _uiState.value.copy(currentBreakSeconds = newVal)
-        prefs.edit().putLong("currentBreakSeconds", newVal).apply()
     }
 
     fun resetRunningSessionAccumulators() {
@@ -127,5 +117,10 @@ class TimerViewModel(application: Application) : AndroidViewModel(application) {
             state = TimerState.PAUSED,
             prePauseState = prePause
         )
+        prefs.edit()
+            .putString("timerState", TimerState.PAUSED.name)
+            .putString("pre_pause_state", prePause.name)
+            .putString("prePauseState", prePause.name)
+            .apply()
     }
 }

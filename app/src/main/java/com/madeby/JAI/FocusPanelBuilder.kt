@@ -185,7 +185,12 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     text = activeSubject.name
                     textSize = 12.5f
                     typeface = themeCoordinator.getAppTypeface(isBold = true)
-                    setTextColor(if (isPomoWhite) 0xFF0F172A.toInt() else themeCoordinator.textColor)
+                    val isStudying = host.currentTimerState == TimerState.STUDYING
+                    setTextColor(
+                        if (isPomoWhite) 0xFF0F172A.toInt()
+                        else if (isStudying) Color.parseColor("#10B981")
+                        else themeCoordinator.textColor
+                    )
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     maxWidth = dp(110)

@@ -69,12 +69,11 @@ object TestServerHelper {
         Thread {
             try {
                 var port = DEFAULT_PORT
-                var ss: ServerSocket? = null
-                try {
-                    ss = ServerSocket(port)
+                val ss = try {
+                    ServerSocket(port)
                 } catch (e: Exception) {
                     port = 8089
-                    ss = ServerSocket(port)
+                    ServerSocket(port)
                 }
                 serverSocket = ss
                 isRunning = true

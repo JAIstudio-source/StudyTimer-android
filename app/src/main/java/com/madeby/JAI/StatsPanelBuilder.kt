@@ -109,7 +109,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
     private fun navigateToPanel(panel: AppPanel) = host.navigateToPanel(panel)
     private fun showSubjectPickerDialog() = host.showSubjectPickerDialog()
     private fun showAddCustomSubjectDialog(onCreated: ((SubjectTag) -> Unit)? = null) = host.showAddCustomSubjectDialog(onCreated)
-    private fun showSummaryCardPreview() = host.showSummaryCardPreview()
     private fun showCustomizeHighlightsDialog() = host.showCustomizeHighlightsDialog()
     private fun showWeeklyTrendDetailDialog(tw: Long, pw: Long, s: StatsSnapshot) = host.showWeeklyTrendDetailDialog(tw, pw, s)
     private fun showActiveDaysDetailDialog(ad: Int, ls: Int, cs: Int, s: StatsSnapshot) = host.showActiveDaysDetailDialog(ad, ls, cs, s)
@@ -547,7 +546,8 @@ class StatsPanelBuilder(private val host: MainActivity) {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             setBackgroundColor(Color.TRANSPARENT)
             isFillViewport = true
-            isVerticalScrollBarEnabled = true
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
@@ -579,6 +579,10 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
 
+        val savedScrollY = (statsRoot.getChildAt(0) as? LinearLayout)?.let { col ->
+            (col.getChildAt(1) as? ScrollView)?.scrollY
+        } ?: 0
+
         statsRoot.removeAllViews()
         statsRoot.setBackgroundColor(Color.TRANSPARENT)
 
@@ -594,7 +598,8 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val scroll = ScrollView(host).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
             isFillViewport = true
-            isVerticalScrollBarEnabled = true
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             setBackgroundColor(Color.TRANSPARENT)
         }
@@ -650,6 +655,9 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
         mainColumn.addView(scroll)
         statsRoot.addView(mainColumn)
+        if (savedScrollY > 0) {
+            scroll.post { scroll.scrollTo(0, savedScrollY) }
+        }
         FontStyleManager.applyRecursively(statsRoot)
     }
 
@@ -1307,7 +1315,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
         updatePieChartContent(pieContentContainer)
         val totalLifeFocus = snap.totalLifeFocus
         val totalLifeBreak = snap.totalLifeBreak
-        val totalLife = snap.totalLife
 
         val lifetimeCard = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -1370,8 +1377,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
         val longestStreak = snap.longestStreak
         val activeDays = snap.activeDays
-        val bestWeekdaySecs = snap.bestWeekdaySecs
-        val bestWeekdayName = snap.bestWeekdayName
         val bestWeekSecs = snap.bestWeekSecs
         val bestWeekLabel = snap.bestWeekLabel
 
@@ -2046,9 +2051,25 @@ class StatsPanelBuilder(private val host: MainActivity) {
     internal fun refreshStatsPanel() {
         invalidateStatsCache()
         if (host.currentPanel == AppPanel.STATS) {
+            val statsRoot = host.panelContainer.getChildAt(0) as? FrameLayout
+            if (statsRoot != null) {
+                val snap = computeStatsSnapshot()
+                renderStatsContent(statsRoot, snap, currentStatsTab)
+                return
+            }
             host.navigateToPanel(AppPanel.STATS)
         } else if (host.currentPanel == AppPanel.PLANNER) {
+            val plannerRoot = host.panelContainer.getChildAt(0) as? FrameLayout
+            val savedY = (plannerRoot?.getChildAt(0) as? LinearLayout)?.let { col ->
+                (col.getChildAt(1) as? ScrollView)?.scrollY
+            } ?: 0
             host.buildCurrentPanel()
+            if (savedY > 0) {
+                ((host.panelContainer.getChildAt(0) as? FrameLayout)?.getChildAt(0) as? LinearLayout)?.let { col ->
+                    val sv = col.getChildAt(1) as? ScrollView
+                    sv?.post { sv.scrollTo(0, savedY) }
+                }
+            }
         }
     }
 

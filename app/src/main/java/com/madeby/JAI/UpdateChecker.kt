@@ -31,7 +31,7 @@ object UpdateChecker {
         runCatching { fetch() }.getOrNull()
     }
 
-    fun check(context: Context, onResult: (UpdateInfo?) -> Unit) {
+    fun check(@Suppress("UNUSED_PARAMETER") context: Context, onResult: (UpdateInfo?) -> Unit) {
         CoroutineScope(Dispatchers.IO).launch {
             val result = runCatching { fetch() }.getOrNull()
             withContext(Dispatchers.Main) {

@@ -183,8 +183,9 @@ object SubjectTagManager {
             if (list.isEmpty()) {
                 list.add(DEFAULT_SUBJECTS[0])
             }
-            cachedSubjects = list
-            return list
+            val distinctList = list.distinctBy { it.id }
+            cachedSubjects = distinctList
+            return distinctList
         }
     }
 
@@ -195,9 +196,12 @@ object SubjectTagManager {
             val json = JSONObject(raw)
             val arr = json.optJSONArray(subjectId) ?: return emptyList()
             val list = mutableListOf<String>()
+            val seen = mutableSetOf<String>()
             for (i in 0 until arr.length()) {
                 val item = arr.optString(i, "").trim()
-                if (item.isNotEmpty()) list.add(item)
+                if (item.isNotEmpty() && seen.add(item.lowercase(Locale.ROOT))) {
+                    list.add(item)
+                }
             }
             list
         } catch (_: Exception) {

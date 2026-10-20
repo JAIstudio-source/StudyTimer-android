@@ -185,7 +185,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 settingsScrollView = existingScrollView
             } else {
                 settingsScrollView = ScrollView(this).apply {
-                    isVerticalScrollBarEnabled = true
+                    isVerticalScrollBarEnabled = false
+                    isHorizontalScrollBarEnabled = false
                     isFillViewport = true
                     isNestedScrollingEnabled = true
                     overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -193,6 +194,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 }
                 if (captureScrollRef) settingsScrollViewRef = settingsScrollView
             }
+            settingsScrollView.isVerticalScrollBarEnabled = false
+            settingsScrollView.isHorizontalScrollBarEnabled = false
 
             val layout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -2345,27 +2348,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 chartsCard.addView(createSettingsRow("", getString(R.string.focus_pattern_setting), getString(R.string.focus_pattern_setting_sub), patternSwitch))
                 layout.addView(chartsCard)
 
-                layout.addView(createSectionLabel("REPORTS & EXPORTS"))
-                val reportsCard = createSettingsCard()
-                val summaryCardRow = createSettingsRow("", getString(R.string.export_summary_card), "Generate a beautiful visual study card for social sharing")
-                summaryCardRow.setOnClickListener {
-                    showSummaryCardPreview()
-                }
-                reportsCard.addView(summaryCardRow)
-                reportsCard.addView(createDivider())
-
-                val csvRow = createSettingsRow("", getString(R.string.export_csv), getString(R.string.export_csv_sub))
-                csvRow.setOnClickListener {
-                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "text/csv"
-                        val fileDateFormat = SimpleDateFormat("dd_MMM", Locale.getDefault())
-                        putExtra(Intent.EXTRA_TITLE, "study_log_${fileDateFormat.format(Date())}.csv")
-                    }
-                    csvLauncher.launch(intent)
-                }
-                reportsCard.addView(csvRow)
-                layout.addView(reportsCard)
             }
 
             // ==========================================
@@ -2635,26 +2617,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     importLauncher.launch(Intent.createChooser(intent, getString(R.string.select_backup_file)))
                 }
                 dataCard.addView(importRow)
-                dataCard.addView(createDivider())
-
-                val csvRow = createSettingsRow("", getString(R.string.export_csv), getString(R.string.export_csv_sub))
-                csvRow.setOnClickListener {
-                    val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                        addCategory(Intent.CATEGORY_OPENABLE)
-                        type = "text/csv"
-                        val fileDateFormat = SimpleDateFormat("dd_MMM", Locale.getDefault())
-                        putExtra(Intent.EXTRA_TITLE, "study_log_${fileDateFormat.format(Date())}.csv")
-                    }
-                    csvLauncher.launch(intent)
-                }
-                dataCard.addView(csvRow)
-                dataCard.addView(createDivider())
-
-                val summaryCardRow = createSettingsRow("", getString(R.string.export_summary_card), "Generate a beautiful visual study card for social sharing")
-                summaryCardRow.setOnClickListener {
-                    showSummaryCardPreview()
-                }
-                dataCard.addView(summaryCardRow)
                 layout.addView(dataCard)
             }
 
@@ -3055,7 +3017,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     hueHeader.addView(hueTitle)
                     hueHeader.addView(hueValLabel)
 
-                    var isUpdatingFromSwatch = false
                     val hueSeekBar = android.widget.SeekBar(this).apply {
                         max = 360
                         progress = hsv[0].toInt()
@@ -3101,10 +3062,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                                 val swatchHsv = FloatArray(3)
                                 Color.colorToHSV(activeColor, swatchHsv)
-                                isUpdatingFromSwatch = true
                                 hueSeekBar.progress = swatchHsv[0].toInt()
                                 hueValLabel.text = "${swatchHsv[0].toInt()}°"
-                                isUpdatingFromSwatch = false
 
                                 onColorChanged(activeColor)
                                 refreshSwatchBorders()

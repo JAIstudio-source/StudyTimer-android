@@ -95,108 +95,97 @@ object PlannerHistoryManager {
 
     fun calculateGoalProgress(
         goals: List<PlannerGoal>,
-        totalFocusSecs: Long,
+        @Suppress("UNUSED_PARAMETER") totalFocusSecs: Long = 0L,
         dailySubjectDurations: Map<String, Long>,
         dailyGoalDurations: Map<String, Long> = emptyMap(),
         dailySubTopicDurations: Map<String, Map<String, Long>> = emptyMap()
     ): Map<String, GoalProgress> {
-        val totalFocusMins = (totalFocusSecs / 60).toInt()
         val result = mutableMapOf<String, GoalProgress>()
 
-        // 1. Process goals that have dedicated tracked study time (selected as active focus task)
-        val goalsWithDedicatedTime = mutableSetOf<String>()
-        for (g in goals) {
-            val dedicatedSecs = dailyGoalDurations[g.id] ?: 0L
-            if (dedicatedSecs > 0L) {
-                goalsWithDedicatedTime.add(g.id)
-                val dedicatedMins = (dedicatedSecs / 60).toInt()
-                val isAchieved = if (g.targetMinutes > 0) dedicatedMins >= g.targetMinutes else g.completed
-                result[g.id] = GoalProgress(g.id, actualMinutes = dedicatedMins, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
-            }
-        }
-
-        // 2. Separate sub-topic goals, subject-tagged goals, and untagged goals
+        // 1. Process sub-topic goals: strictly isolated to (subjectId, subTopic)
+        // If Quick Start was used on this goal, dedicated time is also considered.
         val subTopicGoals = goals.filter {
-            !goalsWithDedicatedTime.contains(it.id) &&
-            !it.subjectId.isNullOrBlank() &&
-            it.subjectId != "all" &&
-            !it.subTopic.isNullOrBlank()
+            !it.subjectId.isNullOrBlank() && it.subjectId != "all" && !it.subTopic.isNullOrBlank()
         }
-        val remainingSubjectGoals = goals.filter {
-            !goalsWithDedicatedTime.contains(it.id) &&
-            !it.subjectId.isNullOrBlank() &&
-            it.subjectId != "all" &&
-            it.subTopic.isNullOrBlank()
-        }
-        val remainingUntaggedGoals = goals.filter {
-            !goalsWithDedicatedTime.contains(it.id) &&
-            (it.subjectId.isNullOrBlank() || it.subjectId == "all")
-        }
-
-        // Process sub-topic goals isolated per sub-topic
         for (g in subTopicGoals) {
             val subId = g.subjectId!!
             val topic = g.subTopic!!
+            val dedicatedSecs = dailyGoalDurations[g.id] ?: 0L
             val topicSecs = dailySubTopicDurations[subId]?.get(topic) ?: 0L
-            val topicMins = (topicSecs / 60).toInt()
-            val isAchieved = if (g.targetMinutes > 0) topicMins >= g.targetMinutes else g.completed
-            result[g.id] = GoalProgress(g.id, actualMinutes = topicMins, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
+            val actualSecs = maxOf(dedicatedSecs, topicSecs)
+            val actualMins = (actualSecs / 60).toInt()
+            val isAchieved = if (g.targetMinutes > 0) actualMins >= g.targetMinutes else g.completed
+            result[g.id] = GoalProgress(g.id, actualMinutes = actualMins, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
         }
 
-        // Process remaining subject-tagged goals grouped by subjectId (isolated per subject)
+        // 2. Process remaining subject-tagged goals WITHOUT subtopic: strictly isolated to their subjectId
+        val remainingSubjectGoals = goals.filter {
+            !it.subjectId.isNullOrBlank() && it.subjectId != "all" && it.subTopic.isNullOrBlank()
+        }
         val groupedSubjectGoals = remainingSubjectGoals.groupBy { it.subjectId!! }
         for ((subId, subGoalsList) in groupedSubjectGoals) {
             val totalSubMins = ((dailySubjectDurations[subId] ?: 0L) / 60).toInt()
-            val dedicatedSubMins = goals.filter { it.subjectId == subId && goalsWithDedicatedTime.contains(it.id) }
-                .sumOf { ((dailyGoalDurations[it.id] ?: 0L) / 60).toInt() }
-            val availableSubjectMins = (totalSubMins - dedicatedSubMins).coerceAtLeast(0)
-            var remainingSubjectMins = availableSubjectMins
+            // Sub-topic goals under this subject consume part of the subject's overall focus pool
+            val subTopicConsumedMins = subTopicGoals.filter { it.subjectId == subId }
+                .sumOf { result[it.id]?.actualMinutes ?: 0 }
+            val dedicatedSubjectMins = subGoalsList.sumOf { ((dailyGoalDurations[it.id] ?: 0L) / 60).toInt() }
+            var remainingSubjectMins = (totalSubMins - subTopicConsumedMins - dedicatedSubjectMins).coerceAtLeast(0)
 
             val goalsWithTarget = subGoalsList.filter { it.targetMinutes > 0 }
             val lastTargetGoalId = goalsWithTarget.lastOrNull()?.id
 
             for (g in subGoalsList) {
+                val dedicatedMins = ((dailyGoalDurations[g.id] ?: 0L) / 60).toInt()
                 if (g.targetMinutes <= 0) {
-                    val isAchieved = g.completed
-                    result[g.id] = GoalProgress(g.id, actualMinutes = availableSubjectMins, targetMinutes = 0, isAchieved = isAchieved)
+                    val alloc = maxOf(dedicatedMins, remainingSubjectMins)
+                    result[g.id] = GoalProgress(g.id, actualMinutes = alloc, targetMinutes = 0, isAchieved = g.completed)
                 } else {
-                    val allocated: Int
-                    if (g.id == lastTargetGoalId) {
-                        allocated = remainingSubjectMins
+                    val poolAlloc = if (g.id == lastTargetGoalId) {
+                        val m = remainingSubjectMins
                         remainingSubjectMins = (remainingSubjectMins - g.targetMinutes).coerceAtLeast(0)
+                        m
                     } else {
-                        allocated = minOf(remainingSubjectMins, g.targetMinutes)
+                        val m = minOf(remainingSubjectMins, g.targetMinutes)
                         remainingSubjectMins = (remainingSubjectMins - g.targetMinutes).coerceAtLeast(0)
+                        m
                     }
-                    val isAchieved = allocated >= g.targetMinutes
-                    result[g.id] = GoalProgress(g.id, actualMinutes = allocated, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
+                    val finalAlloc = maxOf(dedicatedMins, poolAlloc)
+                    val isAchieved = finalAlloc >= g.targetMinutes
+                    result[g.id] = GoalProgress(g.id, actualMinutes = finalAlloc, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
                 }
             }
         }
 
-        // 3. Compute untagged / all-subjects focus pool
-        val dedicatedUntaggedMins = goals.filter { goalsWithDedicatedTime.contains(it.id) && (it.subjectId.isNullOrBlank() || it.subjectId == "all") }
-            .sumOf { ((dailyGoalDurations[it.id] ?: 0L) / 60).toInt() }
-        var untaggedPoolMins = (totalFocusMins - dedicatedUntaggedMins).coerceAtLeast(0)
+        // 3. Compute untagged / all-subjects focus pool: draws ONLY from general study time or dedicated goal time
+        // Specific subject time (Math, Physics, etc.) NEVER leaks into untagged goals!
+        val remainingUntaggedGoals = goals.filter {
+            it.subjectId.isNullOrBlank() || it.subjectId == "all" || it.subjectId == "general"
+        }
+        val generalFocusMins = ((dailySubjectDurations["general"] ?: 0L) / 60).toInt()
+        val dedicatedUntaggedMins = remainingUntaggedGoals.sumOf { ((dailyGoalDurations[it.id] ?: 0L) / 60).toInt() }
+        var remainingGeneralMins = (generalFocusMins - dedicatedUntaggedMins).coerceAtLeast(0)
 
         val untaggedGoalsWithTarget = remainingUntaggedGoals.filter { it.targetMinutes > 0 }
         val lastUntaggedTargetGoalId = untaggedGoalsWithTarget.lastOrNull()?.id
 
         for (g in remainingUntaggedGoals) {
+            val dedicatedMins = ((dailyGoalDurations[g.id] ?: 0L) / 60).toInt()
             if (g.targetMinutes <= 0) {
-                val isAchieved = g.completed
-                result[g.id] = GoalProgress(g.id, actualMinutes = untaggedPoolMins, targetMinutes = 0, isAchieved = isAchieved)
+                val alloc = maxOf(dedicatedMins, remainingGeneralMins)
+                result[g.id] = GoalProgress(g.id, actualMinutes = alloc, targetMinutes = 0, isAchieved = g.completed)
             } else {
-                val allocated: Int
-                if (g.id == lastUntaggedTargetGoalId) {
-                    allocated = untaggedPoolMins
-                    untaggedPoolMins = (untaggedPoolMins - g.targetMinutes).coerceAtLeast(0)
+                val poolAlloc = if (g.id == lastUntaggedTargetGoalId) {
+                    val m = remainingGeneralMins
+                    remainingGeneralMins = (remainingGeneralMins - g.targetMinutes).coerceAtLeast(0)
+                    m
                 } else {
-                    allocated = minOf(untaggedPoolMins, g.targetMinutes)
-                    untaggedPoolMins = (untaggedPoolMins - g.targetMinutes).coerceAtLeast(0)
+                    val m = minOf(remainingGeneralMins, g.targetMinutes)
+                    remainingGeneralMins = (remainingGeneralMins - g.targetMinutes).coerceAtLeast(0)
+                    m
                 }
-                val isAchieved = allocated >= g.targetMinutes
-                result[g.id] = GoalProgress(g.id, actualMinutes = allocated, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
+                val finalAlloc = maxOf(dedicatedMins, poolAlloc)
+                val isAchieved = finalAlloc >= g.targetMinutes
+                result[g.id] = GoalProgress(g.id, actualMinutes = finalAlloc, targetMinutes = g.targetMinutes, isAchieved = isAchieved)
             }
         }
 

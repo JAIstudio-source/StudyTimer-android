@@ -92,12 +92,13 @@ class StatsEngine(private val context: Context) {
                 val segStart = fs
                 val segEnd = minOf(endTs, endMs - 1000L)
                 val gapMs = (segEnd - segStart).coerceAtLeast(0L)
-                if (gapMs > 0L && gapMs <= 14400_000L) {
+                val effectiveGapMs = minOf(gapMs, 14400_000L) // Anti-cheat 4h cap
+                if (effectiveGapMs > 0L) {
                     sessions.add(
                         BlockInfo(
                             segStart,
-                            segEnd,
-                            gapMs / 1000L,
+                            segStart + effectiveGapMs,
+                            effectiveGapMs / 1000L,
                             isToday && timerRunning,
                             parsed.openFocusManual,
                             subjectId = parsed.openFocusSubId,
@@ -116,8 +117,9 @@ class StatsEngine(private val context: Context) {
                 val segStart = bs
                 val segEnd = minOf(endTs, endMs - 1000L)
                 val gapMs = (segEnd - segStart).coerceAtLeast(0L)
-                if (gapMs > 0L && gapMs <= 14400_000L) {
-                    breaks.add(BlockInfo(segStart, segEnd, gapMs / 1000L, manual = parsed.openBreakManual))
+                val effectiveGapMs = minOf(gapMs, 7200_000L) // Anti-cheat 2h break cap
+                if (effectiveGapMs > 0L) {
+                    breaks.add(BlockInfo(segStart, segStart + effectiveGapMs, effectiveGapMs / 1000L, manual = parsed.openBreakManual))
                 }
             }
         }
@@ -194,11 +196,12 @@ class StatsEngine(private val context: Context) {
             val fs = parsed.openFocusStart
             val endTs = if (timerRunning) System.currentTimeMillis() else (entries.lastOrNull()?.timestamp ?: fs)
             val gapMs = (endTs - fs).coerceAtLeast(0L)
-            if (gapMs > 0L && gapMs <= 14400_000L) {
+            val effectiveGapMs = minOf(gapMs, 14400_000L)
+            if (effectiveGapMs > 0L) {
                 val subId = parsed.openFocusSubId ?: "general"
                 val subj = SubjectTagManager.resolveSubject(context, subId, parsed.openFocusSubName, parsed.openFocusSubColor)
                 val curr = result[subj.id]?.second ?: 0L
-                result[subj.id] = subj to (curr + (gapMs / 1000L))
+                result[subj.id] = subj to (curr + (effectiveGapMs / 1000L))
             }
         }
 
@@ -280,12 +283,13 @@ class StatsEngine(private val context: Context) {
                 val fs = parsed.openFocusStart
                 if (fs != null && fs in startMs until endMs) {
                     val gapMs = (endTs - fs).coerceAtLeast(0L)
-                    if (gapMs in 1L..14400_000L) {
+                    val effectiveGapMs = minOf(gapMs, 14400_000L)
+                    if (effectiveGapMs > 0L) {
                         sessions.add(
                             BlockInfo(
                                 fs,
-                                minOf(endTs, endMs - 1000L),
-                                gapMs / 1000L,
+                                minOf(fs + effectiveGapMs, endMs - 1000L),
+                                effectiveGapMs / 1000L,
                                 isToday && timerRunning,
                                 parsed.openFocusManual,
                                 subjectId = parsed.openFocusSubId,
@@ -298,8 +302,9 @@ class StatsEngine(private val context: Context) {
                 val bs = parsed.openBreakStart
                 if (bs != null && bs in startMs until endMs) {
                     val gapMs = (endTs - bs).coerceAtLeast(0L)
-                    if (gapMs in 1L..14400_000L) {
-                        breaks.add(BlockInfo(bs, minOf(endTs, endMs - 1000L), gapMs / 1000L, manual = parsed.openBreakManual))
+                    val effectiveGapMs = minOf(gapMs, 7200_000L)
+                    if (effectiveGapMs > 0L) {
+                        breaks.add(BlockInfo(bs, minOf(bs + effectiveGapMs, endMs - 1000L), effectiveGapMs / 1000L, manual = parsed.openBreakManual))
                     }
                 }
             }

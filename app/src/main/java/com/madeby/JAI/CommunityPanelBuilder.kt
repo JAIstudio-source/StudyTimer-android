@@ -21,6 +21,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,6 +35,15 @@ import kotlinx.coroutines.withContext
  * Clean, lightweight, professional UI with zero dummy data in production.
  */
 class CommunityPanelBuilder(private val host: MainActivity) {
+
+    companion object {
+        private var globalRoomPollingJob: Job? = null
+
+        fun cancelActivePolling() {
+            globalRoomPollingJob?.cancel()
+            globalRoomPollingJob = null
+        }
+    }
 
     enum class CommunitySegment {
         ROOMS,
@@ -50,7 +60,9 @@ class CommunityPanelBuilder(private val host: MainActivity) {
     private var isBrowsingExplore = false
     private var rootContentHost: FrameLayout? = null
     private var updateSegmentStylesFunc: (() -> Unit)? = null
-    private var roomPollingJob: Job? = null
+    private var roomPollingJob: Job?
+        get() = globalRoomPollingJob
+        set(value) { globalRoomPollingJob = value }
 
     fun switchSegment(segment: CommunitySegment) {
         roomPollingJob?.cancel()
@@ -487,7 +499,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
 
             // Live presence polling loop while this room is open (every 12 seconds)
             roomPollingJob?.cancel()
-            roomPollingJob = CoroutineScope(Dispatchers.Main).launch {
+            roomPollingJob = host.lifecycleScope.launch {
                 while (isActive && activeSegment == CommunitySegment.ROOMS && !isBrowsingExplore && StudyRoomManager.getActiveRoom(host)?.code == activeRoom.code) {
                     delay(12_000L)
                     if (isActive && activeSegment == CommunitySegment.ROOMS && !isBrowsingExplore) {
@@ -1828,7 +1840,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
             text = displaySub
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(textColor)
+            setTextColor(if (m.isStudying) Color.parseColor("#10B981") else textColor)
         })
         statsCard.addView(colSub)
 
@@ -1854,7 +1866,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
 
         // Col 4: STREAK
         val effectiveStreak = if (isSelf) {
-            host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getInt("current_streak", 0)
+            host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 0)
         } else {
             0
         }

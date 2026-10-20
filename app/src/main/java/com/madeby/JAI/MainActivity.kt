@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
     private var tabDragSettleIsCommit = false
     private var tabDragSettleToken = 0
     private var tabDragCommitStatsTab = AppStatsTab.OVERVIEW
-    private var tabDragCommitSettingsTab = AppSettingsTab.SIMPLE
+    private var tabDragCommitSettingsTab = AppSettingsTab.HUB
     internal class CachedTabPage(val view: View, val statsGen: Int, val themeSig: String)
     internal val tabPageCache = HashMap<String, CachedTabPage>()
     internal var selectedDaysFilter = 7
@@ -193,7 +193,7 @@ class MainActivity : AppCompatActivity() {
                     scheduledDays = daysList
                 ))
             }
-            list
+            list.distinctBy { it.id }
         } catch (e: Exception) {
             emptyList()
         }
@@ -492,6 +492,7 @@ class MainActivity : AppCompatActivity() {
     private var lastDayBucket: Long = -1L
     internal var cachedTodayStr = ""
     private var lastStatsMinuteTick: Long = -1L
+    private var lastWallMinuteTick: Long = -1L
 
     internal lateinit var themeCoordinator: ThemeCoordinator
     private lateinit var backupManager: BackupManager
@@ -590,18 +591,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    internal val csvLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == RESULT_OK) {
-            result.data?.data?.let { uri ->
-                val success = exportCsv(uri)
-                if (success) {
-                    AppToast.show(this, R.string.toast_csv_exported)
-                } else {
-                    AppToast.show(this, R.string.toast_csv_export_failed)
-                }
-            }
-        }
-    }
+
 
     internal val handler = Handler(Looper.getMainLooper())
     private lateinit var updateRunnable: Runnable
@@ -1153,95 +1143,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun csvCell(v: Any?): String {
-        val s = v?.toString() ?: ""
-        return if (s.contains(',') || s.contains('"') || s.contains('\n')) {
-            "\"" + s.replace("\"", "\"\"") + "\""
-        } else s
-    }
 
-    private fun exportCsv(uri: Uri): Boolean {
-        return try {
-            val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-            val dayNameSdf = SimpleDateFormat("EEEE", Locale.getDefault())
-            val todayStr = sdf.format(Date())
-            val sb = StringBuilder()
-
-            sb.append(csvCell("STUDYTIMER LOG EXPORT")).append('\n')
-            sb.append(csvCell("Export Date")).append(',').append(csvCell(sdf.format(Date()))).append('\n')
-            sb.append('\n').append('\n')
-
-            val keys = sharedPrefs.all.keys.filter { it.endsWith("_focus_total") }.sorted()
-            var totalFocus = 0L
-            var totalBreak = 0L
-            var activeDays = 0
-            var maxDayFocus = 0L
-            val sessionLines = StringBuilder()
-
-            sb.append("--- DAILY SUMMARY ---\n")
-            sb.append("Date,Day of Week,Focus Time,Break Time,Focus (Sec),Break (Sec),Goal Met,Longest Session\n")
-            for (k in keys) {
-                val d = k.removeSuffix("_focus_total")
-                val f = sharedPrefs.getLong(k, 0L) + (if (d == todayStr) sharedPrefs.getLong("accumulatedStudy", 0L) else 0L)
-                val b = sharedPrefs.getLong("${d}_break_total", 0L) + (if (d == todayStr) currentBreakSeconds else 0L)
-                if (f <= 0L && b <= 0L) continue
-                val parsed = try { sdf.parse(d) } catch (_: Exception) { null }
-                val weekday = if (parsed != null) dayNameSdf.format(parsed) else ""
-                val (sessions, breaks) = dayBlocks(d)
-                val longest = sessions.maxOfOrNull { it.secs } ?: 0L
-                sb.append(csvCell(d)).append(',')
-                    .append(csvCell(weekday)).append(',')
-                    .append(csvCell(formatDuration(f))).append(',')
-                    .append(csvCell(formatDuration(b))).append(',')
-                    .append(f).append(',')
-                    .append(b).append(',')
-                    .append(if (f >= resolveGoalFor(d)) "Yes" else "No").append(',')
-                    .append(csvCell(formatDuration(longest))).append('\n')
-
-                val rows = ArrayList<Pair<BlockInfo, String>>()
-                for (s in sessions) rows.add(Pair(s, "Focus"))
-                for (bk in breaks) rows.add(Pair(bk, "Break"))
-                rows.sortBy { it.first.startMs }
-                for ((blk, type) in rows) {
-                    sessionLines.append(csvCell(d)).append(',')
-                        .append(csvCell(TimeFormat.formatWallClock(this, blk.startMs))).append(',')
-                        .append(csvCell(TimeFormat.formatWallClock(this, blk.endMs))).append(',')
-                        .append(csvCell(type)).append(',')
-                        .append(csvCell(formatDuration(blk.secs))).append(',')
-                        .append(blk.secs).append('\n')
-                }
-
-                totalFocus += f
-                totalBreak += b
-                activeDays++
-                if (f > maxDayFocus) maxDayFocus = f
-            }
-            sb.append('\n').append('\n')
-
-            sb.append("--- INDIVIDUAL SESSIONS ---\n")
-            sb.append("Date,Start Time,End Time,Session Type,Duration,Duration (Sec)\n")
-            sb.append(sessionLines)
-            sb.append('\n').append('\n')
-
-            sb.append("--- ALL-TIME METRICS & STATS ---\n")
-            sb.append("Metric,Value\n")
-            sb.append(csvCell("Total Focus Time")).append(',').append(csvCell(formatDuration(totalFocus))).append('\n')
-            sb.append(csvCell("Total Break Time")).append(',').append(csvCell(formatDuration(totalBreak))).append('\n')
-            sb.append(csvCell("Active Study Days")).append(',').append(activeDays).append('\n')
-            sb.append(csvCell("Average Daily Focus")).append(',').append(csvCell(if (activeDays > 0) formatDuration(totalFocus / activeDays) else "0m")).append('\n')
-            sb.append(csvCell("Longest Single Day Focus")).append(',').append(csvCell(formatDuration(maxDayFocus))).append('\n')
-            sb.append(csvCell("Current Daily Goal Target")).append(',').append(csvCell(formatDuration(dailyGoalSecs()))).append('\n')
-
-            contentResolver.openOutputStream(uri, "w")?.use { stream ->
-                stream.write(sb.toString().toByteArray(Charsets.UTF_8))
-                stream.flush()
-            } ?: return false
-            true
-        } catch (_: Exception) {
-            false
-        }
-    }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         newConfig.fontScale = newConfig.fontScale.coerceIn(0.85f, 1.05f)
@@ -1475,7 +1377,7 @@ class MainActivity : AppCompatActivity() {
                     settingsTabKey(AppSettingsTab.ANALYTICS) -> AppSettingsTab.ANALYTICS
                     settingsTabKey(AppSettingsTab.CLOUD) -> AppSettingsTab.CLOUD
                     settingsTabKey(AppSettingsTab.HUB) -> AppSettingsTab.HUB
-                    else -> AppSettingsTab.SIMPLE
+                    else -> AppSettingsTab.HUB
                 }
                 buildSettingsPanel(scratch, captureScrollRef = false)
                 currentSettingsTab = prev
@@ -1509,7 +1411,7 @@ class MainActivity : AppCompatActivity() {
                 getOrBuildTabPage(statsTabKey(AppStatsTab.PLANNER))
             }
             AppPanel.SETTINGS -> {
-                getOrBuildTabPage(settingsTabKey(AppSettingsTab.SIMPLE))
+                getOrBuildTabPage(settingsTabKey(AppSettingsTab.HUB))
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.THEME))
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.PROFILE))
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.COMMUNITY))
@@ -2111,9 +2013,7 @@ class MainActivity : AppCompatActivity() {
     internal fun showDayDialog(dateStr: String, label: String) = DayTimelineDialogHelper(this).showDayDialog(dateStr, label)
     internal fun showMonthDialog(mName: String, focusSecs: Long, breakSecs: Long) = DayTimelineDialogHelper(this).showMonthDialog(mName, focusSecs, breakSecs)
 
-    internal fun showSummaryCardPreview() {
-        WeeklySummaryShareHelper(this).showSummaryCardPreview()
-    }
+
 
     internal fun showCustomizeHighlightsDialog() {
         WeeklySummaryShareHelper(this).showCustomizeHighlightsDialog()
@@ -2144,16 +2044,37 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun startFocusForGoal(goal: SessionGoal) {
+        val isBreak = currentTimerState == TimerState.BREAK
+        if (!isBreak && currentTimerState != TimerState.IDLE) {
+            DeveloperToolsHelper.showThemedConfirmDialog(
+                activity = this,
+                themeCoordinator = themeCoordinator,
+                title = "⏱️ Active Session Running",
+                message = "Cannot switch goals or change chapters during an active study session.\n\nPlease pause or stop your current timer, or wait for a break to start another goal.",
+                confirmText = "OK",
+                isDestructive = false,
+                onCancel = {}
+            ) {}
+            return
+        }
         val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val goalSubId = goal.subjectId?.takeIf { it.isNotBlank() && it != "all" }
+        val goalSubTopic = goal.subTopic?.takeIf { it.isNotBlank() }
+
         sp.edit()
             .putString("active_planner_goal_id", goal.id)
             .putString("active_planner_goal_title", goal.title)
-            .putString("active_planner_goal_subject_id", goal.subjectId ?: "")
+            .putString("active_planner_goal_subject_id", goalSubId ?: "")
+            .putString("active_planner_goal_subtopic", goalSubTopic ?: "")
             .putInt("active_planner_goal_target_mins", goal.targetMinutes)
             .apply()
 
-        if (!goal.subjectId.isNullOrBlank() && goal.subjectId != "all") {
-            SubjectTagManager.setSelectedSubject(this, goal.subjectId)
+        if (goalSubId != null) {
+            SubjectTagManager.setSelectedSubject(this, goalSubId)
+            SubjectTagManager.setSelectedSubTopic(this, goalSubId, goalSubTopic)
+        } else {
+            SubjectTagManager.setSelectedSubject(this, "general")
+            SubjectTagManager.setSelectedSubTopic(this, "general", null)
         }
 
         navigateToPanel(AppPanel.FOCUS)
@@ -2179,6 +2100,7 @@ class MainActivity : AppCompatActivity() {
             .remove("active_planner_goal_id")
             .remove("active_planner_goal_title")
             .remove("active_planner_goal_subject_id")
+            .remove("active_planner_goal_subtopic")
             .remove("active_planner_goal_target_mins")
             .apply()
         if (currentPanel == AppPanel.FOCUS) {
@@ -2186,26 +2108,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    internal fun renderViewToBitmap(view: View): android.graphics.Bitmap {
-        return WeeklySummaryShareHelper(this).renderViewToBitmap(view)
-    }
-
     internal fun focusBlockLabels(): Array<String> = DayTimelineDialogHelper(this).focusBlockLabels()
     internal fun focusBlockStartLabels(): Array<String> = DayTimelineDialogHelper(this).focusBlockStartLabels()
     internal fun focusBlockRangeLabel(b: Int): String = DayTimelineDialogHelper(this).focusBlockRangeLabel(b)
-
-
-    internal fun saveBitmapToMediaStore(bitmap: android.graphics.Bitmap): Uri? {
-        return WeeklySummaryShareHelper(this).saveBitmapToMediaStore(bitmap)
-    }
-
-    internal fun renderWeeklyCardBitmap(view: WeeklyCardView, aspect: Float): android.graphics.Bitmap {
-        return WeeklySummaryShareHelper(this).renderWeeklyCardBitmap(view, aspect)
-    }
-
-    internal fun writeBitmapToCache(bitmap: android.graphics.Bitmap): Uri? {
-        return WeeklySummaryShareHelper(this).writeBitmapToCache(bitmap)
-    }
 
     internal fun createSettingsRow(icon: String, title: String, subtitle: String, endWidget: View? = null): LinearLayout {
         val row = LinearLayout(this).apply {
@@ -2382,7 +2287,6 @@ class MainActivity : AppCompatActivity() {
                 if (!sharedPrefs.contains("${cachedTodayStr}_goal_secs")) {
                     sharedPrefs.edit().putLong("${cachedTodayStr}_goal_secs", sharedPrefs.getLong("daily_goal_secs", 2700L)).apply()
                 }
-                val goals = loadSessionGoalsFromJson(sharedPrefs.getString("session_goals_json", "[]") ?: "[]")
                 checkAndResetGoalsForNewDay()
                 recalculateStreak()
                 if (currentPanel == AppPanel.STATS) {
@@ -2407,13 +2311,25 @@ class MainActivity : AppCompatActivity() {
                 checkPomoSubjectPrompt()
             }
 
-            val currentMinuteBucket = accumulatedStudy / 60L
-            val isMinuteTick = currentMinuteBucket != lastStatsMinuteTick && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK)
-            if (isMinuteTick) {
+            val currentMinuteBucket = (accumulatedStudy + currentBreakSeconds) / 60L
+            val currentWallMinute = System.currentTimeMillis() / 60000L
+            val isMinuteTick = (currentMinuteBucket != lastStatsMinuteTick && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK))
+                || (lastWallMinuteTick != -1L && currentWallMinute != lastWallMinuteTick)
+            if (isMinuteTick || lastWallMinuteTick == -1L) {
                 lastStatsMinuteTick = currentMinuteBucket
-                statsDirty = true
-                statsSnapshotCache = null
-                tabPageCache.clear()
+                lastWallMinuteTick = currentWallMinute
+                if (isMinuteTick) {
+                    statsDirty = true
+                    statsSnapshotCache = null
+                    tabPageCache.clear()
+                    if (currentPanel == AppPanel.STATS) {
+                        refreshStatsPanel()
+                    } else if (currentPanel == AppPanel.PLANNER) {
+                        refreshStatsPanel()
+                    } else if (currentPanel == AppPanel.COMMUNITY || currentPanel == AppPanel.LEADERBOARD) {
+                        buildCurrentPanel()
+                    }
+                }
             }
 
             maybeFireForegroundGoalPing(cachedTodayStr)
@@ -2526,7 +2442,7 @@ class MainActivity : AppCompatActivity() {
                 if (currentTimerState == TimerState.STUDYING && accumulatedStudy > 0L) {
                     checkCelebration()
                 }
-            } else if (currentPanel == AppPanel.STATS) {
+            } else if (currentPanel == AppPanel.STATS || currentPanel == AppPanel.PLANNER) {
                 updateStatsLiveViews()
             }
             handler.postDelayed(updateRunnable, 500)
@@ -2535,18 +2451,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun updateStatsLiveViews() {
-        if (currentPanel != AppPanel.STATS) return
+        if (currentPanel != AppPanel.STATS && currentPanel != AppPanel.PLANNER) return
         val statsContainer = panelContainer
         val snap = computeStatsSnapshot()
         val todayStr = cachedTodayStr.ifEmpty { dateKeyFmt.format(Date()) }
 
-        when (currentStatsTab) {
-            AppStatsTab.PLANNER -> {
+        if (currentPanel == AppPanel.PLANNER || currentStatsTab == AppStatsTab.PLANNER) {
                 val dailySubjectDurations = SubjectTagManager.getSubjectDurationsForDate(this, todayStr)
                 val dailyGoalDurations = PlannerHistoryManager.getDailyGoalDurations(this, todayStr)
+                val dailySubTopicDurations = mutableMapOf<String, Map<String, Long>>()
                 val goalsJson = appPrefs.getString("session_goals_json", "[]") ?: "[]"
                 val goalsList = loadSessionGoalsFromJson(goalsJson)
-                val progressMap = PlannerHistoryManager.calculateGoalProgress(goalsList, snap.todayFocus, dailySubjectDurations, dailyGoalDurations)
+                for (g in goalsList) {
+                    val subId = g.subjectId
+                    if (!subId.isNullOrBlank() && subId != "all" && !dailySubTopicDurations.containsKey(subId)) {
+                        dailySubTopicDurations[subId] = SubjectTagManager.getDailySubTopicDurations(this, subId, todayStr)
+                    }
+                }
+                val progressMap = PlannerHistoryManager.calculateGoalProgress(
+                    goalsList, snap.todayFocus, dailySubjectDurations, dailyGoalDurations, dailySubTopicDurations
+                )
 
                 val trulyAchievedIds = mutableSetOf<String>()
                 for (goal in goalsList) {
@@ -2618,7 +2542,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-            AppStatsTab.OVERVIEW -> {
+        if (currentPanel == AppPanel.STATS && currentStatsTab == AppStatsTab.OVERVIEW) {
                 val todayFocus = snap.todayFocus
                 val todayH = todayFocus / 3600
                 val todayM = (todayFocus % 3600) / 60
@@ -2646,17 +2570,16 @@ class MainActivity : AppCompatActivity() {
                 (statsContainer.findViewWithTag<TextView>("overview_break_badge"))?.let {
                     it.text = breakLabel
                 }
-            }
-            AppStatsTab.TIMELINE -> {
-                val exams = ExamCountdownManager.getExams(this)
-                for (exam in exams) {
-                    val breakdown = ExamCountdownManager.getCountdownBreakdown(exam.targetTimestampMs)
-                    (statsContainer.findViewWithTag<TextView>("exam_main_countdown_${exam.id}"))?.let {
-                        it.text = breakdown.mainHeadline
-                    }
-                    (statsContainer.findViewWithTag<TextView>("exam_sub_countdown_${exam.id}"))?.let {
-                        it.text = if (breakdown.readableSubtitle.isNotBlank()) breakdown.readableSubtitle else "Scheduled event"
-                    }
+        }
+        if (currentPanel == AppPanel.STATS && currentStatsTab == AppStatsTab.TIMELINE) {
+            val exams = ExamCountdownManager.getExams(this)
+            for (exam in exams) {
+                val breakdown = ExamCountdownManager.getCountdownBreakdown(exam.targetTimestampMs)
+                (statsContainer.findViewWithTag<TextView>("exam_main_countdown_${exam.id}"))?.let {
+                    it.text = breakdown.mainHeadline
+                }
+                (statsContainer.findViewWithTag<TextView>("exam_sub_countdown_${exam.id}"))?.let {
+                    it.text = if (breakdown.readableSubtitle.isNotBlank()) breakdown.readableSubtitle else "Scheduled event"
                 }
             }
         }
@@ -2742,7 +2665,7 @@ class MainActivity : AppCompatActivity() {
 
         if (currentTimerState == TimerState.IDLE && Build.VERSION.SDK_INT >= 33) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                val askedCount = prefs.getInt("post_notif_rationale_shown", 0)
+                val askedCount = prefs.safeInt("post_notif_rationale_shown", 0)
                 if (askedCount < 2) {
                     prefs.edit().putInt("post_notif_rationale_shown", askedCount + 1).apply()
                     showNotificationRationaleDialog {
@@ -2839,7 +2762,6 @@ class MainActivity : AppCompatActivity() {
         val breakRingColor = if (isPomoWhite) 0xFF475569.toInt() else themeCoordinator.secondaryColor
 
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
-        val isLectureCountdown = timerMode == "LECTURE" && sharedPrefs.getBoolean("lecture_mode_enabled", false)
         val shouldShowCountdownRing = (timerMode == "COUNTDOWN")
         timerRing.visibility = if (shouldShowCountdownRing) View.VISIBLE else View.GONE
 
@@ -3583,7 +3505,6 @@ class MainActivity : AppCompatActivity() {
             val streak = sharedPrefs.safeInt("current_streak", 1)
             CelebrationEngine.checkAndCelebrate(
                 activity = this,
-                sessionSecs = runningSessionSecs,
                 todayTotalSecs = totalTodayFocus,
                 dailyGoalSecs = dailyGoal,
                 currentStreak = streak
@@ -3826,9 +3747,6 @@ class MainActivity : AppCompatActivity() {
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
         val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         if (!isLandscape) {
-            val timerModeSetting = sharedPrefs.getString("timer_mode", "SUBJECT") ?: "SUBJECT"
-            val showSubjectTagging = sharedPrefs.getBoolean("enable_subject_tagging", true) && timerModeSetting != "STOPWATCH"
-
             val revealViews = mutableListOf<View>()
             if (::navHeader.isInitialized) { navHeader.visibility = View.VISIBLE; revealViews.add(navHeader) }
             modeOptionsPill?.let { it.visibility = View.VISIBLE; revealViews.add(it) }

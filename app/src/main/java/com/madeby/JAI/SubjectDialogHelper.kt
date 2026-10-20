@@ -162,6 +162,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                                 host.navigateToPanel(AppPanel.FOCUS)
                             }
                         } else {
+                            SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
                             host.navigateToPanel(AppPanel.FOCUS)
                             AppToast.show(host, "Subject selected: ${subj.name}")
                         }
@@ -530,6 +531,19 @@ class SubjectDialogHelper(private val host: MainActivity) {
     }
 
     fun showSubTopicPickerDialog(subj: SubjectTag, onSelected: ((String?) -> Unit)? = null) {
+        val isBreak = host.currentTimerState == TimerState.BREAK
+        if (!isBreak && host.currentTimerState != TimerState.IDLE) {
+            DeveloperToolsHelper.showThemedConfirmDialog(
+                activity = host,
+                themeCoordinator = themeCoordinator,
+                title = "⏱️ Active Session Running",
+                message = "Chapter / subtopic cannot be changed during an active study session.\n\nYou can change chapters or topics during breaks, between Pomodoro rounds, or when the timer is idle.",
+                confirmText = "OK",
+                isDestructive = false,
+                onCancel = {}
+            ) {}
+            return
+        }
         try {
             val dialog = Dialog(host)
             dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
@@ -583,12 +597,18 @@ class SubjectDialogHelper(private val host: MainActivity) {
             val currentSubTopic = SubjectTagManager.getSelectedSubTopic(host, subj.id)
             val allTopics = SubjectTagManager.getSubTopics(host, subj.id).toMutableList()
             val studyTotals = SubjectTagManager.getSubTopicStudyTotals(host, subj.id)
+            var selectionMade = false
 
             fun formatTopicDuration(secs: Long): String {
                 if (secs <= 0L) return ""
                 val h = secs / 3600
                 val m = (secs % 3600) / 60
-                return if (h > 0) "${h}h ${m}m" else "${m}m"
+                val s = secs % 60
+                return when {
+                    h > 0 -> "${h}h ${m}m"
+                    m > 0 -> "${m}m"
+                    else -> "${s}s"
+                }
             }
 
             fun populateTopicRows() {
@@ -615,6 +635,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         setMargins(0, 0, 0, dp(6))
                     }
                     setOnClickListener {
+                        selectionMade = true
                         SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
                         dialog.dismiss()
                         onSelected?.invoke(null)
@@ -655,6 +676,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                             setMargins(0, 0, 0, dp(6))
                         }
                         setOnClickListener {
+                            selectionMade = true
                             SubjectTagManager.setSelectedSubTopic(host, subj.id, topic)
                             dialog.dismiss()
                             onSelected?.invoke(topic)
@@ -747,6 +769,16 @@ class SubjectDialogHelper(private val host: MainActivity) {
             addRow.addView(input)
             addRow.addView(addBtn)
             container.addView(addRow)
+
+            dialog.setOnDismissListener {
+                if (!selectionMade) {
+                    selectionMade = true
+                    SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
+                    onSelected?.invoke(null)
+                    host.buildCurrentPanel()
+                    AppToast.show(host, "Studying: ${subj.name} (All Topics)")
+                }
+            }
 
             dialog.setContentView(container)
             dialog.show()
@@ -1840,8 +1872,20 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
                     // Sub-Topics list chips (if any)
                     if (subj.subTopics.isNotEmpty()) {
+                        val studyTotals = SubjectTagManager.getSubTopicStudyTotals(host, subj.id)
+                        val chaptersWithTime = subj.subTopics.map { topic ->
+                            val tSecs = studyTotals[topic] ?: 0L
+                            if (tSecs > 0L) {
+                                val tm = tSecs / 60L
+                                val ts = tSecs % 60L
+                                val tStr = if (tm > 0) "${tm}m" else "${ts}s"
+                                "$topic ($tStr)"
+                            } else {
+                                topic
+                            }
+                        }
                         val subTopicsLabel = TextView(host).apply {
-                            text = "Chapters / Topics: " + subj.subTopics.joinToString(", ")
+                            text = "Chapters / Topics: " + chaptersWithTime.joinToString(", ")
                             setTextColor(themeCoordinator.textColor)
                             alpha = 0.7f
                             textSize = 12f
@@ -2265,7 +2309,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
         val origSubId = prefs.getString("pomo_grace_orig_subject_id", null) ?: SubjectTagManager.getSelectedSubject(host).id
         val curSub = SubjectTagManager.resolveSubject(host, origSubId)
-        val pomoCount = prefs.getInt("pomo_completed_count", 0) + 1
+        val pomoCount = prefs.safeInt("pomo_completed_count", 0) + 1
 
         val startTime = prefs.getLong("pomo_prompt_start_time", System.currentTimeMillis() / 1000)
         val now = System.currentTimeMillis() / 1000

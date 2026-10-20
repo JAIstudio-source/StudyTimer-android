@@ -325,6 +325,7 @@ class TimerService : Service() {
                         breakCountdownSecs = prefs.safeLong("break_interval_minutes", 5L) * 60L
                         breakRemainingSecs = prefs.getLong("break_remaining_secs", 0L)
                         lectureModeEnabled = false
+                        prefs.edit().putBoolean("pomo_overtime_alerted", false).apply()
                     }
                     timerMode == "LECTURE" -> {
                         // Starting a normal timer session while in lecture mode:
@@ -447,9 +448,7 @@ class TimerService : Service() {
         lastTimestamp = now
         if (currentTimerState == TimerState.STUDYING) {
             val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val sub = if (timerMode == "STOPWATCH") {
-                SubjectTagManager.resolveSubject(this, "general")
-            } else if (timerMode == "LECTURE") {
+            val sub = if (timerMode == "LECTURE" && lectureModeEnabled) {
                 val lid = sp.getString("active_lecture_subject_id", null)
                 if (lid != null) SubjectTagManager.resolveSubject(this, lid)
                 else SubjectTagManager.getSelectedSubject(this)
@@ -563,6 +562,8 @@ class TimerService : Service() {
         activityConfirmationPromptTime = 0L
         cancelInactivityCheckNotification()
         TimelineLogger.record(this, TimerState.IDLE)
+        val stopPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        stopPrefs.edit().putBoolean("pomo_overtime_alerted", false).apply()
         saveState()
 
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -593,6 +594,7 @@ class TimerService : Service() {
             .putLong("break_countdown_secs", 0L)
             .putLong("break_remaining_secs", 0L)
             .putBoolean("lecture_mode_enabled", false)
+            .putBoolean("pomo_overtime_alerted", false)
             .remove("active_lecture_subject_id")
             .apply()
         saveState()
@@ -977,7 +979,9 @@ class TimerService : Service() {
                                 } else {
                                     SubjectTagManager.getSelectedSubject(this@TimerService).id
                                 }
-                                SubjectTagManager.recordSubjectStudyTime(this@TimerService, activeSubjId, gap)
+                                val activeSubTopic = sp.getString("active_planner_goal_subtopic", null)?.takeIf { it.isNotBlank() }
+                                    ?: SubjectTagManager.getSelectedSubTopic(this@TimerService, activeSubjId)
+                                SubjectTagManager.recordSubjectStudyTime(this@TimerService, activeSubjId, gap, subTopic = activeSubTopic)
 
                                 val activeGoalId = sp.getString("active_planner_goal_id", null)
                                 if (!activeGoalId.isNullOrBlank()) {
@@ -1008,9 +1012,9 @@ class TimerService : Service() {
                             if (timerMode == "COUNTDOWN" || (timerMode == "LECTURE" && lectureModeEnabled)) {
                                 focusRemainingSecs -= gap
                                 if (focusRemainingSecs <= 0L) {
-                                    triggerVibration()
-                                    AppAnalytics.trackSessionEnd(this@TimerService, timerMode, accumulatedStudy, completed = true)
                                     if (timerMode == "LECTURE" || lectureModeEnabled) {
+                                        triggerVibration()
+                                        AppAnalytics.trackSessionEnd(this@TimerService, timerMode, accumulatedStudy, completed = true)
                                         currentTimerState = TimerState.LECTURE_ENDED
                                         lectureModeEnabled = false
                                         getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
@@ -1037,6 +1041,8 @@ class TimerService : Service() {
                                         val isOvertimeEnabled = sp.getBoolean("pomodoro_overtime_enabled", true)
                                         if (isFreedomMode) {
                                             // Freedom Mode: continuous focus without break transitions or session caps
+                                            triggerVibration()
+                                            AppAnalytics.trackSessionEnd(this@TimerService, timerMode, accumulatedStudy, completed = true)
                                             val fullInterval = sp.getLong("focus_countdown_secs", focusCountdownSecs).coerceAtLeast(60L)
                                             focusRemainingSecs = fullInterval
                                             sp.edit().putLong("focus_remaining_secs", focusRemainingSecs).apply()
@@ -1050,6 +1056,7 @@ class TimerService : Service() {
                                             if (!alreadyAlerted) {
                                                 sp.edit().putBoolean("pomo_overtime_alerted", true).apply()
                                                 triggerVibration()
+                                                AppAnalytics.trackSessionEnd(this@TimerService, timerMode, accumulatedStudy, completed = true)
                                                 try {
                                                     val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
                                                     android.media.RingtoneManager.getRingtone(applicationContext, soundUri)?.play()
@@ -1060,6 +1067,8 @@ class TimerService : Service() {
                                             updateForegroundNotification()
                                             StudyWidgetProvider.refresh(this)
                                         } else {
+                                            triggerVibration()
+                                            AppAnalytics.trackSessionEnd(this@TimerService, timerMode, accumulatedStudy, completed = true)
                                             val autoBreak = sp.getBoolean("pomodoro_auto_break", true)
                                             sp.edit().putLong("focus_remaining_secs", 0L).apply()
                                             continuousStudySecs = 0L
@@ -1256,7 +1265,7 @@ class TimerService : Service() {
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).cancel(INACTIVITY_CHECK_NOTIFICATION_ID)
     }
 
-    private fun postAutoPausedNotification() {
+    private fun postAutoPausedNotification(message: String = "Study timer paused after 3.5h continuous session without activity check-in.") {
         ensureCompletionChannel()
         val openIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -1268,14 +1277,14 @@ class TimerService : Service() {
         val notification = NotificationCompat.Builder(this, COMPLETION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_small_app_logo)
             .setContentTitle("Timer Auto-Paused")
-            .setContentText("Study timer paused after 3.5h continuous session without activity check-in.")
+            .setContentText(message)
             .setAutoCancel(true)
             .setSound(soundUri)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setContentIntent(openPending)
             .build()
-        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(1006, notification)
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NotificationHelper.NOTIFICATION_ID_AUTO_PAUSED, notification)
     }
 
     private fun ensureCompletionChannel() {
@@ -1425,6 +1434,7 @@ class TimerService : Service() {
                 accumulatedStudy = 0L
                 currentBreakSeconds = 0L
                 lastTimestamp = 0L
+                lastLeaderboardSyncStudySecs = 0L
                 currentTimerState = TimerState.IDLE
                 continuousStudySecs = 0L
                 isPendingActivityConfirmation = false
@@ -1434,9 +1444,27 @@ class TimerService : Service() {
                     accumulatedStudy = 0L
                     currentBreakSeconds = 0L
                     lastTimestamp = 0L
+                    lastLeaderboardSyncStudySecs = 0L
                     currentTimerState = TimerState.IDLE
                     continuousStudySecs = 0L
                     isPendingActivityConfirmation = false
+                } else {
+                    accumulatedStudy = 0L
+                    currentBreakSeconds = 0L
+                    lastLeaderboardSyncStudySecs = 0L
+                    lastTimestamp = nowSecs
+                    val currentSub = SubjectTagManager.getSelectedSubject(this)
+                    if (currentTimerState == TimerState.STUDYING) {
+                        TimelineLogger.recordRaw(
+                            this,
+                            "STUDYING",
+                            subId = currentSub.id,
+                            subName = currentSub.name,
+                            subColor = currentSub.colorHex
+                        )
+                    } else if (currentTimerState == TimerState.BREAK) {
+                        TimelineLogger.recordRaw(this, "BREAK")
+                    }
                 }
             }
             activeSessionDateStr = currentDateStr
@@ -1459,6 +1487,7 @@ class TimerService : Service() {
             lastTimestamp = nowSecs
             continuousStudySecs = 0L
             saveState()
+            postAutoPausedNotification("Timer auto-paused after prolonged background gap.")
         }
 
         val pomodoroConfiguredSecs = sharedPrefs.safeLong("study_interval_minutes", 25L) * 60L

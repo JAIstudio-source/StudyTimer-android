@@ -927,7 +927,7 @@ object DeveloperToolsHelper {
             addView(devButton("Trigger Streak Level-Up Animation (N ➔ N+1)", "Launches the animated streak count-up level-up popup") {
                 dialog.dismiss()
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    val cur = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getInt("current_streak", 6)
+                    val cur = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 6)
                     val old = if (cur > 0) cur - 1 else 6
                     val next = if (cur > 0) cur else 7
                     StreakUpAnimationDialog.show(activity, oldStreak = old, newStreak = next)

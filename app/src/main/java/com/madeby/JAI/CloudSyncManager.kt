@@ -12,6 +12,24 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object CloudSyncManager {
+    private const val CLOUD_CONFLICT_SKEW_TOLERANCE_MS = 60_000L
+
+    private val TRANSIENT_SYNC_KEYS = setOf(
+        "accumulatedStudy",
+        "currentBreakSeconds",
+        "lastTimestamp",
+        "timerState",
+        "pre_pause_state",
+        "prePauseState",
+        "focus_remaining_secs",
+        "break_remaining_secs",
+        "break_countdown_secs",
+        "active_session_date_str",
+        "streak_last_calculated",
+        "pomo_overtime_alerted",
+        "pomo_grace_realloc_pending",
+        "pending_inactivity_check"
+    )
 
     data class CloudRecordMetadata(
         val userId: String,
@@ -40,13 +58,14 @@ object CloudSyncManager {
         }
 
         try {
+            val authToken = AuthManager.getAccessToken(context)?.takeIf { it.isNotBlank() } ?: anonKey
             val encodedUserId = java.net.URLEncoder.encode(userId, "UTF-8")
             var queryParams = "user_id=eq.$encodedUserId&order=updated_at.desc&select=*"
             var url = URL("$supabaseUrl/rest/v1/user_sync_data?$queryParams")
             var conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.setRequestProperty("apikey", anonKey)
-            conn.setRequestProperty("Authorization", "Bearer $anonKey")
+            conn.setRequestProperty("Authorization", "Bearer $authToken")
             conn.setRequestProperty("Content-Type", "application/json")
             conn.connectTimeout = 8000
             conn.readTimeout = 8000
@@ -64,7 +83,7 @@ object CloudSyncManager {
                 val fallbackConn = fallbackUrl.openConnection() as HttpURLConnection
                 fallbackConn.requestMethod = "GET"
                 fallbackConn.setRequestProperty("apikey", anonKey)
-                fallbackConn.setRequestProperty("Authorization", "Bearer $anonKey")
+                fallbackConn.setRequestProperty("Authorization", "Bearer $authToken")
                 fallbackConn.setRequestProperty("Content-Type", "application/json")
                 fallbackConn.connectTimeout = 8000
                 fallbackConn.readTimeout = 8000
@@ -109,9 +128,9 @@ object CloudSyncManager {
 
         if (remoteMeta != null && rawRecord != null) {
             val cloudTs = maxOf(remoteMeta.lastModifiedTimestamp, remoteMeta.updatedAt)
-            // If cloud is newer by more than 2 seconds, raise a conflict
-            if (cloudTs > localTs + 2000L) {
-                Log.w("CloudSyncManager", "Cloud timestamp ($cloudTs) is newer than local ($localTs). Conflict detected.")
+            // If cloud is newer beyond clock skew tolerance (60s), raise a conflict
+            if (cloudTs > localTs + CLOUD_CONFLICT_SKEW_TOLERANCE_MS) {
+                Log.w("CloudSyncManager", "Cloud timestamp ($cloudTs) is newer than local ($localTs) by >${CLOUD_CONFLICT_SKEW_TOLERANCE_MS}ms. Conflict detected.")
                 return@withContext SyncCheckResult.Conflict(localTs, cloudTs, rawRecord)
             }
         }
@@ -156,6 +175,7 @@ object CloudSyncManager {
 
             val prefsJson = JSONObject()
             for ((key, value) in sharedPrefs.all) {
+                if (key in TRANSIENT_SYNC_KEYS) continue
                 if (value != null) {
                     when (value) {
                         is Boolean -> prefsJson.put(key, value)
@@ -163,6 +183,13 @@ object CloudSyncManager {
                         is Long -> prefsJson.put(key, value)
                         is Float -> prefsJson.put(key, value.toDouble())
                         is Double -> prefsJson.put(key, value)
+                        is Set<*> -> {
+                            val arr = JSONArray()
+                            for (item in value) {
+                                if (item != null) arr.put(item.toString())
+                            }
+                            prefsJson.put(key, arr)
+                        }
                         else -> prefsJson.put(key, value.toString())
                     }
                 }
@@ -242,11 +269,12 @@ object CloudSyncManager {
             Log.d("CloudSyncManager", "Outgoing Cloud Sync Payload (${payloadString.length} bytes): timeline_entries=${entries.size}, updated_at=${maxOf(localLastMod, now)}")
 
             // Try Upsert POST
+            val authToken = AuthManager.getAccessToken(context)?.takeIf { it.isNotBlank() } ?: anonKey
             var url = URL("$supabaseUrl/rest/v1/user_sync_data?on_conflict=user_id")
             var conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
             conn.setRequestProperty("apikey", anonKey)
-            conn.setRequestProperty("Authorization", "Bearer $anonKey")
+            conn.setRequestProperty("Authorization", "Bearer $authToken")
             conn.setRequestProperty("Content-Type", "application/json")
             conn.setRequestProperty("Prefer", "resolution=merge-duplicates")
             conn.connectTimeout = 10000
@@ -270,7 +298,7 @@ object CloudSyncManager {
                 conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "PATCH"
                 conn.setRequestProperty("apikey", anonKey)
-                conn.setRequestProperty("Authorization", "Bearer $anonKey")
+                conn.setRequestProperty("Authorization", "Bearer $authToken")
                 conn.setRequestProperty("Content-Type", "application/json")
                 conn.connectTimeout = 10000
                 conn.readTimeout = 10000
@@ -293,7 +321,6 @@ object CloudSyncManager {
                     .edit()
                     .putLong("last_cloud_sync_timestamp", lastSyncTime)
                     .apply()
-                BackupManager(context).markDataModified()
                 Log.i("CloudSyncManager", "Cloud sync successfully completed for user: $userId at $lastSyncTime")
 
                 // Auto-sync today's verified real study time to public.daily_leaderboard only if participating
@@ -438,6 +465,31 @@ object CloudSyncManager {
                             val merged = GoalHistoryManager.mergeCloudHistory(localHist, cloudHist)
                             editor.putString("daily_goal_history_json", merged)
                         }
+                    } else if (k == "daily_goal_durations_json") {
+                        val localDur = sharedPrefs.safeString("daily_goal_durations_json", "{}") ?: "{}"
+                        val cloudDur = cloudPrefs.optString("daily_goal_durations_json", "{}")
+                        if (cloudDur.isNotBlank() && cloudDur != "{}") {
+                            try {
+                                val localJson = JSONObject(localDur)
+                                val cloudJson = JSONObject(cloudDur)
+                                val dKeys = cloudJson.keys()
+                                while (dKeys.hasNext()) {
+                                    val dayKey = dKeys.next()
+                                    val cloudDayObj = cloudJson.optJSONObject(dayKey)
+                                    if (cloudDayObj != null) {
+                                        val localDayObj = localJson.optJSONObject(dayKey) ?: JSONObject()
+                                        val gKeys = cloudDayObj.keys()
+                                        while (gKeys.hasNext()) {
+                                            val gId = gKeys.next()
+                                            val maxSecs = maxOf(localDayObj.optLong(gId, 0L), cloudDayObj.optLong(gId, 0L))
+                                            localDayObj.put(gId, maxSecs)
+                                        }
+                                        localJson.put(dayKey, localDayObj)
+                                    }
+                                }
+                                editor.putString("daily_goal_durations_json", localJson.toString())
+                            } catch (_: Exception) {}
+                        }
                     } else if (!sharedPrefs.contains(k)) {
                         val v = cloudPrefs.get(k)
                         when (v) {
@@ -578,6 +630,96 @@ object CloudSyncManager {
                         } catch (_: Exception) {}
                     }
                 }
+
+                // Merge subject subtopics (chapters)
+                if (cloudSubObj.has("subject_subtopics_json")) {
+                    val localSubTopicsStr = subPrefs.getString("subject_subtopics_json", "{}") ?: "{}"
+                    val cloudSubTopicsStr = cloudSubObj.optString("subject_subtopics_json", "{}")
+                    try {
+                        val localJson = JSONObject(localSubTopicsStr)
+                        val cloudJson = JSONObject(cloudSubTopicsStr)
+                        val sKeys = cloudJson.keys()
+                        while (sKeys.hasNext()) {
+                            val sId = sKeys.next()
+                            val cArr = cloudJson.optJSONArray(sId) ?: JSONArray()
+                            val lArr = localJson.optJSONArray(sId) ?: JSONArray()
+                            val mergedSet = linkedSetOf<String>()
+                            for (i in 0 until lArr.length()) {
+                                val t = lArr.optString(i, "").trim()
+                                if (t.isNotEmpty()) mergedSet.add(t)
+                            }
+                            for (i in 0 until cArr.length()) {
+                                val t = cArr.optString(i, "").trim()
+                                if (t.isNotEmpty()) mergedSet.add(t)
+                            }
+                            val resArr = JSONArray()
+                            mergedSet.forEach { resArr.put(it) }
+                            localJson.put(sId, resArr)
+                        }
+                        subEditor.putString("subject_subtopics_json", localJson.toString())
+                    } catch (_: Exception) {}
+                }
+
+                // Merge subtopic study totals
+                if (cloudSubObj.has("subject_subtopic_study_time_json")) {
+                    val localTotalsStr = subPrefs.getString("subject_subtopic_study_time_json", "{}") ?: "{}"
+                    val cloudTotalsStr = cloudSubObj.optString("subject_subtopic_study_time_json", "{}")
+                    try {
+                        val localJson = JSONObject(localTotalsStr)
+                        val cloudJson = JSONObject(cloudTotalsStr)
+                        val sKeys = cloudJson.keys()
+                        while (sKeys.hasNext()) {
+                            val sId = sKeys.next()
+                            val cObj = cloudJson.optJSONObject(sId)
+                            if (cObj != null) {
+                                val lObj = localJson.optJSONObject(sId) ?: JSONObject()
+                                val tKeys = cObj.keys()
+                                while (tKeys.hasNext()) {
+                                    val topic = tKeys.next()
+                                    val maxSecs = maxOf(lObj.optLong(topic, 0L), cObj.optLong(topic, 0L))
+                                    lObj.put(topic, maxSecs)
+                                }
+                                localJson.put(sId, lObj)
+                            }
+                        }
+                        subEditor.putString("subject_subtopic_study_time_json", localJson.toString())
+                    } catch (_: Exception) {}
+                }
+
+                // Merge daily subtopic durations
+                if (cloudSubObj.has("daily_subtopic_durations_json")) {
+                    val localDailyStr = subPrefs.getString("daily_subtopic_durations_json", "{}") ?: "{}"
+                    val cloudDailyStr = cloudSubObj.optString("daily_subtopic_durations_json", "{}")
+                    try {
+                        val localJson = JSONObject(localDailyStr)
+                        val cloudJson = JSONObject(cloudDailyStr)
+                        val dKeys = cloudJson.keys()
+                        while (dKeys.hasNext()) {
+                            val dateKey = dKeys.next()
+                            val cDayObj = cloudJson.optJSONObject(dateKey)
+                            if (cDayObj != null) {
+                                val lDayObj = localJson.optJSONObject(dateKey) ?: JSONObject()
+                                val sKeys = cDayObj.keys()
+                                while (sKeys.hasNext()) {
+                                    val sId = sKeys.next()
+                                    val cSubObj = cDayObj.optJSONObject(sId)
+                                    if (cSubObj != null) {
+                                        val lSubObj = lDayObj.optJSONObject(sId) ?: JSONObject()
+                                        val tKeys = cSubObj.keys()
+                                        while (tKeys.hasNext()) {
+                                            val topic = tKeys.next()
+                                            val maxSecs = maxOf(lSubObj.optLong(topic, 0L), cSubObj.optLong(topic, 0L))
+                                            lSubObj.put(topic, maxSecs)
+                                        }
+                                        lDayObj.put(sId, lSubObj)
+                                    }
+                                }
+                                localJson.put(dateKey, lDayObj)
+                            }
+                        }
+                        subEditor.putString("daily_subtopic_durations_json", localJson.toString())
+                    } catch (_: Exception) {}
+                }
                 subEditor.apply()
             }
 
@@ -641,13 +783,14 @@ object CloudSyncManager {
             // Save an emergency local safety snapshot before altering local storage
             BackupManager(context).createPreAuthSafetySnapshot("pre_restore")
 
+            val authToken = AuthManager.getAccessToken(context)?.takeIf { it.isNotBlank() } ?: anonKey
             val encodedUserId = java.net.URLEncoder.encode(userId, "UTF-8")
             val queryParams = "user_id=eq.$encodedUserId&order=updated_at.desc&select=*"
             var url = URL("$supabaseUrl/rest/v1/user_sync_data?$queryParams")
             var conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.setRequestProperty("apikey", anonKey)
-            conn.setRequestProperty("Authorization", "Bearer $anonKey")
+            conn.setRequestProperty("Authorization", "Bearer $authToken")
             conn.setRequestProperty("Content-Type", "application/json")
 
             var code = conn.responseCode
@@ -665,7 +808,7 @@ object CloudSyncManager {
                 val fallbackConn = fallbackUrl.openConnection() as HttpURLConnection
                 fallbackConn.requestMethod = "GET"
                 fallbackConn.setRequestProperty("apikey", anonKey)
-                fallbackConn.setRequestProperty("Authorization", "Bearer $anonKey")
+                fallbackConn.setRequestProperty("Authorization", "Bearer $authToken")
                 fallbackConn.setRequestProperty("Content-Type", "application/json")
                 fallbackConn.connectTimeout = 8000
                 fallbackConn.readTimeout = 8000
@@ -753,8 +896,38 @@ object CloudSyncManager {
                                             editor.putLong(k, v.toLong())
                                         }
                                     }
-                                    is String -> editor.putString(k, v)
-                                    is JSONArray -> editor.putString(k, v.toString())
+                                    is String -> {
+                                        if (k == "streak_frozen_dates") {
+                                            val set = mutableSetOf<String>()
+                                            runCatching {
+                                                val arr = JSONArray(v)
+                                                for (i in 0 until arr.length()) {
+                                                    val s = arr.optString(i)
+                                                    if (s.isNotBlank()) set.add(s)
+                                                }
+                                            }.onFailure {
+                                                v.trim('[', ']').split(',').forEach { part ->
+                                                    val clean = part.trim()
+                                                    if (clean.isNotBlank()) set.add(clean)
+                                                }
+                                            }
+                                            editor.putStringSet(k, set)
+                                        } else {
+                                            editor.putString(k, v)
+                                        }
+                                    }
+                                    is JSONArray -> {
+                                        if (k == "streak_frozen_dates") {
+                                            val set = mutableSetOf<String>()
+                                            for (i in 0 until v.length()) {
+                                                val s = v.optString(i)
+                                                if (s.isNotBlank()) set.add(s)
+                                            }
+                                            editor.putStringSet(k, set)
+                                        } else {
+                                            editor.putString(k, v.toString())
+                                        }
+                                    }
                                     is JSONObject -> editor.putString(k, v.toString())
                                 }
                             }

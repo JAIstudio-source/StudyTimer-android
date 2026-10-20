@@ -28,7 +28,6 @@ object CelebrationEngine {
 
     fun checkAndCelebrate(
         activity: MainActivity,
-        sessionSecs: Long,
         todayTotalSecs: Long,
         dailyGoalSecs: Long,
         currentStreak: Int

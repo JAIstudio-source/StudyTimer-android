@@ -45,7 +45,6 @@ object StreakUpAnimationDialog {
             val dialog = Dialog(activity)
             dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
 
-            val primaryColor = activity.themeCoordinator.primaryColor
             val density = activity.resources.displayMetrics.density
             val dp = { v: Float -> (v * density) }
             val dpInt = { v: Int -> (v * density).toInt() }

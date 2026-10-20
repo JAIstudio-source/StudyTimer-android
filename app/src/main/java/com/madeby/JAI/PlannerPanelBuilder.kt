@@ -253,9 +253,18 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val todayStr = cachedTodayStr.ifEmpty { dateKeyFmt.format(Date()) }
         val dailySubjectDurations = SubjectTagManager.getSubjectDurationsForDate(host, todayStr)
         val dailyGoalDurations = PlannerHistoryManager.getDailyGoalDurations(host, todayStr)
+        val dailySubTopicDurations = mutableMapOf<String, Map<String, Long>>()
+        for (g in goalsList) {
+            val subId = g.subjectId
+            if (!subId.isNullOrBlank() && subId != "all" && !dailySubTopicDurations.containsKey(subId)) {
+                dailySubTopicDurations[subId] = SubjectTagManager.getDailySubTopicDurations(host, subId, todayStr)
+            }
+        }
         val todayFocusSecs = snap.todayFocus
 
-        val progressMap = PlannerHistoryManager.calculateGoalProgress(goalsList, todayFocusSecs, dailySubjectDurations, dailyGoalDurations)
+        val progressMap = PlannerHistoryManager.calculateGoalProgress(
+            goalsList, todayFocusSecs, dailySubjectDurations, dailyGoalDurations, dailySubTopicDurations
+        )
 
         fun reloadPlanner() {
             val curSnap = statsSnapshotCache ?: computeStatsSnapshot().also { statsSnapshotCache = it }
@@ -541,91 +550,55 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
                 val prog = progressMap[goal.id]
                 val actualMins = prog?.actualMinutes ?: 0
-                val remainingMins = (targetMins - actualMins).coerceAtLeast(0)
 
-                // Function to build action CTA: Quick Start button, Done badge, or Stopped Early badge
+                // Function to build action CTA: Quick Start button for ongoing active goals
                 fun createActionCtaView(): View {
-                    return if (info.isChecked) {
-                        if (info.isDeficit) {
-                            TextView(host).apply {
-                                text = "✕ ${remainingMins}m left"
-                                textSize = 11f
-                                typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                                setTextColor(redColor)
-                                background = themeCoordinator.createGlassChip(tintedColor(redColor, 60), 10f)
-                                setPadding(dp(8), dp(3), dp(8), dp(3))
-                                layoutParams = LinearLayout.LayoutParams(
-                                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                                    LinearLayout.LayoutParams.WRAP_CONTENT
-                                )
-                            }
-                        } else {
-                            TextView(host).apply {
-                                val doneText = if (targetMins > 0) {
-                                    "✓ Done • ${actualMins}m"
-                                } else {
-                                    if (actualMins > 0) "✓ Done • ${actualMins}m" else "✓ Done"
-                                }
-                                text = doneText
-                                textSize = 11f
-                                typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                                setTextColor(greenColor)
-                                background = themeCoordinator.createGlassChip(tintedColor(greenColor, 60), 10f)
-                                setPadding(dp(8), dp(3), dp(8), dp(3))
-                                layoutParams = LinearLayout.LayoutParams(
-                                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                                    LinearLayout.LayoutParams.WRAP_CONTENT
-                                )
-                            }
+                    return LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(14).toFloat()
+                            setColor(plannerPrimary)
                         }
-                    } else {
-                        LinearLayout(host).apply {
-                            orientation = LinearLayout.HORIZONTAL
-                            gravity = Gravity.CENTER_VERTICAL
-                            background = GradientDrawable().apply {
-                                cornerRadius = dp(14).toFloat()
-                                setColor(plannerPrimary)
-                            }
-                            setPadding(dp(8), dp(3), dp(10), dp(3))
-                            layoutParams = LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.WRAP_CONTENT,
-                                dp(26)
-                            )
-                            isClickable = true
-                            isFocusable = true
-                            contentDescription = "Start Focus on ${goal.title}"
-                            setOnClickListener { v ->
-                                v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                v.animate()
-                                    .scaleX(0.92f)
-                                    .scaleY(0.92f)
-                                    .setDuration(70)
-                                    .withEndAction {
-                                        v.animate()
-                                            .scaleX(1.0f)
-                                            .scaleY(1.0f)
-                                            .setDuration(70)
-                                            .withEndAction {
-                                                host.startFocusForGoal(goal)
-                                            }
-                                            .start()
-                                    }
-                                    .start()
-                            }
-                            addView(ImageView(host).apply {
-                                setImageResource(R.drawable.ic_play_arrow)
-                                imageTintList = ColorStateList.valueOf(Color.WHITE)
-                                layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply {
-                                    setMargins(0, 0, dp(3), 0)
+                        setPadding(dp(8), dp(3), dp(10), dp(3))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            dp(26)
+                        )
+                        isClickable = true
+                        isFocusable = true
+                        contentDescription = "Start Focus on ${goal.title}"
+                        setOnClickListener { v ->
+                            v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            v.animate()
+                                .scaleX(0.92f)
+                                .scaleY(0.92f)
+                                .setDuration(70)
+                                .withEndAction {
+                                    v.animate()
+                                        .scaleX(1.0f)
+                                        .scaleY(1.0f)
+                                        .setDuration(70)
+                                        .withEndAction {
+                                            host.startFocusForGoal(goal)
+                                        }
+                                        .start()
                                 }
-                            })
-                            addView(TextView(host).apply {
-                                text = "Start"
-                                textSize = 11.5f
-                                setTextColor(Color.WHITE)
-                                typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                            })
+                                .start()
                         }
+                        addView(ImageView(host).apply {
+                            setImageResource(R.drawable.ic_play_arrow)
+                            imageTintList = ColorStateList.valueOf(Color.WHITE)
+                            layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply {
+                                setMargins(0, 0, dp(3), 0)
+                            }
+                        })
+                        addView(TextView(host).apply {
+                            text = "Start"
+                            textSize = 11.5f
+                            setTextColor(Color.WHITE)
+                            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                        })
                     }
                 }
 
@@ -677,31 +650,43 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 }
                 headerRow.addView(textCol)
 
-                val timeChip = TextView(host).apply {
-                    tag = "goal_chip_${goal.id}"
-                    text = info.progressText
-                    setTextColor(info.chipColor)
-                    textSize = 11f
-                    isSingleLine = true
-                    typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                    background = themeCoordinator.createGlassChip(
-                        tintedColor(info.chipColor, 50),
-                        8f
-                    )
-                    setPadding(dp(7), dp(3), dp(7), dp(3))
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                        setMargins(dp(6), 0, dp(6), 0)
-                    }
+                // Single Status / Progress Chip
+                val shouldShowTimeChip = if (info.isChecked) {
+                    true
+                } else {
+                    targetMins > 0 || actualMins > 0
                 }
-                headerRow.addView(timeChip)
 
-                val actionCta = createActionCtaView().apply {
-                    (layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
-                        lp.setMargins(0, 0, if (activeGoalsList.size > 1) dp(4) else 0, 0)
-                        layoutParams = lp
+                if (shouldShowTimeChip) {
+                    val timeChip = TextView(host).apply {
+                        tag = "goal_chip_${goal.id}"
+                        text = info.progressText
+                        setTextColor(info.chipColor)
+                        textSize = 11f
+                        isSingleLine = true
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                        background = themeCoordinator.createGlassChip(
+                            tintedColor(info.chipColor, 50),
+                            8f
+                        )
+                        setPadding(dp(7), dp(3), dp(7), dp(3))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(dp(6), 0, if (!info.isChecked) dp(6) else if (activeGoalsList.size > 1) dp(4) else 0, 0)
+                        }
                     }
+                    headerRow.addView(timeChip)
                 }
-                headerRow.addView(actionCta)
+
+                // Quick Start button ONLY shown for ongoing active goals (never when checked/done)
+                if (!info.isChecked) {
+                    val actionCta = createActionCtaView().apply {
+                        (layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                            lp.setMargins(0, 0, if (activeGoalsList.size > 1) dp(4) else 0, 0)
+                            layoutParams = lp
+                        }
+                    }
+                    headerRow.addView(actionCta)
+                }
 
                 // Hold & Drag Reorder Handle
                 if (activeGoalsList.size > 1) {
@@ -1436,9 +1421,18 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             for (s in existingSnapshots) {
                 itemsList.add(YesterdayGoalItem(s.goalId, s.title, s.targetMinutes, s.completed, s.isAchieved, s.subjectId))
             }
-        } else {
             val currentGoals = loadSessionGoalsFromJson(prefs.getString("session_goals_json", "[]") ?: "[]")
-            val progressMap = PlannerHistoryManager.calculateGoalProgress(currentGoals, yesterdayFocusMins * 60L, dailySubjectDurations)
+            val yesterdayDailyGoalDurations = PlannerHistoryManager.getDailyGoalDurations(host, yesterdayStr)
+            val yesterdaySubTopicDurations = mutableMapOf<String, Map<String, Long>>()
+            for (g in currentGoals) {
+                val subId = g.subjectId
+                if (!subId.isNullOrBlank() && subId != "all" && !yesterdaySubTopicDurations.containsKey(subId)) {
+                    yesterdaySubTopicDurations[subId] = SubjectTagManager.getDailySubTopicDurations(host, subId, yesterdayStr)
+                }
+            }
+            val progressMap = PlannerHistoryManager.calculateGoalProgress(
+                currentGoals, yesterdayFocusMins * 60L, dailySubjectDurations, yesterdayDailyGoalDurations, yesterdaySubTopicDurations
+            )
             for (g in currentGoals) {
                 val prog = progressMap[g.id]
                 val autoDone = if (g.targetMinutes > 0) (prog?.isAchieved ?: false) else g.completed
@@ -2789,7 +2783,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
             // Daily rate limit check (max 10 submissions / 24 hours)
             val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-            val dailyCount = feedbackPrefs.getInt("submissions_count_$todayDateKey", 0)
+            val dailyCount = feedbackPrefs.safeInt("submissions_count_$todayDateKey", 0)
             if (!isDevBypass && dailyCount >= 10) {
                 AppToast.show(host, "Daily submission limit reached (10/day). Please try again tomorrow.", Toast.LENGTH_LONG)
                 return@setOnClickListener
@@ -3792,6 +3786,11 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         subjectSwitch.setOnCheckedChangeListener { _, isChecked ->
             subjectEnabled = isChecked
+            if (isChecked && (selectedSubjectId == null || selectedSubjectId == "all")) {
+                selectedSubjectId = SubjectTagManager.getSelectedSubject(host).id
+                refreshSubjectChips()
+                refreshSubTopicChips()
+            }
             subjectContentContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
         }
 
@@ -4415,6 +4414,11 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         subjectSwitch.setOnCheckedChangeListener { _, isChecked ->
             subjectEnabled = isChecked
+            if (isChecked && (selectedSubjectId == null || selectedSubjectId == "all")) {
+                selectedSubjectId = SubjectTagManager.getSelectedSubject(host).id
+                refreshSubjectChips()
+                refreshSubTopicChips()
+            }
             subjectContentContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
         }
 

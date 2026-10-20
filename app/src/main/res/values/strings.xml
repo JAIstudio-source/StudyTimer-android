@@ -16,8 +16,7 @@
     <string name="toast_backup_parse_failed">Couldn\'t read this backup file. Please make sure it\'s a valid StudyTimer backup.</string>
     <string name="toast_logs_exported">Study history exported successfully!</string>
     <string name="toast_logs_export_failed">Couldn\'t export study history.</string>
-    <string name="toast_csv_exported">CSV exported successfully!</string>
-    <string name="toast_csv_export_failed">Couldn\'t export CSV.</string>
+
 
     <!-- Battery optimization -->
     <string name="btn_run_in_background">Keep Running in Background</string>
@@ -142,12 +141,7 @@
     <string name="cal_month_empty">No study time this month</string>
     <string name="cal_goal_pct">%1$d%% of goal</string>
     <string name="cal_see_logs">View Sessions</string>
-    <string name="saving">Saving…</string>
-    <string name="btn_close_lower">Close</string>
-    <string name="btn_save">Save</string>
-    <string name="btn_share">Share</string>
-    <string name="export_summary_card">Export Summary Card</string>
-    <string name="share_chooser_title">Share Study Summary</string>
+
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -166,8 +160,7 @@
     <string name="style_classic">Classic</string>
     <string name="style_classic_sub">Solid clean surfaces with sharp contrast</string>
     <string name="section_theme_style">Theme Style</string>
-    <string name="no_previous_data">No previous data</string>
-    <string name="cd_weekly_card_preview">Weekly summary preview</string>
+
     <string name="section_dynamic_color">Dynamic Color</string>
     <string name="section_dark_mode">Dark Mode</string>
     <string name="material_you">Material You</string>
@@ -216,8 +209,7 @@
     <string name="export_logs_sub">Save a local backup file of your study history</string>
     <string name="import_data">Restore Backup</string>
     <string name="import_data_sub">Restore study history and streaks from a backup file</string>
-    <string name="export_csv">Export as Spreadsheet</string>
-    <string name="export_csv_sub">Export sessions, dates, and study times as a .csv spreadsheet</string>
+
     <string name="version_label">Version</string>
     <string name="check_updates">Check for Updates</string>
     <string name="check_updates_sub">Check if a newer version of StudyTimer is available</string>

@@ -115,7 +115,6 @@ object LeaderboardManager {
                 val seenUsers = mutableSetOf<String>()
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
-                    val rawRank = obj.optInt("rank", i + 1)
                     val userId = obj.optString("user_id", "")
                     val userName = obj.optString("user_name", "Student")
                     val avatarUrl = obj.optString("avatar_url", "")

@@ -282,7 +282,7 @@ class StudyBottomNavBar @JvmOverloads constructor(
     /**
      * Maintains crisp 100% opacity for bottom navigation bar without unwanted translucency.
      */
-    fun setStudyingDim(isStudying: Boolean) {
+    fun setStudyingDim(@Suppress("UNUSED_PARAMETER") isStudying: Boolean) {
         alpha = 1.0f
     }
 

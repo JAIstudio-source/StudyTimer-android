@@ -99,7 +99,7 @@ object WallpaperManager {
 
     fun getWallpaperDimAlpha(context: Context): Float {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getFloat(KEY_DIM_ALPHA, 0.42f)
+            .safeFloat(KEY_DIM_ALPHA, 0.42f)
     }
 
     fun setWallpaperDimAlpha(context: Context, alpha: Float, isUserExplicit: Boolean = true) {
