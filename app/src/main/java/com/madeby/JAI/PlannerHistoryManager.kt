@@ -375,8 +375,11 @@ object PlannerHistoryManager {
                 historyMap[dateKey] = GoalHistoryStatus.NOT_SCHEDULED
             } else {
                 if (match != null) {
+                    val isTargetMet = match.isAchieved || (match.targetMinutes > 0 && match.actualMinutes >= match.targetMinutes) || (match.targetMinutes == 0 && match.completed)
+                    val isEarlyDeficit = match.completed && match.targetMinutes > 0 && match.actualMinutes < match.targetMinutes
                     val status = when {
-                        match.isAchieved || match.completed -> GoalHistoryStatus.ACHIEVED
+                        isTargetMet -> GoalHistoryStatus.ACHIEVED
+                        isEarlyDeficit -> GoalHistoryStatus.DEFICIT
                         dateKey == todayStr -> null // Today is active and in-progress: never mark as NOT_COMPLETED or missed
                         else -> GoalHistoryStatus.NOT_COMPLETED
                     }

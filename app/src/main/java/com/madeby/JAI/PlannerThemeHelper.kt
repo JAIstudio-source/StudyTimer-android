@@ -48,7 +48,7 @@ object PlannerThemeHelper {
         }
 
         content.addView(TextView(activity).apply {
-            text = "Planner Theme"
+            text = "Goal Colors"
             textSize = 18f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.textColor)

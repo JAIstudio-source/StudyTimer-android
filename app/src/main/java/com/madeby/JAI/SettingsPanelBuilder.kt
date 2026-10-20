@@ -162,7 +162,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 text = when (currentSettingsTab) {
                     AppSettingsTab.HUB -> "Customize your timer, goals, charts & backups"
                     AppSettingsTab.TIMER -> "Focus durations, break times & timer mode"
-                    AppSettingsTab.PLANNER -> "Daily targets, goal reminders & habit grids"
+                    AppSettingsTab.PLANNER -> "Daily targets, goal reminders & weekly history"
                     AppSettingsTab.ANALYTICS -> "Heatmap, subject breakdown & chart display"
                     AppSettingsTab.THEME -> "OLED black, light mode, styles & colors"
                     AppSettingsTab.CLOUD -> "Google account sync, auto-backup & restore"
@@ -2515,7 +2515,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 // CARD 2: HABITS & TOOLS
                 layout.addView(createSectionLabel("HABITS & TOOLS"))
                 val habitsToolsCard = createSettingsCard()
-                val matrixRow = createSettingsRow("", "Goal & Habit Matrix", "Weekly matrix & consistency grid")
+                val matrixRow = createSettingsRow("", "Weekly Goal Tracker", "See which goals you finished each day this week")
                 matrixRow.setOnClickListener {
                     showPlannerMatrixDialog()
                 }
@@ -2529,7 +2529,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 habitsToolsCard.addView(yesterdayRow)
                 habitsToolsCard.addView(createDivider())
 
-                val plannerThemeRow = createSettingsRow("", "Planner Palette", "Choose custom colors for your daily planner goals")
+                val plannerThemeRow = createSettingsRow("", "Goal Colors", "Choose custom colors for your daily study goals")
                 plannerThemeRow.setOnClickListener {
                     showPlannerThemePickerDialog()
                 }
@@ -2662,7 +2662,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             // 7. THEME & APPEARANCE SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.THEME) {
-                layout.addView(createSectionLabel("PALETTE MODE"))
+                layout.addView(createSectionLabel("APP THEME"))
                 val modeCard = createSettingsCard()
                 val isEclipse = themeCoordinator.activeBgMode == "ECLIPSE"
                 val isLight = themeCoordinator.activeBgMode == "LIGHT"
