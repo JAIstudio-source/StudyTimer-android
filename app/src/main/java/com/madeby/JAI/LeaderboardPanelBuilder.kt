@@ -101,6 +101,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
     }
 
     private fun renderLeaderboardUI(root: LinearLayout) {
+        val prevScrollY = root.findViewWithTag<NestedScrollView>("leaderboard_scroll_view")?.scrollY ?: 0
         root.removeAllViews()
 
         // 1. Optional Compact Header (ONLY when opened standalone, not inside Community tab)
@@ -182,6 +183,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                             renderLeaderboardUI(root)
                             loadLeaderboardData(root, forceRefresh = false, isSilent = true)
                         } else {
+                            currentEntries = emptyList()
                             loadLeaderboardData(root, forceRefresh = false, isSilent = false)
                         }
                     }
@@ -203,6 +205,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             buildLeaderboardSkeleton(scrollWrapper)
         } else {
             val contentScroll = NestedScrollView(host).apply {
+                tag = "leaderboard_scroll_view"
                 isFillViewport = true
                 isVerticalScrollBarEnabled = true
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -267,7 +270,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                     setPadding(dp(12), dp(6), dp(12), dp(6))
                     setOnClickListener {
                         LeaderboardManager.setParticipating(host, true)
-                        AppToast.show(host, "Leaderboard participation enabled! 🚀")
+                        AppToast.show(host, "Leaderboard participation enabled")
                         CoroutineScope(Dispatchers.IO).launch {
                             val todayKeyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
                             val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(host, todayKeyFmt).toInt()
@@ -338,6 +341,11 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
 
             contentScroll.addView(scrollContent)
             scrollWrapper.addView(contentScroll)
+            if (prevScrollY > 0) {
+                contentScroll.post {
+                    contentScroll.scrollTo(0, prevScrollY)
+                }
+            }
         }
 
         val swipeRefreshLayout = SwipeRefreshLayout(host).apply {
@@ -363,7 +371,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                     }
                 } else {
                     lastManualRefreshTimestamp = now
-                    loadLeaderboardData(root, forceRefresh = true, isSilent = false) {
+                    loadLeaderboardData(root, forceRefresh = true, isSilent = true) {
                         isRefreshing = false
                     }
                 }
@@ -384,7 +392,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         isSilent: Boolean = false,
         onComplete: (() -> Unit)? = null
     ) {
-        if (!isSilent) {
+        if (!isSilent && currentEntries.isEmpty()) {
             isLoading = true
             renderLeaderboardUI(root)
         }
@@ -402,14 +410,21 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             skeletonShimmerAnimator = null
             shimmerViews.clear()
 
+            val wasLoading = isLoading
             isLoading = false
             hasLoadedOnce = true
             if (result.isSuccess) {
-                currentEntries = result.getOrDefault(emptyList())
+                val newEntries = result.getOrDefault(emptyList())
+                if (newEntries != currentEntries || wasLoading) {
+                    currentEntries = newEntries
+                    renderLeaderboardUI(root)
+                }
             } else if (!isSilent) {
                 AppToast.show(host, "Could not refresh leaderboard. Check internet connection.")
+                if (wasLoading) {
+                    renderLeaderboardUI(root)
+                }
             }
-            renderLeaderboardUI(root)
             onComplete?.invoke()
         }
     }
@@ -780,7 +795,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         }
 
         val trackPill = TextView(host).apply {
-            text = "🎯 $targetExam"
+            text = targetExam
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(host.themeCoordinator.primaryColor)
@@ -816,7 +831,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 if (pubProfile != null) {
                     withContext(Dispatchers.Main) {
                         if (pubProfile.targetExam.isNotBlank()) {
-                            trackPill.text = "🎯 ${pubProfile.targetExam}"
+                            trackPill.text = pubProfile.targetExam
                         }
                         if (pubProfile.bio.isNotBlank()) {
                             mottoView.text = "\"${pubProfile.bio}\""
@@ -892,12 +907,26 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             alpha = 0.6f
             setTextColor(host.themeCoordinator.textColor)
         })
-        colStreak.addView(TextView(host).apply {
-            text = if (effectiveStreak > 0) "🔥 ${effectiveStreak}d" else "--"
+        val streakRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        if (effectiveStreak > 0) {
+            streakRow.addView(ImageView(host).apply {
+                setImageResource(R.drawable.ic_flame)
+                setColorFilter(Color.parseColor("#F59E0B"))
+                layoutParams = LinearLayout.LayoutParams(dp(14), dp(14)).apply {
+                    marginEnd = dp(3)
+                }
+            })
+        }
+        streakRow.addView(TextView(host).apply {
+            text = if (effectiveStreak > 0) "${effectiveStreak}d" else "--"
             textSize = 14.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(if (effectiveStreak > 0) Color.parseColor("#F59E0B") else host.themeCoordinator.textColor)
         })
+        colStreak.addView(streakRow)
         statsCard.addView(colStreak)
 
         val colStatus = LinearLayout(host).apply {
@@ -1430,11 +1459,9 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         }
 
         if (rowStreak > 0) {
-            val streakTag = TextView(host).apply {
-                text = "🔥 ${rowStreak}d"
-                textSize = 9f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.parseColor("#F59E0B"))
+            val streakTag = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 background = host.themeCoordinator.createGlassChip(Color.argb(35, 245, 158, 11), 6f)
                 setPadding(dp(5), dp(1), dp(5), dp(1))
                 layoutParams = LinearLayout.LayoutParams(
@@ -1442,15 +1469,26 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { setMargins(dp(6), 0, 0, 0) }
             }
+            streakTag.addView(ImageView(host).apply {
+                setImageResource(R.drawable.ic_flame)
+                setColorFilter(Color.parseColor("#F59E0B"))
+                layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply {
+                    setMargins(0, 0, dp(3), 0)
+                }
+            })
+            streakTag.addView(TextView(host).apply {
+                text = "${rowStreak}d"
+                textSize = 9f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.parseColor("#F59E0B"))
+            })
             nameRow.addView(streakTag)
         }
 
         if (entry.examTarget.isNotBlank() && entry.examTarget != "Self-Study") {
-            val examTag = TextView(host).apply {
-                text = "🎯 ${entry.examTarget}"
-                textSize = 9f
-                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-                setTextColor(host.themeCoordinator.primaryColor)
+            val examTag = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 background = host.themeCoordinator.createGlassChip(host.tintedColor(host.themeCoordinator.primaryColor, 25), 6f)
                 setPadding(dp(5), dp(1), dp(5), dp(1))
                 layoutParams = LinearLayout.LayoutParams(
@@ -1458,6 +1496,19 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { setMargins(dp(6), 0, 0, 0) }
             }
+            examTag.addView(ImageView(host).apply {
+                setImageResource(R.drawable.ic_target)
+                setColorFilter(host.themeCoordinator.primaryColor)
+                layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply {
+                    setMargins(0, 0, dp(3), 0)
+                }
+            })
+            examTag.addView(TextView(host).apply {
+                text = entry.examTarget
+                textSize = 9f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setTextColor(host.themeCoordinator.primaryColor)
+            })
             nameRow.addView(examTag)
         }
 
@@ -1633,7 +1684,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
 
             if (currentProfile.targetExam.isNotBlank() && currentProfile.targetExam != "Self-Study") {
                 val targetBadge = TextView(host).apply {
-                    text = "🎯 ${currentProfile.targetExam}"
+                    text = currentProfile.targetExam
                     textSize = 9f
                     setTextColor(host.themeCoordinator.primaryColor)
                     background = host.themeCoordinator.createGlassChip(host.tintedColor(host.themeCoordinator.primaryColor, 25), 6f)

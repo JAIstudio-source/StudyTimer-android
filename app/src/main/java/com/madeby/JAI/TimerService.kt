@@ -202,20 +202,20 @@ class TimerService : Service() {
         val title = when (currentTimerState) {
             TimerState.STUDYING -> {
                 if (timerMode == "COUNTDOWN" && focusRemainingSecs < 0L) {
-                    if (subDisplayName.isNotEmpty()) "🔥 Overtime Focus • $subDisplayName" else "🔥 Overtime Focus"
+                    if (subDisplayName.isNotEmpty()) "Overtime Focus • $subDisplayName" else "Overtime Focus"
                 } else if (timerMode == "LECTURE" && lectureModeEnabled) {
                     val lid = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("active_lecture_subject_id", null)
                     val subName = if (lid != null) SubjectTagManager.resolveSubject(this, lid).name else ""
-                    if (subName.isNotBlank()) "🎓 Class: $subName" else "🎓 Class in Session"
+                    if (subName.isNotBlank()) "Class: $subName" else "Class in Session"
                 } else {
-                    if (subDisplayName.isNotEmpty()) "📖 $subDisplayName" else getString(R.string.notif_title_studying)
+                    if (subDisplayName.isNotEmpty()) subDisplayName else getString(R.string.notif_title_studying)
                 }
             }
             TimerState.BREAK -> {
-                if (subDisplayName.isNotEmpty()) "☕ Break • $subDisplayName" else getString(R.string.notif_title_break)
+                if (subDisplayName.isNotEmpty()) "Break • $subDisplayName" else getString(R.string.notif_title_break)
             }
             TimerState.PAUSED -> {
-                if (subDisplayName.isNotEmpty()) "⏸️ Paused • $subDisplayName" else getString(R.string.notif_title_paused)
+                if (subDisplayName.isNotEmpty()) "Paused • $subDisplayName" else getString(R.string.notif_title_paused)
             }
             TimerState.LECTURE_ENDED -> "Class Ended"
             TimerState.IDLE -> "Class Schedule Ready"
@@ -529,7 +529,7 @@ class TimerService : Service() {
                 putLong("${todayStr}_break_total", savedBreak + currentBreakSeconds)
             }
             if (!sharedPrefs.contains("${todayStr}_goal_secs")) {
-                putLong("${todayStr}_goal_secs", sharedPrefs.getLong("daily_goal_secs", 2700L))
+                putLong("${todayStr}_goal_secs", StatsEngine.getDailyGoalSecs(sharedPrefs))
             }
             putLong("focus_remaining_secs", 0L)
             putLong("break_countdown_secs", 0L)
@@ -1296,7 +1296,7 @@ class TimerService : Service() {
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         if (prefs.getString("goal_pinged_date", null) == todayStr) return
         val focus = prefs.getLong("${todayStr}_focus_total", 0L) + accumulatedStudy
-        val goal = prefs.getLong("${todayStr}_goal_secs", prefs.getLong("daily_goal_secs", 2700L))
+        val goal = prefs.getLong("${todayStr}_goal_secs", StatsEngine.getDailyGoalSecs(prefs))
         if (focus < goal) return
         prefs.edit().putString("goal_pinged_date", todayStr).apply()
 
@@ -1398,7 +1398,7 @@ class TimerService : Service() {
 
         // 6. Ensure new day's goal exists
         if (!sp.contains("${newDateStr}_goal_secs")) {
-            sp.edit().putLong("${newDateStr}_goal_secs", sp.getLong("daily_goal_secs", 2700L)).apply()
+            sp.edit().putLong("${newDateStr}_goal_secs", StatsEngine.getDailyGoalSecs(sp)).apply()
         }
 
         saveState()

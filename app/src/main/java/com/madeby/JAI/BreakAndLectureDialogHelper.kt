@@ -208,7 +208,7 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
         host.ongoingLectureDialogShowing = true
 
         content.addView(TextView(host).apply {
-            text = "📅 ${item.title}"
+            text = item.title
             textSize = 18f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.textColor)
@@ -386,7 +386,7 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
         }
 
         content.addView(TextView(host).apply {
-            text = "🔔 Enable Notifications"
+            text = "Enable Notifications"
             textSize = 18f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.textColor)
@@ -400,6 +400,23 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             alpha = 0.7f
             setPadding(0, 0, 0, dp(18))
         })
+
+        val cbDoNotAskAgain = android.widget.CheckBox(host).apply {
+            text = "Do not ask again"
+            textSize = 13f
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.85f
+            buttonTintList = android.content.res.ColorStateList.valueOf(themeCoordinator.primaryColor)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, dp(12))
+            }
+        }
+        content.addView(cbDoNotAskAgain)
+
+        val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
 
         val btnAllow = Button(host).apply {
             text = "Grant Permission"
@@ -415,6 +432,9 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             }
             setOnClickListener {
                 dialog.dismiss()
+                if (cbDoNotAskAgain.isChecked) {
+                    prefs.edit().putBoolean("notif_perm_do_not_ask_again", true).apply()
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     ActivityCompat.requestPermissions(host, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
                 }
@@ -429,7 +449,14 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             setTextColor(themeCoordinator.textColor)
             alpha = 0.6f
             background = null
-            setOnClickListener { dialog.dismiss() }
+            setOnClickListener {
+                dialog.dismiss()
+                if (cbDoNotAskAgain.isChecked) {
+                    prefs.edit().putBoolean("notif_perm_do_not_ask_again", true).apply()
+                }
+                // Do not block user from starting timer
+                onGranted?.invoke()
+            }
         }
         content.addView(btnSkip)
 

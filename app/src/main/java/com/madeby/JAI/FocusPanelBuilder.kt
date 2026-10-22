@@ -233,9 +233,12 @@ class FocusPanelBuilder(private val host: MainActivity) {
                         navigateToPanel(AppPanel.PLANNER)
                     }
                 }
-                val goalIcon = TextView(this).apply {
-                    text = "🎯 "
-                    textSize = 10f
+                val goalIcon = ImageView(this).apply {
+                    setImageResource(R.drawable.ic_target)
+                    setColorFilter(themeCoordinator.accentColor)
+                    layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply {
+                        setMargins(0, 0, dp(4), 0)
+                    }
                 }
                 goalPill.addView(goalIcon)
 

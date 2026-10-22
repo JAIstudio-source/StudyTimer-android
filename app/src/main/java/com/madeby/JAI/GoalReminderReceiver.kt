@@ -65,7 +65,7 @@ class GoalReminderReceiver : BroadcastReceiver() {
         val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
         val notification = NotificationCompat.Builder(context, GoalReminderScheduler.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_flame)
-            .setContentTitle("🎯 Study Goal Reminder")
+            .setContentTitle("Study Goal Reminder")
             .setContentText("Time to focus on: $goalTitle")
             .setAutoCancel(true)
             .setSound(soundUri)

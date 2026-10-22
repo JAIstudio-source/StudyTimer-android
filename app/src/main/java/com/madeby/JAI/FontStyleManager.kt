@@ -51,13 +51,19 @@ object FontStyleManager {
     )
 
     private val typefaceCache = ConcurrentHashMap<String, Typeface>()
+    @Volatile
+    private var cachedFontId: String? = null
 
     fun getSelectedFontId(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        cachedFontId?.let { return it }
+        val id = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(PREF_KEY_FONT, "sans_medium") ?: "sans_medium"
+        cachedFontId = id
+        return id
     }
 
     fun setSelectedFontId(context: Context, fontId: String) {
+        cachedFontId = fontId
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(PREF_KEY_FONT, fontId)

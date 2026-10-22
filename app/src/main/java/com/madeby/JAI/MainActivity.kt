@@ -740,7 +740,10 @@ class MainActivity : AppCompatActivity() {
         if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
             val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
             if (granted) {
-                getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().remove("notification_perm_prompt_count").apply()
+                getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
+                    .remove("notification_perm_prompt_count")
+                    .remove("notif_perm_do_not_ask_again")
+                    .apply()
                 pendingNotificationAction?.invoke()
             }
             pendingNotificationAction = null
@@ -1401,15 +1404,26 @@ class MainActivity : AppCompatActivity() {
         return page
     }
 
+    private val prewarmHandler = Handler(Looper.getMainLooper())
+    private val prewarmRunnable = Runnable { prewarmTabPages() }
+
+    private fun schedulePrewarmTabPages() {
+        prewarmHandler.removeCallbacks(prewarmRunnable)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Looper.myQueue().addIdleHandler {
+                if (!isFinishing && !isDestroyed) {
+                    prewarmTabPages()
+                }
+                false
+            }
+        } else {
+            prewarmHandler.postDelayed(prewarmRunnable, 400L)
+        }
+    }
+
     private fun prewarmTabPages() {
         if (panelHost.childCount > 1 || tabDragSettling) return
         when (currentPanel) {
-            AppPanel.STATS -> {
-                if (statsSnapshotCache == null) return
-                getOrBuildTabPage(statsTabKey(AppStatsTab.OVERVIEW))
-                getOrBuildTabPage(statsTabKey(AppStatsTab.TIMELINE))
-                getOrBuildTabPage(statsTabKey(AppStatsTab.PLANNER))
-            }
             AppPanel.SETTINGS -> {
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.HUB))
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.THEME))
@@ -1449,6 +1463,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun buildCurrentPanel() {
+        panelContainer.alpha = 1f
+        panelContainer.translationX = 0f
         panelContainer.removeAllViews()
         if (currentPanel == AppPanel.FOCUS && isPomodoroPureWhiteActive()) {
             rootLayout.setBackgroundColor(0xFFFFFFFF.toInt())
@@ -1464,11 +1480,11 @@ class MainActivity : AppCompatActivity() {
             AppPanel.HEATMAP -> buildHeatmapFullscreenPanel()
             AppPanel.LEADERBOARD -> buildCommunityPanel()
         }
-        FontStyleManager.applyRecursively(rootLayout)
+        FontStyleManager.applyRecursively(panelContainer)
         if (::studyBottomNavBar.isInitialized) {
             studyBottomNavBar.applyTheme(themeCoordinator)
         }
-        prewarmTabPages()
+        schedulePrewarmTabPages()
         updateStatusBarIcons()
     }
 
@@ -1514,15 +1530,9 @@ class MainActivity : AppCompatActivity() {
             currentStatsTab = AppStatsTab.OVERVIEW
             hasPlayedStatsEntranceAnimation = false
         }
-        if (targetPanel == AppPanel.STATS || targetPanel == AppPanel.HEATMAP) {
-            statsDirty = true
-            statsSnapshotCache = null
-            tabPageCache.clear()
-        }
         statsInternalRefresh = (targetPanel == AppPanel.STATS && currentPanel == AppPanel.STATS)
 
         if (currentPanel == AppPanel.STATS && targetPanel != AppPanel.STATS && targetPanel != AppPanel.HEATMAP) {
-            statsDirty = true
             hasPlayedStatsEntranceAnimation = false
         }
 
@@ -1573,20 +1583,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performSlidingTransition(exitDir: Int, rebuild: () -> Unit) {
-        // Smooth, zero-black-flash tab transition
         panelContainer.animate().cancel()
+        val slideDist = dp(20).toFloat()
+        panelContainer.setLayerType(View.LAYER_TYPE_HARDWARE, null)
         panelContainer.animate()
             .alpha(0f)
-            .setDuration(80L)
+            .translationX(exitDir * slideDist)
+            .setDuration(70L)
+            .setInterpolator(android.view.animation.AccelerateInterpolator(1.4f))
             .withEndAction {
                 rebuild()
                 panelContainer.alpha = 0f
-                panelContainer.translationX = -exitDir * dp(20).toFloat()
+                panelContainer.translationX = -exitDir * slideDist
                 panelContainer.animate()
                     .alpha(1f)
                     .translationX(0f)
                     .setDuration(160L)
-                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.4f))
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.6f))
+                    .withEndAction {
+                        panelContainer.alpha = 1f
+                        panelContainer.translationX = 0f
+                        panelContainer.setLayerType(View.LAYER_TYPE_NONE, null)
+                    }
                     .start()
             }
             .start()
@@ -2043,6 +2061,11 @@ class MainActivity : AppCompatActivity() {
         WeeklySummaryShareHelper(this).showAvgSessionDetailDialog(snap)
     }
 
+    internal fun showStudyScorecardExportDialog() {
+        val snap = statsSnapshotCache ?: computeStatsSnapshot()
+        StudyScorecardExportHelper(this).showExportDialog(snap)
+    }
+
     internal fun startFocusForGoal(goal: SessionGoal) {
         val isBreak = currentTimerState == TimerState.BREAK
         if (!isBreak && currentTimerState != TimerState.IDLE) {
@@ -2285,7 +2308,7 @@ class MainActivity : AppCompatActivity() {
                 statsSnapshotCache = null
                 tabPageCache.clear()
                 if (!sharedPrefs.contains("${cachedTodayStr}_goal_secs")) {
-                    sharedPrefs.edit().putLong("${cachedTodayStr}_goal_secs", sharedPrefs.getLong("daily_goal_secs", 2700L)).apply()
+                    sharedPrefs.edit().putLong("${cachedTodayStr}_goal_secs", StatsEngine.getDailyGoalSecs(sharedPrefs)).apply()
                 }
                 checkAndResetGoalsForNewDay()
                 recalculateStreak()
@@ -2326,8 +2349,6 @@ class MainActivity : AppCompatActivity() {
                         refreshStatsPanel()
                     } else if (currentPanel == AppPanel.PLANNER) {
                         refreshStatsPanel()
-                    } else if (currentPanel == AppPanel.COMMUNITY || currentPanel == AppPanel.LEADERBOARD) {
-                        buildCurrentPanel()
                     }
                 }
             }
@@ -2513,31 +2534,85 @@ class MainActivity : AppCompatActivity() {
 
                     if (targetMins > 0) {
                         val isDone = actualMins >= targetMins
-                        val progressText = if (isDone) {
-                            "${actualMins}/${targetMins}m"
-                        } else if (goal.completed) {
-                            val deficit = targetMins - actualMins
-                            "${actualMins}/${targetMins}m (${deficit}m left)"
-                        } else {
-                            "${actualMins}/${targetMins}m"
-                        }
-                        val chipColor = if (isDone) greenColor else if (goal.completed) redColor else themeCoordinator.primaryColor
+                        val isChecked = isDone || goal.completed
+                        val isDeficit = !isDone && goal.completed
+                        val progressText = "${actualMins}/${targetMins}m"
+                        val chipColor = if (isDone) greenColor else if (goal.completed) redColor else plannerPrimary
 
                         (statsContainer.findViewWithTag<TextView>("goal_chip_${goal.id}"))?.let { chip ->
+                            val shouldShow = if (isChecked) true else (targetMins > 0 || actualMins > 0)
+                            chip.visibility = if (shouldShow) View.VISIBLE else View.GONE
                             chip.text = progressText
                             chip.setTextColor(chipColor)
-                            chip.background = themeCoordinator.createGlassChip(tintedColor(chipColor, 100), 10f)
+                            chip.background = themeCoordinator.createGlassChip(tintedColor(chipColor, 50), 8f)
                         }
 
                         (statsContainer.findViewWithTag<TextView>("goal_check_${goal.id}"))?.let { checkBtn ->
-                            val isChecked = isDone || goal.completed
-                            val isDeficit = !isDone && goal.completed
-                            checkBtn.text = if (isChecked) (if (isDeficit) "\u2715" else "\u2713") else ""
+                            val symbol = if (isChecked) (if (isDeficit) "✕" else "✓") else ""
+                            checkBtn.text = symbol
+                            checkBtn.textSize = if (symbol == "✕") 12f else 13f
+                            val checkColor = if (isChecked) chipColor else Color.TRANSPARENT
+                            val strokeColor = if (isChecked) chipColor else plannerPrimary
                             checkBtn.background = GradientDrawable().apply {
                                 shape = GradientDrawable.OVAL
-                                setColor(if (isChecked) (if (isDeficit) redColor else greenColor) else Color.TRANSPARENT)
-                                setStroke(dp(2), if (isChecked) (if (isDeficit) redColor else greenColor) else themeCoordinator.textColor)
+                                setColor(checkColor)
+                                setStroke(dp(2), strokeColor)
                             }
+                        }
+
+                        (statsContainer.findViewWithTag<TextView>("goal_title_${goal.id}"))?.let { titleTv ->
+                            titleTv.setTextColor(if (isChecked) tintedColor(themeCoordinator.textColor, 120) else themeCoordinator.textColor)
+                            if (isChecked) {
+                                titleTv.paintFlags = titleTv.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+                            } else {
+                                titleTv.paintFlags = titleTv.paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
+                            }
+                        }
+
+                        (statsContainer.findViewWithTag<View>("goal_action_${goal.id}"))?.let { actionCta ->
+                            actionCta.visibility = if (!isChecked) View.VISIBLE else View.GONE
+                        }
+
+                        (statsContainer.findViewWithTag<ProgressBar>("goal_minibar_${goal.id}"))?.let { bar ->
+                            val pct = ((actualMins * 100) / targetMins).coerceIn(0, 100)
+                            bar.progress = pct
+                            bar.progressTintList = android.content.res.ColorStateList.valueOf(chipColor)
+                        }
+                    } else {
+                        val isChecked = goal.completed
+                        val progressText = if (actualMins > 0) "${actualMins}m" else (if (isChecked) "Done" else "Mark Done")
+                        val chipColor = if (isChecked) greenColor else plannerPrimary
+
+                        (statsContainer.findViewWithTag<TextView>("goal_chip_${goal.id}"))?.let { chip ->
+                            chip.visibility = if (isChecked || actualMins > 0) View.VISIBLE else View.GONE
+                            chip.text = progressText
+                            chip.setTextColor(chipColor)
+                            chip.background = themeCoordinator.createGlassChip(tintedColor(chipColor, 50), 8f)
+                        }
+
+                        (statsContainer.findViewWithTag<TextView>("goal_check_${goal.id}"))?.let { checkBtn ->
+                            checkBtn.text = if (isChecked) "✓" else ""
+                            checkBtn.textSize = 13f
+                            val checkColor = if (isChecked) chipColor else Color.TRANSPARENT
+                            val strokeColor = if (isChecked) chipColor else plannerPrimary
+                            checkBtn.background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor(checkColor)
+                                setStroke(dp(2), strokeColor)
+                            }
+                        }
+
+                        (statsContainer.findViewWithTag<TextView>("goal_title_${goal.id}"))?.let { titleTv ->
+                            titleTv.setTextColor(if (isChecked) tintedColor(themeCoordinator.textColor, 120) else themeCoordinator.textColor)
+                            if (isChecked) {
+                                titleTv.paintFlags = titleTv.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+                            } else {
+                                titleTv.paintFlags = titleTv.paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
+                            }
+                        }
+
+                        (statsContainer.findViewWithTag<View>("goal_action_${goal.id}"))?.let { actionCta ->
+                            actionCta.visibility = if (!isChecked) View.VISIBLE else View.GONE
                         }
                     }
                 }
@@ -2569,6 +2644,40 @@ class MainActivity : AppCompatActivity() {
                 val breakLabel = if (todayBH > 0) "${todayBH}h ${todayBM}m break" else "${todayBM}m break"
                 (statsContainer.findViewWithTag<TextView>("overview_break_badge"))?.let {
                     it.text = breakLabel
+                }
+                (statsContainer.findViewWithTag<SubjectPieChartView>("overview_pie_chart"))?.let { pieChart ->
+                    if (StatsPanelBuilder.activePiePeriod == SubjectTagManager.SubjectStatsPeriod.TODAY) {
+                        val (allDaySessions, _) = dayBlocks(todayStr)
+                        val hasLive = allDaySessions.any { it.running }
+                        val map = LinkedHashMap<String, Pair<SubjectTag, Long>>()
+                        for (s in allDaySessions) {
+                            val subId = s.subjectId ?: "general"
+                            val subj = SubjectTagManager.resolveSubject(this, subId, s.subjectName, s.subjectColor)
+                            val currentSecs = map[subj.id]?.second ?: 0L
+                            map[subj.id] = subj to (currentSecs + s.secs)
+                        }
+                        if (map.isEmpty()) {
+                            val legacy = SubjectTagManager.getSubjectDurationsForDate(this, todayStr)
+                            for ((subId, secs) in legacy) {
+                                val subj = SubjectTagManager.resolveSubject(this, subId)
+                                val currentSecs = map[subj.id]?.second ?: 0L
+                                map[subj.id] = subj to (currentSecs + secs)
+                            }
+                        }
+                        if (!hasLive && currentTimerState == TimerState.STUDYING && accumulatedStudy > 0L) {
+                            val activeSub = SubjectTagManager.getSelectedSubject(this)
+                            val currentSecs = map[activeSub.id]?.second ?: 0L
+                            map[activeSub.id] = activeSub to (currentSecs + accumulatedStudy)
+                        }
+                        val sortedSubjects = map.values.filter { it.second > 0L }.sortedByDescending { it.second }
+                        if (sortedSubjects.isNotEmpty()) {
+                            val slicesList = ArrayList<SubjectPieChartView.PieSlice>()
+                            for ((subj, secs) in sortedSubjects) {
+                                slicesList.add(SubjectPieChartView.PieSlice(subj.name, subj.iconEmoji, secs.toDouble(), subj.colorHex))
+                            }
+                            pieChart.setData(slicesList)
+                        }
+                    }
                 }
         }
         if (currentPanel == AppPanel.STATS && currentStatsTab == AppStatsTab.TIMELINE) {
@@ -2665,9 +2774,8 @@ class MainActivity : AppCompatActivity() {
 
         if (currentTimerState == TimerState.IDLE && Build.VERSION.SDK_INT >= 33) {
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                val askedCount = prefs.safeInt("post_notif_rationale_shown", 0)
-                if (askedCount < 2) {
-                    prefs.edit().putInt("post_notif_rationale_shown", askedCount + 1).apply()
+                val doNotAskAgain = prefs.getBoolean("notif_perm_do_not_ask_again", false)
+                if (!doNotAskAgain) {
                     showNotificationRationaleDialog {
                         executeStateToggle()
                     }
@@ -2753,23 +2861,31 @@ class MainActivity : AppCompatActivity() {
     internal fun showBreakDurationDialog() = BreakAndLectureDialogHelper(this).showBreakDurationDialog()
 
     private fun updateTimerRing(showCountdown: Boolean) {
-        if (!::timerRing.isInitialized || timerRing.visibility != View.VISIBLE) return
-        timerRing.setTimerActive(currentTimerState == TimerState.STUDYING)
+        if (!::timerRing.isInitialized) return
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val shouldShowCountdownRing = !isLandscape && (timerMode == "COUNTDOWN")
+        timerRing.visibility = if (shouldShowCountdownRing) View.VISIBLE else View.GONE
+        if (!shouldShowCountdownRing) return
+
         val isPomoWhite = isPomodoroPureWhiteActive()
-        val base = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.textColor
-        val track = if (isPomoWhite) 0xFFE2E8F0.toInt() else ((base and 0x00FFFFFF) or 0x1F000000)
+        val isDark = themeCoordinator.isDarkMode()
+        val track = when {
+            isPomoWhite -> 0xFFE2E8F0.toInt()
+            isDark -> 0x2EFFFFFF.toInt()
+            else -> 0x1E000000.toInt()
+        }
         val primaryRingColor = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.primaryColor
         val breakRingColor = if (isPomoWhite) 0xFF475569.toInt() else themeCoordinator.secondaryColor
 
-        val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
-        val shouldShowCountdownRing = (timerMode == "COUNTDOWN")
-        timerRing.visibility = if (shouldShowCountdownRing) View.VISIBLE else View.GONE
+        val isActive = currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK
+        timerRing.setTimerActive(isActive)
 
-        if (!shouldShowCountdownRing || currentTimerState == TimerState.IDLE) {
-            timerRing.setProgress(0f, primaryRingColor, track)
+        if (currentTimerState == TimerState.IDLE) {
+            timerRing.setProgress(1f, primaryRingColor, track)
             return
         }
 
+        val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
         val breakCountdownSecs = sharedPrefs.getLong("break_countdown_secs", 300L)
         val breakRemainingSecs = sharedPrefs.getLong("break_remaining_secs", 0L)
 
@@ -2779,7 +2895,7 @@ class MainActivity : AppCompatActivity() {
             (currentTimerState == TimerState.PAUSED && prePauseState == TimerState.BREAK)
 
         when {
-            studying && showCountdown && focusCountdownSecs > 0 -> {
+            studying && focusCountdownSecs > 0 -> {
                 if (focusRemainingSecs < 0L) {
                     val overtimeRingColor = if (isPomoWhite) 0xFF000000.toInt() else Color.parseColor("#F59E0B")
                     timerRing.setProgress(1f, overtimeRingColor, track)
@@ -2787,14 +2903,14 @@ class MainActivity : AppCompatActivity() {
                     timerRing.setProgress((focusRemainingSecs.toFloat() / focusCountdownSecs).coerceIn(0f, 1f), primaryRingColor, track)
                 }
             }
-            breaking && timerMode == "COUNTDOWN" && breakCountdownSecs > 0L -> {
+            breaking && breakCountdownSecs > 0L -> {
                 timerRing.setProgress((breakRemainingSecs.toFloat() / breakCountdownSecs).coerceIn(0f, 1f), breakRingColor, track)
             }
             breaking -> {
                 timerRing.setProgress(1f, breakRingColor, track)
             }
             else -> {
-                timerRing.setProgress(0f, primaryRingColor, track)
+                timerRing.setProgress(1f, primaryRingColor, track)
             }
         }
     }
@@ -2916,19 +3032,26 @@ class MainActivity : AppCompatActivity() {
         }
         if (::timerRing.isInitialized) {
             val isPomoWhite = isPomodoroPureWhiteActive()
-            val base = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.textColor
-            val track = if (isPomoWhite) 0xFFE2E8F0.toInt() else ((base and 0x00FFFFFF) or 0x1F000000)
+            val isDark = themeCoordinator.isDarkMode()
+            val track = when {
+                isPomoWhite -> 0xFFE2E8F0.toInt()
+                isDark -> 0x2EFFFFFF.toInt()
+                else -> 0x1E000000.toInt()
+            }
             val primaryRingColor = if (isPomoWhite) 0xFF000000.toInt() else themeCoordinator.primaryColor
             timerRing.setTimerActive(false)
-            timerRing.setProgress(0f, primaryRingColor, track)
+            if (timerMode == "COUNTDOWN") {
+                timerRing.setProgress(1f, primaryRingColor, track, animate = false)
+            } else {
+                timerRing.setProgress(0f, primaryRingColor, track, animate = false)
+            }
         }
         StudyWidgetProvider.refresh(this)
         checkCelebration()
     }
 
     internal fun updateKeepScreenOn() {
-        val enabled = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE).getBoolean("keep_screen_on", true)
-        val shouldKeep = enabled && currentTimerState == TimerState.STUDYING
+        val shouldKeep = (currentTimerState == TimerState.STUDYING)
         val newFlag = if (shouldKeep) 1 else 0
         if (newFlag == lastKeepScreenOn) return
         lastKeepScreenOn = newFlag
@@ -3325,6 +3448,7 @@ class MainActivity : AppCompatActivity() {
         if (isPortraitFullscreenActive) {
             applyPortraitFullscreenLayout()
         }
+        updateTimerRing(false)
         updateStatusBarIcons()
     }
 

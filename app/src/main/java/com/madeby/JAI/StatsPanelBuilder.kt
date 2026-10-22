@@ -47,6 +47,10 @@ import kotlin.math.min
 
 class StatsPanelBuilder(private val host: MainActivity) {
 
+    companion object {
+        var activePiePeriod: SubjectTagManager.SubjectStatsPeriod = SubjectTagManager.SubjectStatsPeriod.TODAY
+    }
+
     private val sharedPrefs get() = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
     private val themeCoordinator get() = host.themeCoordinator
     private val statsEngine get() = host.statsEngine
@@ -489,7 +493,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             }
             for (fDate in frozenThisMonth) {
                 chipsRow.addView(TextView(host).apply {
-                    text = "❄️ $fDate"
+                    text = fDate
                     textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(if (isDark) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt())
@@ -568,7 +572,9 @@ class StatsPanelBuilder(private val host: MainActivity) {
         scroll.addView(content)
 
         when (tab) {
-            AppStatsTab.OVERVIEW -> renderOverviewTabContent(content, snap)
+            AppStatsTab.OVERVIEW -> renderOverviewTabContent(content, snap) {
+                insightsPillBarRef?.selectTab(AppStatsTab.TIMELINE)
+            }
             AppStatsTab.TIMELINE -> CalendarTimeline(host).build(content, snap, todayStr)
             AppStatsTab.PLANNER -> PlannerPanelBuilder(host).renderPlannerTabContent(content, snap)
         }
@@ -592,7 +598,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         }
 
         // 1. Universal Top Header (Profile + Streak on left, Settings Gear on right)
-        val header = UniversalHeaderHelper.createHeader(host, extraRightView = null, title = "INSIGHTS")
+        val header = UniversalHeaderHelper.createHeader(host, title = "INSIGHTS")
         mainColumn.addView(header)
 
         val scroll = ScrollView(host).apply {
@@ -627,30 +633,10 @@ class StatsPanelBuilder(private val host: MainActivity) {
             content.addView(backToOverviewBtn)
             CalendarTimeline(host).build(content, snap, todayStr)
         } else {
-            renderOverviewTabContent(content, snap)
-
-            // Tactile History Timeline Button at bottom of Overview
-            val historyLinkCard = TextView(host).apply {
-                text = "📅 View Detailed History Calendar →"
-                textSize = 13.5f
-                typeface = themeCoordinator.getAppTypeface(isBold = true)
-                setTextColor(themeCoordinator.primaryColor)
-                gravity = Gravity.CENTER
-                background = themeCoordinator.createCardBackground()
-                setPadding(dp(16), dp(14), dp(16), dp(14))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    setMargins(dp(4), dp(8), dp(4), dp(16))
-                }
-                setOnClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    host.currentStatsTab = AppStatsTab.TIMELINE
-                    renderStatsContent(statsRoot, snap, AppStatsTab.TIMELINE)
-                }
+            renderOverviewTabContent(content, snap) {
+                host.currentStatsTab = AppStatsTab.TIMELINE
+                renderStatsContent(statsRoot, snap, AppStatsTab.TIMELINE)
             }
-            content.addView(historyLinkCard)
         }
 
         mainColumn.addView(scroll)
@@ -661,7 +647,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         FontStyleManager.applyRecursively(statsRoot)
     }
 
-    internal fun renderOverviewTabContent(content: LinearLayout, snap: StatsSnapshot) {
+    internal fun renderOverviewTabContent(content: LinearLayout, snap: StatsSnapshot, onNavigateToTimeline: (() -> Unit)? = null) {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
 
@@ -690,6 +676,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             setPadding(dp(18), dp(16), dp(18), dp(16))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(2), 0, dp(8)) }
             if (!hasPlayedStatsEntranceAnimation) {
+                hasPlayedStatsEntranceAnimation = true
                 alpha = 0f
                 translationY = dp(16).toFloat()
                 animate().alpha(1f).translationY(0f).setDuration(280).setInterpolator(android.view.animation.DecelerateInterpolator()).start()
@@ -1126,8 +1113,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(14)) }
         }
 
-        var activePiePeriod = SubjectTagManager.SubjectStatsPeriod.TODAY
-
         val pieHeaderRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1255,6 +1240,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
                 val isDonut = sharedPrefs.safeBoolean("use_donut_chart", true)
                 val pieView = SubjectPieChartView(host).apply {
+                    tag = "overview_pie_chart"
                     primaryColor = themeCoordinator.primaryColor
                     textColor = themeCoordinator.textColor
                     isDonutMode = isDonut
@@ -1646,6 +1632,60 @@ class StatsPanelBuilder(private val host: MainActivity) {
             (chartCard.parent as? android.view.ViewGroup)?.removeView(chartCard)
 
             content.addView(heroCard)
+
+            // Export Study Scorecard Banner
+            val exportBanner = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = themeCoordinator.createCardBackground()
+                setPadding(dp(14), dp(11), dp(14), dp(11))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, dp(8))
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    StudyScorecardExportHelper(host).showExportDialog(snap)
+                }
+            }
+
+            exportBanner.addView(ImageView(host).apply {
+                setImageResource(R.drawable.ic_book)
+                setColorFilter(themeCoordinator.primaryColor)
+                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                    setMargins(0, 0, dp(10), 0)
+                }
+            })
+
+            val exportTextCol = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            exportTextCol.addView(TextView(host).apply {
+                text = "Study Report Card"
+                setTextColor(themeCoordinator.textColor)
+                textSize = 13.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            })
+            exportTextCol.addView(TextView(host).apply {
+                text = "Save or share your study summary"
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.55f
+                textSize = 11f
+                setPadding(0, dp(1), 0, 0)
+            })
+            exportBanner.addView(exportTextCol)
+
+            exportBanner.addView(TextView(host).apply {
+                text = "Export ↗"
+                textSize = 11.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 14f)
+                setPadding(dp(10), dp(5), dp(10), dp(5))
+            })
+
             if (snap.showPieChart) {
                 content.addView(pieCard)
             }
@@ -1758,6 +1798,62 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
                 content.addView(heatmapCard)
             }
+
+            // Detailed History Calendar Banner (directly above Study Report Card)
+            val historyCalendarBanner = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = themeCoordinator.createCardBackground()
+                setPadding(dp(14), dp(11), dp(14), dp(11))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, dp(8))
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    onNavigateToTimeline?.invoke()
+                }
+            }
+
+            historyCalendarBanner.addView(ImageView(host).apply {
+                setImageResource(R.drawable.ic_calendar)
+                setColorFilter(themeCoordinator.primaryColor)
+                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                    setMargins(0, 0, dp(10), 0)
+                }
+            })
+
+            val historyTextCol = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            historyTextCol.addView(TextView(host).apply {
+                text = "Detailed History Calendar"
+                setTextColor(themeCoordinator.textColor)
+                textSize = 13.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            })
+            historyTextCol.addView(TextView(host).apply {
+                text = "View past sessions, day logs & timeline"
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.55f
+                textSize = 11f
+                setPadding(0, dp(1), 0, 0)
+            })
+            historyCalendarBanner.addView(historyTextCol)
+
+            historyCalendarBanner.addView(TextView(host).apply {
+                text = "View →"
+                textSize = 11.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 14f)
+                setPadding(dp(10), dp(5), dp(10), dp(5))
+            })
+
+            content.addView(historyCalendarBanner)
+            content.addView(exportBanner)
 
             var using7 = true
 
@@ -2059,17 +2155,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             }
             host.navigateToPanel(AppPanel.STATS)
         } else if (host.currentPanel == AppPanel.PLANNER) {
-            val plannerRoot = host.panelContainer.getChildAt(0) as? FrameLayout
-            val savedY = (plannerRoot?.getChildAt(0) as? LinearLayout)?.let { col ->
-                (col.getChildAt(1) as? ScrollView)?.scrollY
-            } ?: 0
-            host.buildCurrentPanel()
-            if (savedY > 0) {
-                ((host.panelContainer.getChildAt(0) as? FrameLayout)?.getChildAt(0) as? LinearLayout)?.let { col ->
-                    val sv = col.getChildAt(1) as? ScrollView
-                    sv?.post { sv.scrollTo(0, savedY) }
-                }
-            }
+            host.updateStatsLiveViews()
         }
     }
 

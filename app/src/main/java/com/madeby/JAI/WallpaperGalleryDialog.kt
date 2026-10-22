@@ -139,7 +139,7 @@ object WallpaperGalleryDialog {
         // ==========================================
         // SECTION 1: LIVE AMBIENT SHADERS (AURORA WAVE IS DEFAULT)
         // ==========================================
-        contentLayout.addView(createSectionTitle("LIVE AMBIENT SHADERS", "Smooth, non-distracting animated motion (Aurora Wave default)"))
+        contentLayout.addView(createSectionTitle("LIVE AMBIENT", "Animated background motion"))
 
         val activeType = WallpaperManager.getWallpaperType(context)
         val activePresetId = WallpaperManager.getActivePresetId(context)
@@ -287,7 +287,7 @@ object WallpaperGalleryDialog {
         // SECTION 2: PRESET PHOTO WALLPAPERS (Robust Weighted Rows - 100% Guaranteed Visibility)
         // ==========================================
         val presets = WallpaperManager.getPresetCatalog(context)
-        contentLayout.addView(createSectionTitle("CURATED PHOTOS (${presets.size})", "Tap any thumbnail to instantly preview"))
+        contentLayout.addView(createSectionTitle("WALLPAPERS (${presets.size})", "Tap to preview and apply"))
 
         // Chunk into rows of 3 to avoid GridLayout collapsing bugs across OEMs
         val chunkedPresets = presets.chunked(3)
@@ -540,7 +540,7 @@ object WallpaperGalleryDialog {
         // ==========================================
         // SECTION 4: AMBIENCE & CONTROLS (Dim Scrim Slider)
         // ==========================================
-        contentLayout.addView(createSectionTitle("AMBIENCE TUNING", "Ensure timer and session stats remain crystal clear"))
+        contentLayout.addView(createSectionTitle("BACKGROUND DIM", "Adjust dimness to keep timer readable"))
 
         val dimCard = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -563,7 +563,7 @@ object WallpaperGalleryDialog {
         }
 
         val dimLabel = TextView(context).apply {
-            text = "Background Dim Scrim"
+            text = "Dim Intensity"
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.textColor)
@@ -581,12 +581,13 @@ object WallpaperGalleryDialog {
         dimCard.addView(sliderHeader)
 
         val dimSeekBar = SeekBar(context).apply {
-            max = 70 // 15% to 85%
-            progress = (initialPercent - 15).coerceIn(0, 70)
-            setPadding(activity.dp(4), activity.dp(10), activity.dp(4), activity.dp(10))
+            max = 100
+            progress = initialPercent.coerceIn(0, 100)
+            splitTrack = false
+            setPadding(activity.dp(12), activity.dp(10), activity.dp(12), activity.dp(10))
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val percent = progress + 15
+                    val percent = progress.coerceIn(0, 100)
                     dimValueText.text = "$percent%"
                     if (fromUser) {
                         val alpha = percent / 100f
@@ -605,7 +606,7 @@ object WallpaperGalleryDialog {
         dimCard.addView(dimSeekBar)
 
         val dimHint = TextView(context).apply {
-            text = "Recommended: 40% – 50% for high contrast over light wallpapers"
+            text = "Tip: 40%–50% works best for light backgrounds"
             textSize = 11f
             setTextColor(tintedColor(themeCoordinator.textColor, 120))
             setPadding(0, activity.dp(2), 0, 0)

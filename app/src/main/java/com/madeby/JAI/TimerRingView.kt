@@ -4,10 +4,8 @@ import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
-import android.graphics.SweepGradient
 import android.view.View
 import android.view.animation.DecelerateInterpolator
 import kotlin.math.abs
@@ -61,16 +59,17 @@ class TimerRingView(context: Context) : View(context) {
         setMeasuredDimension(size, size)
     }
 
-    fun setProgress(fraction: Float, color: Int, track: Int) {
+    fun setProgress(fraction: Float, color: Int, track: Int, animate: Boolean = true) {
         val f = fraction.coerceIn(0f, 1f)
         val target = f * 360f
         val colorChanged = color != this.color || track != this.trackColor
-        if (!colorChanged && abs(target - targetDeg) < 0.5f) return
+        if (!colorChanged && abs(target - targetDeg) < 0.02f) return
         this.color = color
         this.trackColor = track
         targetDeg = target
         val from = sweepDeg
-        if (abs(target - from) < 0.5f) {
+        if (!animate || abs(target - from) < 0.02f) {
+            animator?.cancel()
             sweepDeg = target
             invalidate()
             return
@@ -84,45 +83,6 @@ class TimerRingView(context: Context) : View(context) {
                 invalidate()
             }
             start()
-        }
-    }
-
-    private var lastShaderColor = 0
-    private var lastShaderCx = -1f
-    private var lastShaderCy = -1f
-    private val shaderMatrix = Matrix()
-    private var cachedSweepShader: SweepGradient? = null
-
-    private fun applyArcShader(cx: Float, cy: Float) {
-        if (sweepDeg <= 0.01f) {
-            ringPaint.shader = null
-            ringPaint.clearShadowLayer()
-            return
-        }
-        if (color == 0xFF000000.toInt() || color == 0xFF475569.toInt()) {
-            ringPaint.shader = null
-            ringPaint.color = color
-            ringPaint.clearShadowLayer()
-            return
-        }
-        ringPaint.color = color
-        if (cachedSweepShader == null || lastShaderColor != color || lastShaderCx != cx || lastShaderCy != cy) {
-            lastShaderColor = color
-            lastShaderCx = cx
-            lastShaderCy = cy
-            val light = blend(color, -1, 0.40f)
-            val deep = blend(color, 0xFF000000.toInt(), 0.15f)
-            cachedSweepShader = SweepGradient(
-                0f, 0f,
-                intArrayOf(light, color, deep),
-                floatArrayOf(0f, 0.7f, 1f)
-            )
-            shaderMatrix.reset()
-            shaderMatrix.postTranslate(cx, cy)
-            shaderMatrix.postRotate(-90f, cx, cy)
-            cachedSweepShader!!.setLocalMatrix(shaderMatrix)
-            ringPaint.shader = cachedSweepShader
-            ringPaint.setShadowLayer(8f * density, 0f, 0f, Color.argb(100, Color.red(color), Color.green(color), Color.blue(color)))
         }
     }
 
@@ -176,23 +136,33 @@ class TimerRingView(context: Context) : View(context) {
         canvas.drawCircle(cx, cy, radius, trackPaint)
 
         if (sweepDeg > 0.01f) {
-            ringBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
-            applyArcShader(cx, cy)
-            canvas.drawArc(ringBounds, -90f, sweepDeg, false, ringPaint)
+            ringPaint.color = color
+            ringPaint.shader = null
+            ringPaint.clearShadowLayer()
 
-            // Draw Breathing Glow Tip Dot at active progress tip
-            val tipAngleRad = Math.toRadians((-90f + sweepDeg).toDouble())
-            val tipX = (cx + radius * Math.cos(tipAngleRad)).toFloat()
-            val tipY = (cy + radius * Math.sin(tipAngleRad)).toFloat()
+            if (sweepDeg >= 359.5f) {
+                // Perfect seamless circle
+                canvas.drawCircle(cx, cy, radius, ringPaint)
+            } else {
+                ringBounds.set(cx - radius, cy - radius, cx + radius, cy + radius)
+                canvas.drawArc(ringBounds, -90f, sweepDeg, false, ringPaint)
 
-            val tipRadius = strokePx / 2.2f
-            val glowRadius = tipRadius * (1.2f + 0.3f * (pulseAlpha - 0.65f) / 0.35f)
+                // Breathing Glow Tip Dot at active progress tip when running
+                if (pulseAnimator != null && sweepDeg > 2f) {
+                    val tipAngleRad = Math.toRadians((-90f + sweepDeg).toDouble())
+                    val tipX = (cx + radius * Math.cos(tipAngleRad)).toFloat()
+                    val tipY = (cy + radius * Math.sin(tipAngleRad)).toFloat()
 
-            tipGlowPaint.color = Color.argb((180 * pulseAlpha).toInt(), Color.red(color), Color.green(color), Color.blue(color))
-            canvas.drawCircle(tipX, tipY, glowRadius, tipGlowPaint)
+                    val tipRadius = strokePx / 2.2f
+                    val glowRadius = tipRadius * (1.2f + 0.3f * (pulseAlpha - 0.65f) / 0.35f)
 
-            tipGlowPaint.color = blend(color, -1, 0.4f)
-            canvas.drawCircle(tipX, tipY, tipRadius, tipGlowPaint)
+                    tipGlowPaint.color = Color.argb((160 * pulseAlpha).toInt(), Color.red(color), Color.green(color), Color.blue(color))
+                    canvas.drawCircle(tipX, tipY, glowRadius, tipGlowPaint)
+
+                    tipGlowPaint.color = blend(color, -1, 0.4f)
+                    canvas.drawCircle(tipX, tipY, tipRadius, tipGlowPaint)
+                }
+            }
         }
     }
 

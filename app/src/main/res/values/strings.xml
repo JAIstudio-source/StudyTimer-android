@@ -195,8 +195,8 @@
     <string name="time_format_24h">24-Hour</string>
     <string name="time_format_12h">12-Hour</string>
     <string name="time_format_system">System</string>
-    <string name="pure_white_timer">High-Contrast Timer</string>
-    <string name="pure_white_timer_sub">Keep timer digits pure white</string>
+    <string name="pure_white_timer">White Timer</string>
+    <string name="pure_white_timer_sub">Keep timer digits white</string>
     <string name="focus_heatmap_setting">Activity Heatmap</string>
     <string name="focus_heatmap_setting_sub">Show consistency calendar in Insights</string>
     <string name="focus_pattern_setting">Study Rhythm Chart</string>

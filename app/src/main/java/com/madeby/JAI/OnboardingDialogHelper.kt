@@ -398,13 +398,18 @@ object OnboardingDialogHelper {
                 renderStep()
             } else {
                 // Apply configurations and finish onboarding
+                val goalSecs = (selectedDailyHours * 3600L).coerceAtLeast(1800L)
+                val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
                 prefs.edit()
                     .putString("user_target_focus", selectedFocus)
                     .putString("target_exam", selectedFocus)
                     .putInt("daily_goal_minutes", selectedDailyHours * 60)
+                    .putLong("daily_goal_secs", goalSecs)
+                    .putLong("${todayStr}_goal_secs", goalSecs)
                     .putString("timer_mode", selectedTimerMode)
                     .putBoolean("has_completed_onboarding_v2", true)
                     .apply()
+                GoalHistoryManager.recordGoalChange(activity, todayStr, goalSecs)
 
                 dialog.dismiss()
                 activity.buildCurrentPanel()

@@ -490,6 +490,13 @@ object CloudSyncManager {
                                 editor.putString("daily_goal_durations_json", localJson.toString())
                             } catch (_: Exception) {}
                         }
+                    } else if (k == "daily_goal_secs") {
+                        val localGoal = sharedPrefs.safeLong("daily_goal_secs", 0L)
+                        val cloudGoal = cloudPrefs.optLong("daily_goal_secs", 0L)
+                        if (cloudGoal > 0L && (localGoal == 0L || localGoal == 2700L)) {
+                            editor.putLong("daily_goal_secs", cloudGoal)
+                            editor.putInt("daily_goal_minutes", (cloudGoal / 60).toInt())
+                        }
                     } else if (!sharedPrefs.contains(k)) {
                         val v = cloudPrefs.get(k)
                         when (v) {

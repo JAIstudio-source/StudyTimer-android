@@ -1740,7 +1740,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
             "Self-Study"
         }
         val trackPill = TextView(host).apply {
-            text = "🎯 $initialExam"
+            text = initialExam
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(primary)
@@ -1775,7 +1775,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 if (pubProfile != null) {
                     withContext(Dispatchers.Main) {
                         if (pubProfile.targetExam.isNotBlank()) {
-                            trackPill.text = "🎯 ${pubProfile.targetExam}"
+                            trackPill.text = pubProfile.targetExam
                         }
                         if (pubProfile.bio.isNotBlank()) {
                             mottoView.text = "\"${pubProfile.bio}\""
@@ -1881,13 +1881,26 @@ class CommunityPanelBuilder(private val host: MainActivity) {
             alpha = 0.6f
             setTextColor(textColor)
         })
-        val streakText = TextView(host).apply {
-            text = if (effectiveStreak > 0) "🔥 ${effectiveStreak}d" else "--"
+        val streakRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        if (effectiveStreak > 0) {
+            streakRow.addView(ImageView(host).apply {
+                setImageResource(R.drawable.ic_flame)
+                setColorFilter(Color.parseColor("#F59E0B"))
+                layoutParams = LinearLayout.LayoutParams(dp(14), dp(14)).apply {
+                    marginEnd = dp(3)
+                }
+            })
+        }
+        streakRow.addView(TextView(host).apply {
+            text = if (effectiveStreak > 0) "${effectiveStreak}d" else "--"
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(if (effectiveStreak > 0) Color.parseColor("#F59E0B") else textColor)
-        }
-        colStreak.addView(streakText)
+        })
+        colStreak.addView(streakRow)
         statsCard.addView(colStreak)
 
         dialogRoot.addView(statsCard)
@@ -1948,7 +1961,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                     setOnClickListener {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         dialog.dismiss()
-                        AppToast.show(host, "$cheerText sent to ${m.displayName}! 🎉")
+                        AppToast.show(host, "$cheerText sent to ${m.displayName}")
                     }
                 }
                 cheerRow.addView(btn)

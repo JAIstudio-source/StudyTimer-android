@@ -50,6 +50,10 @@ import kotlin.math.max
  */
 class SettingsPanelBuilder(private val host: MainActivity) {
 
+    companion object {
+        var pendingSettingsScrollY: Int? = null
+    }
+
     private fun dp(v: Int): Int = host.dp(v)
     private fun dpF(v: Float): Float = v * host.resources.displayMetrics.density
 
@@ -204,7 +208,11 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             }
             settingsScrollView.removeAllViews()
             settingsScrollView.addView(layout)
-            settingsScrollView.post { settingsScrollView.scrollTo(0, 0) }
+            val targetScrollY = pendingSettingsScrollY ?: 0
+            settingsScrollView.post {
+                settingsScrollView.scrollTo(0, targetScrollY)
+                pendingSettingsScrollY = null
+            }
 
             fun createSectionLabel(title: String): TextView {
                 return TextView(this).apply {
@@ -666,7 +674,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val breakMins = sharedPrefs.safeLong("break_interval_minutes", 5L)
                 val timerSub = "Focus: ${focusMins}m  •  Break: ${breakMins}m  •  ${timerMode.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }} Mode"
 
-                val dailyGoalSecs = sharedPrefs.getLong("daily_goal_secs", 7200L)
+                val dailyGoalSecs = StatsEngine.getDailyGoalSecs(sharedPrefs)
                 val plannerSub = "Target: ${formatGoalLabel(dailyGoalSecs)} • Goal Reminders & Habits"
                 val analyticsSub = "Heatmap, Subject Breakdown & Charts"
 
@@ -1305,7 +1313,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             previewBox.addView(rowName)
 
                             val rowExam = TextView(this@with).apply {
-                                text = "🎯 Focus Track: $selectedExam"
+                                text = "Focus Track: $selectedExam"
                                 setTextColor(themeCoordinator.textColor)
                                 alpha = 0.85f
                                 textSize = 12f
@@ -1508,27 +1516,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             }
                         }
                         actionsLayout.addView(signOutBtn)
-                    } else {
-                        actionsLayout.addView(createDivider())
-
-                        val signInActionBtn = Button(this@with).apply {
-                            text = "Sign in with Google"
-                            setTextColor(Color.WHITE)
-                            textSize = 13.5f
-                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                            background = GradientDrawable().apply {
-                                cornerRadius = dp(12).toFloat()
-                                setColor(Color.parseColor("#4285F4"))
-                            }
-                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
-                                setMargins(0, dp(10), 0, dp(8))
-                            }
-                            setOnClickListener {
-                                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                startActivity(Intent(this@with, LoginActivity::class.java))
-                            }
-                        }
-                        actionsLayout.addView(signInActionBtn)
                     }
 
                     actionsLayout.addView(createDivider())
@@ -1660,7 +1647,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                 })
                 badgesRow.addView(TextView(this).apply {
-                    text = "🎯 $targetExam"
+                    text = targetExam
                     setTextColor(themeCoordinator.primaryColor)
                     textSize = 10.5f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1731,9 +1718,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                 }
                 publicRoomsCard.addView(createSettingsRow(
-                    "🔔",
+                    "",
                     "Room Audio Alerts",
-                    "Gentle chimes when students join or complete milestone focus sessions",
+                    "Play chimes when students join or complete milestone focus sessions",
                     roomSoundSwitch
                 ))
                 publicRoomsCard.addView(createDivider())
@@ -1746,7 +1733,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                 }
                 publicRoomsCard.addView(createSettingsRow(
-                    "👥",
+                    "",
                     "Study Room Presence",
                     "Show your avatar and study tag in active study rooms when connected",
                     roomPresenceSwitch
@@ -1754,7 +1741,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 publicRoomsCard.addView(createDivider())
 
                 val privatePrivacyRow = createSettingsRow(
-                    "🔒",
+                    "",
                     "Private Room Isolation",
                     "Private room codes and participants are shielded from the public directory. Your hours safely sync to your daily total."
                 )
@@ -1800,7 +1787,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     LeaderboardManager.setParticipating(this@with, true)
                     participateSwitchRef?.isChecked = true
                     leaderboardSubOptions.visibility = View.VISIBLE
-                    AppToast.show(this@with, "Participating in Leaderboard! 🚀")
+                    AppToast.show(this@with, "Participating in Leaderboard")
                     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                         val todayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                         val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(this@with, todayKeyFmt).toInt()
@@ -2245,7 +2232,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             }
                         }
                     }
-                    advancedIntervalsLayout.addView(createSettingsRow("", "Pure White Theme for Pomodoro", "Minimal pure white theme for Pomodoro timer", pureWhitePomoSwitch))
+                    advancedIntervalsLayout.addView(createSettingsRow("", "White Theme for Pomodoro", "Minimal white theme for Pomodoro timer", pureWhitePomoSwitch))
                     advancedIntervalsLayout.addView(createDivider())
 
                     timerModeCard.addView(advancedIntervalsLayout)
@@ -2264,17 +2251,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 // CARD 2: DISPLAY & GESTURES
                 layout.addView(createSectionLabel("DISPLAY & GESTURES"))
                 val displayGestureCard = createSettingsCard()
-
-                val isKeepScreenOn = sharedPrefs.getBoolean("keep_screen_on", true)
-                val keepScreenOnSwitch = SwitchMaterial(this).apply {
-                    isChecked = isKeepScreenOn
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("keep_screen_on", isChecked).apply()
-                        updateKeepScreenOn()
-                    }
-                }
-                displayGestureCard.addView(createSettingsRow("", getString(R.string.keep_screen_on), getString(R.string.keep_screen_on_sub), keepScreenOnSwitch))
-                displayGestureCard.addView(createDivider())
 
                 val isLandscapeStopwatchEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
                 val landscapeSwitch = SwitchMaterial(this).apply {
@@ -2313,7 +2289,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         tabPageCache.clear()
                     }
                 }
-                displayGestureCard.addView(createSettingsRow("", "Pure White Clock", "Clean white timer digits instead of accent color", pureWhiteSwitch))
+                displayGestureCard.addView(createSettingsRow("", "White Timer", "Clean white timer digits instead of accent color", pureWhiteSwitch))
                 displayGestureCard.addView(createDivider())
 
                 // Physical Gestures (Flip to Focus + Conditional Auto-Pause on Face Up)
@@ -2435,11 +2411,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 10f)
                         setPadding(dp(14), dp(4), dp(14), dp(4))
                         setOnClickListener {
-                            val current = sharedPrefs.getLong("daily_goal_secs", 2700L)
+                            val current = StatsEngine.getDailyGoalSecs(sharedPrefs)
                             val next = max(900L, current + stepSecs)
                             val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                             sharedPrefs.edit()
                                 .putLong("daily_goal_secs", next)
+                                .putInt("daily_goal_minutes", (next / 60).toInt())
                                 .putLong("${todayStr}_goal_secs", next)
                                 .apply()
                             GoalHistoryManager.recordGoalChange(host, todayStr, next)
@@ -2447,13 +2424,19 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         }
                     }
                 }
-                goalValueText.text = formatGoalLabel(sharedPrefs.getLong("daily_goal_secs", 2700L))
+                goalValueText.text = formatGoalLabel(StatsEngine.getDailyGoalSecs(sharedPrefs))
                 val goalRow = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(18), dp(14), dp(18), dp(14))
                 }
-                goalRow.addView(TextView(this).apply { text = "🎯"; textSize = 22f; setPadding(0, 0, dp(14), 0) })
+                goalRow.addView(ImageView(this).apply {
+                    setImageResource(R.drawable.ic_target)
+                    setColorFilter(themeCoordinator.primaryColor)
+                    layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                        setMargins(0, 0, dp(14), 0)
+                    }
+                })
                 val goalTextCol = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -2702,6 +2685,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 val oledRow = createSettingsRow("", getString(R.string.theme_amoled), "Pure pitch black background for OLED screens", modeRadio(!isEclipse && !isLight))
                 oledRow.setOnClickListener {
+                    pendingSettingsScrollY = settingsScrollView.scrollY
                     sharedPrefs.edit().putString("activeBgMode", "OLED").apply()
                     themeCoordinator.applyThemeCoordinates()
                     navigateToPanel(AppPanel.SETTINGS)
@@ -2711,6 +2695,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 val eclipseRow = createSettingsRow("", getString(R.string.theme_slate), getString(R.string.theme_slate_sub), modeRadio(isEclipse))
                 eclipseRow.setOnClickListener {
+                    pendingSettingsScrollY = settingsScrollView.scrollY
                     sharedPrefs.edit().putString("activeBgMode", "ECLIPSE").apply()
                     themeCoordinator.applyThemeCoordinates()
                     navigateToPanel(AppPanel.SETTINGS)
@@ -2720,6 +2705,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 val lightRow = createSettingsRow("", getString(R.string.theme_light), getString(R.string.theme_light_sub), modeRadio(isLight))
                 lightRow.setOnClickListener {
+                    pendingSettingsScrollY = settingsScrollView.scrollY
                     sharedPrefs.edit().putString("activeBgMode", "LIGHT").apply()
                     themeCoordinator.applyThemeCoordinates()
                     navigateToPanel(AppPanel.SETTINGS)
@@ -2737,6 +2723,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 val glassRow = createSettingsRow("", getString(R.string.style_glass), getString(R.string.style_glass_sub), modeRadio(isGlass))
                 glassRow.setOnClickListener {
+                    pendingSettingsScrollY = settingsScrollView.scrollY
                     sharedPrefs.edit().putString("ui_style", "GLASS").apply()
                     themeCoordinator.applyThemeCoordinates()
                     navigateToPanel(AppPanel.SETTINGS)
@@ -2746,6 +2733,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 val bubbleRow = createSettingsRow("", "3D Soft Depth", "Soft elevated cards with smooth depth", modeRadio(isBubble))
                 bubbleRow.setOnClickListener {
+                    pendingSettingsScrollY = settingsScrollView.scrollY
                     sharedPrefs.edit().putString("ui_style", "BUBBLE").apply()
                     themeCoordinator.applyThemeCoordinates()
                     navigateToPanel(AppPanel.SETTINGS)
@@ -2755,6 +2743,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 val classicRow = createSettingsRow("", getString(R.string.style_classic), getString(R.string.style_classic_sub), modeRadio(!isGlass && !isBubble))
                 classicRow.setOnClickListener {
+                    pendingSettingsScrollY = settingsScrollView.scrollY
                     sharedPrefs.edit().putString("ui_style", "CLASSIC").apply()
                     themeCoordinator.applyThemeCoordinates()
                     navigateToPanel(AppPanel.SETTINGS)
@@ -2962,6 +2951,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         try {
                             performMicroHaptic(v)
                         } catch (_: Exception) {}
+                        pendingSettingsScrollY = settingsScrollView.scrollY
                         AppToast.show(this@with, "New theme colors applied!")
                         navigateToPanel(AppPanel.SETTINGS)
                     }
@@ -3295,6 +3285,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                     isClickable = true
                     setOnClickListener {
+                        pendingSettingsScrollY = host.settingsScrollViewRef?.scrollY
                         FontStyleManager.setSelectedFontId(host, item.id)
                         performMicroHaptic(this)
                         dialog.dismiss()

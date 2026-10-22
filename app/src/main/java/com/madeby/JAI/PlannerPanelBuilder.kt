@@ -284,7 +284,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             } else {
                 goal
             }
-        }
+        }.toMutableList()
         if (goalsUpdated) {
             saveSessionGoalsToJson(activeGoalsList)
             PlannerHistoryManager.snapshotToday(host, activeGoalsList)
@@ -447,7 +447,6 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val targetMins = goal.targetMinutes
                 val prog = progressMap[goal.id]
                 val actualMins = prog?.actualMinutes ?: 0
-                val remainingMins = (targetMins - actualMins).coerceAtLeast(0)
 
                 if (targetMins > 0) {
                     val isDone = actualMins >= targetMins
@@ -455,37 +454,34 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         infoMap[goal.id] = GoalDisplayInfo(
                             isChecked = true,
                             checkSymbol = "✓",
-                            progressText = "✓ ${actualMins}/${targetMins}m",
+                            progressText = "${actualMins}/${targetMins}m",
                             chipColor = greenColor,
                             isDeficit = false
                         )
                     } else if (goal.completed) {
-                        // User manually completed it early: show cross and remaining time clearly in red
-                        val remText = if (remainingMins > 0) " (${remainingMins}m left)" else ""
+                        // User manually completed it early: show cross and red color
                         infoMap[goal.id] = GoalDisplayInfo(
                             isChecked = true,
                             checkSymbol = "✕",
-                            progressText = "✕ ${actualMins}/${targetMins}m$remText",
+                            progressText = "${actualMins}/${targetMins}m",
                             chipColor = redColor,
                             isDeficit = true
                         )
                     } else {
-                        val remText = if (remainingMins > 0) " (${remainingMins}m left)" else ""
                         infoMap[goal.id] = GoalDisplayInfo(
                             isChecked = false,
                             checkSymbol = "",
-                            progressText = "${actualMins}/${targetMins}m$remText",
+                            progressText = "${actualMins}/${targetMins}m",
                             chipColor = plannerPrimary,
                             isDeficit = false
                         )
                     }
                 } else {
-                    val durationText = if (actualMins > 0) " • ${actualMins}m" else ""
                     if (goal.completed) {
                         infoMap[goal.id] = GoalDisplayInfo(
                             isChecked = true,
                             checkSymbol = "✓",
-                            progressText = "✓ Done$durationText",
+                            progressText = if (actualMins > 0) "${actualMins}m" else "Done",
                             chipColor = greenColor,
                             isDeficit = false
                         )
@@ -517,20 +513,143 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
                 val toggleGoalAction = {
                     val now = System.currentTimeMillis()
-                    val updated = activeGoalsList.map {
-                        if (it.id == goal.id) it.copy(completed = !it.completed, checkedAt = if (!it.completed) now else 0L) else it
-                    }
-                    saveSessionGoalsToJson(updated)
-                    val targetGoal = updated.find { it.id == goal.id }
-                    if (targetGoal != null) {
-                        if (targetGoal.completed) {
-                            GoalReminderScheduler.cancelGoalReminder(host, targetGoal.id)
-                        } else if (targetGoal.reminderEnabled) {
-                            GoalReminderScheduler.scheduleGoalReminder(host, targetGoal)
+                    val targetIndex = activeGoalsList.indexOfFirst { it.id == goal.id }
+                    if (targetIndex != -1) {
+                        val currentGoal = activeGoalsList[targetIndex]
+                        val newCompleted = !currentGoal.completed
+                        val updatedGoal = currentGoal.copy(completed = newCompleted, checkedAt = if (newCompleted) now else 0L)
+                        activeGoalsList[targetIndex] = updatedGoal
+
+                        saveSessionGoalsToJson(activeGoalsList)
+                        if (updatedGoal.completed) {
+                            GoalReminderScheduler.cancelGoalReminder(host, updatedGoal.id)
+                        } else if (updatedGoal.reminderEnabled) {
+                            GoalReminderScheduler.scheduleGoalReminder(host, updatedGoal)
                         }
+                        PlannerHistoryManager.snapshotToday(host, activeGoalsList)
+
+                        // Compute updated display info for this goal
+                        val prog = progressMap[goal.id]
+                        val actualMins = prog?.actualMinutes ?: 0
+                        val newInfo = if (goal.targetMinutes > 0) {
+                            val isDone = actualMins >= goal.targetMinutes
+                            if (isDone) {
+                                GoalDisplayInfo(
+                                    isChecked = true,
+                                    checkSymbol = "✓",
+                                    progressText = "${actualMins}/${goal.targetMinutes}m",
+                                    chipColor = greenColor,
+                                    isDeficit = false
+                                )
+                            } else if (updatedGoal.completed) {
+                                GoalDisplayInfo(
+                                    isChecked = true,
+                                    checkSymbol = "✕",
+                                    progressText = "${actualMins}/${goal.targetMinutes}m",
+                                    chipColor = redColor,
+                                    isDeficit = true
+                                )
+                            } else {
+                                GoalDisplayInfo(
+                                    isChecked = false,
+                                    checkSymbol = "",
+                                    progressText = "${actualMins}/${goal.targetMinutes}m",
+                                    chipColor = plannerPrimary,
+                                    isDeficit = false
+                                )
+                            }
+                        } else {
+                            if (updatedGoal.completed) {
+                                GoalDisplayInfo(
+                                    isChecked = true,
+                                    checkSymbol = "✓",
+                                    progressText = if (actualMins > 0) "${actualMins}m" else "Done",
+                                    chipColor = greenColor,
+                                    isDeficit = false
+                                )
+                            } else {
+                                GoalDisplayInfo(
+                                    isChecked = false,
+                                    checkSymbol = "",
+                                    progressText = if (actualMins > 0) "${actualMins}m" else "Mark Done",
+                                    chipColor = plannerPrimary,
+                                    isDeficit = false
+                                )
+                            }
+                        }
+                        infoMap[goal.id] = newInfo
+
+                        // Update Goal Card views in place (zero layout flicker!)
+                        parent.findViewWithTag<TextView>("goal_check_${goal.id}")?.let { checkBtn ->
+                            checkBtn.text = newInfo.checkSymbol
+                            checkBtn.textSize = if (newInfo.checkSymbol == "✕") 12f else 13f
+                            val checkColor = if (newInfo.isChecked) newInfo.chipColor else Color.TRANSPARENT
+                            val strokeColor = if (newInfo.isChecked) newInfo.chipColor else plannerPrimary
+                            checkBtn.background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor(checkColor)
+                                setStroke(dp(2), strokeColor)
+                            }
+                        }
+
+                        parent.findViewWithTag<TextView>("goal_title_${goal.id}")?.let { titleTv ->
+                            titleTv.setTextColor(if (newInfo.isChecked) tintedColor(themeCoordinator.textColor, 120) else themeCoordinator.textColor)
+                            if (newInfo.isChecked) {
+                                titleTv.paintFlags = titleTv.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+                            } else {
+                                titleTv.paintFlags = titleTv.paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
+                            }
+                        }
+
+                        parent.findViewWithTag<TextView>("goal_chip_${goal.id}")?.let { timeChip ->
+                            val shouldShow = if (newInfo.isChecked) true else (goal.targetMinutes > 0 || actualMins > 0)
+                            timeChip.visibility = if (shouldShow) View.VISIBLE else View.GONE
+                            timeChip.text = newInfo.progressText
+                            timeChip.setTextColor(newInfo.chipColor)
+                            timeChip.background = themeCoordinator.createGlassChip(
+                                tintedColor(newInfo.chipColor, 50),
+                                8f
+                            )
+                        }
+
+                        parent.findViewWithTag<View>("goal_action_${goal.id}")?.let { actionCta ->
+                            actionCta.visibility = if (!newInfo.isChecked) View.VISIBLE else View.GONE
+                        }
+
+                        parent.findViewWithTag<ProgressBar>("goal_minibar_${goal.id}")?.let { bar ->
+                            bar.progressTintList = ColorStateList.valueOf(newInfo.chipColor)
+                        }
+
+                        // Update Summary Card in place
+                        val updatedAchieved = mutableSetOf<String>()
+                        for (g in activeGoalsList) {
+                            val p = progressMap[g.id]
+                            val tm = g.targetMinutes
+                            val am = p?.actualMinutes ?: 0
+                            if (tm > 0) {
+                                if (am >= tm) updatedAchieved.add(g.id)
+                            } else if (g.completed) {
+                                updatedAchieved.add(g.id)
+                            }
+                        }
+                        val compCount = updatedAchieved.size
+                        val totCount = activeGoalsList.size
+                        val pct = if (totCount > 0) (compCount * 100) / totCount else 0
+                        val isReached = pct >= 100 && totCount > 0
+                        val lineCol = if (isReached) 0xFF43D36E.toInt() else plannerPrimary
+
+                        parent.findViewWithTag<TextView>("planner_completed_text")?.text = "$compCount of $totCount completed"
+                        parent.findViewWithTag<TextView>("planner_pct_text")?.let { pctTv ->
+                            pctTv.text = "$pct%"
+                            pctTv.setTextColor(lineCol)
+                        }
+                        parent.findViewWithTag<ProgressBar>("planner_progress_bar")?.let { pBar ->
+                            pBar.progress = pct
+                            pBar.progressTintList = android.content.res.ColorStateList.valueOf(lineCol)
+                        }
+
+                        host.updateStatsLiveViews()
                     }
-                    PlannerHistoryManager.snapshotToday(host, updated)
-                    reloadPlanner()
                 }
 
                 val animateToggleGoalAction = { targetView: View ->
@@ -635,11 +754,26 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 }
                 headerRow.addView(checkBtn)
 
+                // Center Section: (Title + Time Chip) and directly underneath, the Slim Progress Bar
+                val centerCol = LinearLayout(host).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        setMargins(0, 0, if (!info.isChecked) dp(6) else if (activeGoalsList.size > 1) dp(4) else 0, 0)
+                    }
+                }
+
+                val titleAndTimeRow = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                }
+
                 val textCol = LinearLayout(host).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 textCol.addView(TextView(host).apply {
+                    tag = "goal_title_${goal.id}"
                     text = goal.title
                     setTextColor(if (isChecked) tintedColor(themeCoordinator.textColor, 120) else themeCoordinator.textColor)
                     textSize = 14.5f
@@ -655,7 +789,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         setPadding(0, dp(1), 0, 0)
                     })
                 }
-                headerRow.addView(textCol)
+                titleAndTimeRow.addView(textCol)
 
                 // Single Status / Progress Chip
                 val shouldShowTimeChip = if (info.isChecked) {
@@ -678,22 +812,40 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         )
                         setPadding(dp(7), dp(3), dp(7), dp(3))
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(dp(6), 0, if (!info.isChecked) dp(6) else if (activeGoalsList.size > 1) dp(4) else 0, 0)
+                            setMargins(dp(6), 0, 0, 0)
                         }
                     }
-                    headerRow.addView(timeChip)
+                    titleAndTimeRow.addView(timeChip)
+                }
+                centerCol.addView(titleAndTimeRow)
+
+                // 2. Slim Progress Bar (bounded within centerCol, ending directly under timeChip)
+                if (targetMins > 0) {
+                    val pct = ((actualMins * 100) / targetMins).coerceIn(0, 100)
+                    val miniBar = ProgressBar(host, null, android.R.attr.progressBarStyleHorizontal).apply {
+                        tag = "goal_minibar_${goal.id}"
+                        max = 100
+                        progress = pct
+                        progressTintList = ColorStateList.valueOf(info.chipColor)
+                        progressBackgroundTintList = ColorStateList.valueOf(if (themeCoordinator.isDarkMode()) 0x22FFFFFF else 0x1A000000)
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2.5f)).apply {
+                            setMargins(0, dp(4), 0, dp(2))
+                        }
+                    }
+                    centerCol.addView(miniBar)
                 }
 
-                // Quick Start button ONLY shown for ongoing active goals (never when checked/done)
-                if (!info.isChecked) {
-                    val actionCta = createActionCtaView().apply {
-                        (layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
-                            lp.setMargins(0, 0, if (activeGoalsList.size > 1) dp(4) else 0, 0)
-                            layoutParams = lp
-                        }
+                headerRow.addView(centerCol)
+
+                val actionCta = createActionCtaView().apply {
+                    tag = "goal_action_${goal.id}"
+                    visibility = if (!info.isChecked) View.VISIBLE else View.GONE
+                    (layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
+                        lp.setMargins(0, 0, if (activeGoalsList.size > 1) dp(4) else 0, 0)
+                        layoutParams = lp
                     }
-                    headerRow.addView(actionCta)
                 }
+                headerRow.addView(actionCta)
 
                 // Hold & Drag Reorder Handle
                 if (activeGoalsList.size > 1) {
@@ -720,21 +872,6 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 }
 
                 goalCard.addView(headerRow)
-
-                // 2. Slim Progress Bar (directly under headerRow)
-                if (targetMins > 0) {
-                    val pct = ((actualMins * 100) / targetMins).coerceIn(0, 100)
-                    val miniBar = ProgressBar(host, null, android.R.attr.progressBarStyleHorizontal).apply {
-                        max = 100
-                        progress = pct
-                        progressTintList = ColorStateList.valueOf(info.chipColor)
-                        progressBackgroundTintList = ColorStateList.valueOf(if (themeCoordinator.isDarkMode()) 0x22FFFFFF else 0x1A000000)
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2.5f)).apply {
-                            setMargins(dp(32), dp(3), 0, dp(2))
-                        }
-                    }
-                    goalCard.addView(miniBar)
-                }
 
                 // 3. Subject, Sub-Topic, Schedule, and Reminder Badges Row
                 val hasSubject = !goal.subjectId.isNullOrBlank() && goal.subjectId != "all"
@@ -780,15 +917,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 }
 
                 if (hasSubTopic && tagsRow != null) {
-                    val topicBadge = TextView(host).apply {
-                        text = "📖 ${goal.subTopic}"
-                        setTextColor(themeCoordinator.accentColor)
-                        textSize = 11f
-                        isSingleLine = true
-                        maxLines = 1
-                        ellipsize = TextUtils.TruncateAt.END
-                        maxWidth = dp(120)
-                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    val topicBadge = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, 50), 8f)
                         setPadding(dp(7), dp(2), dp(7), dp(2))
                         layoutParams = LinearLayout.LayoutParams(
@@ -798,17 +929,32 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             setMargins(0, 0, dp(5), 0)
                         }
                     }
+                    topicBadge.addView(ImageView(host).apply {
+                        setImageResource(R.drawable.ic_book)
+                        setColorFilter(themeCoordinator.accentColor)
+                        layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
+                            setMargins(0, 0, dp(4), 0)
+                        }
+                    })
+                    topicBadge.addView(TextView(host).apply {
+                        text = goal.subTopic
+                        setTextColor(themeCoordinator.accentColor)
+                        textSize = 11f
+                        isSingleLine = true
+                        maxLines = 1
+                        ellipsize = TextUtils.TruncateAt.END
+                        maxWidth = dp(110)
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    })
                     tagsRow.addView(topicBadge)
                 }
 
                 if (hasScheduledDays && tagsRow != null) {
                     val daysMap = mapOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
                     val daysText = goal.scheduledDays.sorted().mapNotNull { daysMap[it] }.joinToString(",")
-                    val schedBadge = TextView(host).apply {
-                        text = "📅 $daysText"
-                        setTextColor(tintedColor(themeCoordinator.textColor, 180))
-                        textSize = 10.5f
-                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    val schedBadge = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 8f)
                         setPadding(dp(7), dp(2), dp(7), dp(2))
                         layoutParams = LinearLayout.LayoutParams(
@@ -818,6 +964,19 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             setMargins(0, 0, dp(5), 0)
                         }
                     }
+                    schedBadge.addView(ImageView(host).apply {
+                        setImageResource(R.drawable.ic_calendar)
+                        setColorFilter(tintedColor(themeCoordinator.textColor, 180))
+                        layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
+                            setMargins(0, 0, dp(4), 0)
+                        }
+                    })
+                    schedBadge.addView(TextView(host).apply {
+                        text = daysText
+                        setTextColor(tintedColor(themeCoordinator.textColor, 180))
+                        textSize = 10.5f
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    })
                     tagsRow.addView(schedBadge)
                 }
 
@@ -827,13 +986,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         set(Calendar.MINUTE, goal.reminderMinute)
                     }
                     val reminderTimeStr = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
-                    val reminderBadge = TextView(host).apply {
-                        text = "🔔 $reminderTimeStr"
-                        setTextColor(if (themeCoordinator.isDarkMode()) 0xFFF59E0B.toInt() else 0xFFD97706.toInt())
-                        textSize = 10.5f
-                        isSingleLine = true
-                        maxLines = 1
-                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    val reminderColor = if (themeCoordinator.isDarkMode()) 0xFFF59E0B.toInt() else 0xFFD97706.toInt()
+                    val reminderBadge = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
                         background = themeCoordinator.createGlassChip(tintedColor(0xFFF59E0B.toInt(), 50), 8f)
                         setPadding(dp(7), dp(2), dp(7), dp(2))
                         layoutParams = LinearLayout.LayoutParams(
@@ -843,6 +999,21 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             setMargins(0, 0, dp(5), 0)
                         }
                     }
+                    reminderBadge.addView(ImageView(host).apply {
+                        setImageResource(R.drawable.ic_clock)
+                        setColorFilter(reminderColor)
+                        layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
+                            setMargins(0, 0, dp(4), 0)
+                        }
+                    })
+                    reminderBadge.addView(TextView(host).apply {
+                        text = reminderTimeStr
+                        setTextColor(reminderColor)
+                        textSize = 10.5f
+                        isSingleLine = true
+                        maxLines = 1
+                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    })
                     tagsRow.addView(reminderBadge)
                 }
 
@@ -1264,9 +1435,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                                 }
                                 val displayDateSdf = SimpleDateFormat("EEE, MMM d, yyyy", Locale.getDefault())
                                 val dateFormatted = runCatching { displayDateSdf.format(sdf.parse(dateKey)!!) }.getOrDefault(dateKey)
-                                noteCardHeader.text = "📅 $dateFormatted • $statusLabel"
+                                noteCardHeader.text = "$dateFormatted • $statusLabel"
                                 val dayNote = snapshot?.note?.takeIf { it.isNotBlank() } ?: goal.note.takeIf { it.isNotBlank() } ?: "No specific notes recorded for this date."
-                                noteCardContent.text = "📝 $dayNote"
+                                noteCardContent.text = dayNote
                                 selectedDayNoteCard.visibility = View.VISIBLE
                                 view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
 

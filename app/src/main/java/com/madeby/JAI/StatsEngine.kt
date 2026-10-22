@@ -12,8 +12,30 @@ class StatsEngine(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
 
+    companion object {
+        const val DEFAULT_DAILY_GOAL_SECS = 7200L // 2 hours default
+
+        fun getDailyGoalSecs(prefs: android.content.SharedPreferences): Long {
+            if (prefs.contains("daily_goal_secs")) {
+                val s = prefs.getLong("daily_goal_secs", 0L)
+                if (s > 0L) return s
+            }
+            if (prefs.contains("daily_goal_minutes")) {
+                val m = prefs.getInt("daily_goal_minutes", 0)
+                if (m > 0) {
+                    val s = m * 60L
+                    prefs.edit().putLong("daily_goal_secs", s).apply()
+                    return s
+                }
+            }
+            return DEFAULT_DAILY_GOAL_SECS
+        }
+    }
+
+    private val parsedDateCache = java.util.concurrent.ConcurrentHashMap<String, Date>()
+
     fun dailyGoalSecs(): Long {
-        return prefs.getLong("daily_goal_secs", 2700L)
+        return getDailyGoalSecs(prefs)
     }
 
     fun resolveGoalFor(dateStr: String): Long {
@@ -481,33 +503,54 @@ class StatsEngine(private val context: Context) {
 
         val streakGoalBased = prefs.getBoolean("streak_uses_daily_goal", false)
 
-        var longestStreak = StreakCalculator.longestStreak(
-            dayFocus.keys.mapNotNull { dStr ->
-                val parsed = runCatching { sdf.parse(dStr) }.getOrNull() ?: return@mapNotNull null
-                Pair(parsed, dayFocus[dStr] ?: 0L)
-            },
-            goalFor = if (streakGoalBased) ({ date -> resolveGoalFor(sdf.format(date)) }) else null
-        )
-
         val activeDays = dayFocus.keys.count { d ->
             val f = dayFocus[d] ?: 0L
             val b = dayBreak[d] ?: 0L
             f > 0L || b > 0L
         }
 
+        val sortedDateKeys = dayFocus.keys.sorted()
+        val pairsForStreak = ArrayList<Pair<Date, Long>>(sortedDateKeys.size)
         val weekdayTotals = LongArray(7)
         val weekdayCounts = IntArray(7)
-        for (dStr in dayFocus.keys) {
-            if (dStr == todayStr) continue
-            val parsed = try { sdf.parse(dStr) } catch (_: Exception) { null } ?: continue
+        val weekTotals = HashMap<String, Long>()
+        var bestDaySecs = 0L
+        var bestDayDateStr = ""
+        var bestDayLabel = ""
+        val tempCal = Calendar.getInstance()
+        val displayDateSdf = SimpleDateFormat("EEE, d MMM", Locale.getDefault())
+
+        for (dStr in sortedDateKeys) {
             val f = dayFocus[dStr] ?: 0L
+            val parsed = parsedDateCache.getOrPut(dStr) {
+                try { sdf.parse(dStr) ?: Date() } catch (_: Exception) { Date() }
+            }
+            pairsForStreak.add(Pair(parsed, f))
+
+            if (f > bestDaySecs) {
+                bestDaySecs = f
+                bestDayDateStr = dStr
+                bestDayLabel = displayDateSdf.format(parsed)
+            }
+
             if (f > 0L) {
-                val cal = Calendar.getInstance().apply { time = parsed }
-                val idx = cal.get(Calendar.DAY_OF_WEEK) - 1
-                weekdayTotals[idx] += f
-                weekdayCounts[idx]++
+                tempCal.time = parsed
+                val weekKey = sdf.format(WeekHelper.mondayOf(tempCal).time)
+                weekTotals[weekKey] = (weekTotals[weekKey] ?: 0L) + f
+
+                if (dStr != todayStr) {
+                    val idx = tempCal.get(Calendar.DAY_OF_WEEK) - 1
+                    weekdayTotals[idx] += f
+                    weekdayCounts[idx]++
+                }
             }
         }
+
+        val longestStreak = StreakCalculator.longestStreak(
+            pairsForStreak,
+            goalFor = if (streakGoalBased) ({ date -> resolveGoalFor(sdf.format(date)) }) else null
+        )
+
         val todayIdx = Calendar.getInstance().get(Calendar.DAY_OF_WEEK) - 1
         if (todayFocus > 0L) {
             weekdayTotals[todayIdx] += todayFocus
@@ -520,37 +563,18 @@ class StatsEngine(private val context: Context) {
         val dayNameSdf = SimpleDateFormat("EEEE", Locale.getDefault())
         val bestWeekdayName = dayNameSdf.format(Calendar.getInstance().apply { set(Calendar.DAY_OF_WEEK, bestWeekdayIdx + 1) }.time)
 
-        var bestDaySecs = 0L
-        var bestDayDateStr = ""
-        var bestDayLabel = ""
-        val displayDateSdf = SimpleDateFormat("EEE, d MMM", Locale.getDefault())
-        dayFocus.maxByOrNull { it.value }?.let { best ->
-            if (best.value > 0L) {
-                bestDaySecs = best.value
-                bestDayDateStr = best.key
-                val parsed = try { sdf.parse(best.key) } catch (_: Exception) { null }
-                bestDayLabel = if (parsed != null) displayDateSdf.format(parsed) else best.key
-            }
-        }
-
-        val weekTotals = HashMap<String, Long>()
-        for (dStr in dayFocus.keys) {
-            val parsed = try { sdf.parse(dStr) } catch (_: Exception) { null } ?: continue
-            val f = dayFocus[dStr] ?: 0L
-            if (f <= 0L) continue
-            val cal = Calendar.getInstance().apply { time = parsed }
-            val weekKey = sdf.format(WeekHelper.mondayOf(cal).time)
-            weekTotals[weekKey] = (weekTotals[weekKey] ?: 0L) + f
-        }
         var bestWeekSecs = 0L
         var bestWeekLabel = ""
         val shortDateSdf = SimpleDateFormat("d MMM", Locale.getDefault())
         weekTotals.maxByOrNull { it.value }?.let { best ->
             if (best.value > 0L) {
-                val weekStart = try { sdf.parse(best.key) } catch (_: Exception) { null } ?: Date()
-                val weekEnd = Calendar.getInstance().apply { time = weekStart; add(Calendar.DAY_OF_YEAR, 6) }.time
+                val weekStart = parsedDateCache.getOrPut(best.key) {
+                    try { sdf.parse(best.key) ?: Date() } catch (_: Exception) { Date() }
+                }
+                tempCal.time = weekStart
+                tempCal.add(Calendar.DAY_OF_YEAR, 6)
                 bestWeekSecs = best.value
-                bestWeekLabel = "${shortDateSdf.format(weekStart)} \u2013 ${shortDateSdf.format(weekEnd)}"
+                bestWeekLabel = "${shortDateSdf.format(weekStart)} \u2013 ${shortDateSdf.format(tempCal.time)}"
             }
         }
 

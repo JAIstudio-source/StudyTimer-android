@@ -22,6 +22,7 @@ import android.view.animation.OvershootInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ImageView
 import android.widget.TextView
 import kotlin.math.cos
 import kotlin.math.sin
@@ -153,11 +154,10 @@ object StreakUpAnimationDialog {
             }
             flameBox.addView(glowView)
 
-            val flameIcon = TextView(activity).apply {
-                text = "🔥"
-                textSize = 44f
-                gravity = Gravity.CENTER
-                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+            val flameIcon = ImageView(activity).apply {
+                setImageResource(R.drawable.ic_flame)
+                setColorFilter(amberColor)
+                layoutParams = FrameLayout.LayoutParams(dpInt(44), dpInt(44), Gravity.CENTER)
             }
             flameBox.addView(flameIcon)
             container.addView(flameBox)
@@ -317,18 +317,18 @@ object StreakUpAnimationDialog {
 
     private fun getMilestoneProgressText(streak: Int): String {
         return when {
-            streak == 7 -> "🥉 7-Day Bronze Streak Milestone Achieved!"
-            streak == 14 -> "🥈 14-Day Silver Streak Milestone Achieved!"
-            streak == 21 -> "🥇 21-Day Gold Streak Milestone Achieved!"
-            streak == 28 -> "💎 28-Day Platinum Streak Milestone Achieved!"
-            streak == 50 -> "🔥 50-Day Fire Streak Milestone Achieved!"
-            streak >= 100 -> "👑 100-Day Crown Legend Milestone Achieved!"
-            streak < 7 -> "Fantastic progress! ${7 - streak} more days to 7-Day Bronze!"
-            streak < 14 -> "2-Week push! ${14 - streak} more days to 14-Day Silver!"
-            streak < 21 -> "Habit forming! ${21 - streak} more days to 21-Day Gold!"
-            streak < 28 -> "Month of focus! ${28 - streak} more days to 28-Day Platinum!"
-            streak < 50 -> "Half-century push! ${50 - streak} more days to 50-Day Fire!"
-            else -> "Unstoppable momentum! ${100 - streak} more days to 100-Day Crown!"
+            streak == 7 -> "7-Day Bronze Streak reached!"
+            streak == 14 -> "14-Day Silver Streak reached!"
+            streak == 21 -> "21-Day Gold Streak reached!"
+            streak == 28 -> "28-Day Platinum Streak reached!"
+            streak == 50 -> "50-Day Fire Streak reached!"
+            streak >= 100 -> "100-Day Legend Streak reached!"
+            streak < 7 -> "${7 - streak} more days to 7-Day Bronze"
+            streak < 14 -> "${14 - streak} more days to 14-Day Silver"
+            streak < 21 -> "${21 - streak} more days to 21-Day Gold"
+            streak < 28 -> "${28 - streak} more days to 28-Day Platinum"
+            streak < 50 -> "${50 - streak} more days to 50-Day Fire"
+            else -> "${100 - streak} more days to 100-Day Legend"
         }
     }
 }

@@ -1157,7 +1157,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     )
                     SubjectTagManager.updateSubject(host, updatedSubj)
                     dialog.dismiss()
-                    AppToast.show(host, "Subject updated across history! ✨")
+                    AppToast.show(host, "Subject updated across history")
                     host.navigateToPanel(AppPanel.FOCUS)
                     onUpdated?.invoke()
                 }

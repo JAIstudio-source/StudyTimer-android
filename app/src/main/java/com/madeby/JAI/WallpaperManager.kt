@@ -103,7 +103,7 @@ object WallpaperManager {
     }
 
     fun setWallpaperDimAlpha(context: Context, alpha: Float, isUserExplicit: Boolean = true) {
-        val clamped = alpha.coerceIn(0.15f, 0.85f)
+        val clamped = alpha.coerceIn(0.0f, 1.0f)
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putFloat(KEY_DIM_ALPHA, clamped)
