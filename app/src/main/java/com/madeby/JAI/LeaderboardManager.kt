@@ -822,23 +822,7 @@ object LeaderboardManager {
         }
 
         val startMs = startCal.timeInMillis
-        val endMs = Calendar.getInstance().apply {
-            timeInMillis = now.timeInMillis
-            set(Calendar.HOUR_OF_DAY, 23)
-            set(Calendar.MINUTE, 59)
-            set(Calendar.SECOND, 59)
-            set(Calendar.MILLISECOND, 999)
-        }.timeInMillis
-
-        val entries = TimelineLogger.load(context)
-        val parsedAll = parseDayBlocks(entries)
-        val sessions = parsedAll.sessions.filter { it.startMs in startMs..endMs }
-        val realSessionSum = sessions.filter { !it.manual }.sumOf { it.secs }
-
         val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
-        val isTimerStudying = timerState == "STUDYING" || timerState == "PAUSED"
-        val runningStudy = if (isTimerStudying) prefs.getLong("accumulatedStudy", 0L) else 0L
 
         // Sum developer-authorized bonus for all dates in range
         var devBonus = 0L
@@ -850,7 +834,8 @@ object LeaderboardManager {
             scanCal.add(Calendar.DAY_OF_YEAR, 1)
         }
 
-        return (realSessionSum + runningStudy + devBonus).coerceAtLeast(0L)
+        val baseFocusSecs = FocusTimeProvider.getFocusSecondsForPeriod(context, period)
+        return (baseFocusSecs + devBonus).coerceAtLeast(0L)
     }
 
     /**

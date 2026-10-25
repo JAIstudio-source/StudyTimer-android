@@ -1323,7 +1323,9 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 if (isCurrent) "You" else entry.userName
             } else "Open Spot"
             textSize = 11.5f
+            isSingleLine = true
             maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             typeface = Typeface.create("sans-serif-medium", if (isCurrent) Typeface.BOLD else Typeface.NORMAL)
             setTextColor(if (isCurrent) host.themeCoordinator.primaryColor else host.themeCoordinator.textColor)
             alpha = if (entry != null) 1f else 0.5f
@@ -1428,8 +1430,12 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         val nameView = TextView(host).apply {
             text = entry.userName
             textSize = 13.5f
+            isSingleLine = true
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             typeface = Typeface.create("sans-serif-medium", if (isCurrent) Typeface.BOLD else Typeface.NORMAL)
             setTextColor(host.themeCoordinator.textColor)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         nameRow.addView(nameView)
 
@@ -1524,8 +1530,13 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         row.addView(userCol)
 
         // Study Duration
+        val displaySecs = if (isCurrent) {
+            maxOf(entry.totalSeconds, LeaderboardManager.getRealTimerFocusSecondsForPeriod(host, selectedPeriod).toInt())
+        } else {
+            entry.totalSeconds
+        }
         val durationView = TextView(host).apply {
-            text = LeaderboardManager.formatDuration(entry.totalSeconds)
+            text = LeaderboardManager.formatDuration(displaySecs)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(if (isCurrent) host.themeCoordinator.primaryColor else host.themeCoordinator.textColor)
@@ -1677,8 +1688,12 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             val myName = TextView(host).apply {
                 text = effectiveName
                 textSize = 13.5f
+                isSingleLine = true
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setTextColor(host.themeCoordinator.textColor)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             nameRow.addView(myName)
 
@@ -1727,9 +1742,5 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             return myCard
         }
     }
-
-    private fun showLeaderboardSettingsDialog(root: LinearLayout? = null) {
-        host.currentSettingsTab = AppSettingsTab.PROFILE
-        host.navigateToPanel(AppPanel.SETTINGS)
-    }
 }
+

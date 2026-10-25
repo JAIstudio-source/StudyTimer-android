@@ -120,12 +120,15 @@ object TimerModeBottomSheet {
             setPadding(0, 0, 0, dp(8))
         })
 
-        var currentMode = sharedPrefs.getString("timer_mode", "SUBJECT") ?: "SUBJECT"
+        var currentMode = sharedPrefs.getString("timer_mode", "COUNTDOWN") ?: "COUNTDOWN"
+        if (currentMode == "SUBJECT") {
+            currentMode = "COUNTDOWN"
+            sharedPrefs.edit().putString("timer_mode", "COUNTDOWN").putBoolean("show_subject_pie_chart", true).apply()
+        }
         val modes = listOf(
-            Triple("STOPWATCH", "Stopwatch", "Continuous count-up focus timer without limits"),
-            Triple("SUBJECT", "Subject Wise", "Track time tagged to specific subjects & topics"),
-            Triple("COUNTDOWN", "Pomodoro", "Structured study & break interval cycles"),
-            Triple("LECTURE", "Lecture / Classes", "Sync with your custom class timetable")
+            Triple("COUNTDOWN", "Pomodoro (Countdown)", "Structured study & break interval cycles with progress ring"),
+            Triple("STOPWATCH", "Stopwatch (Count Up)", "Continuous open-ended focus timer without countdown limits"),
+            Triple("LECTURE", "Class Schedule", "Sync with your custom timetable & lecture classes")
         )
 
         val modePillsContainer = LinearLayout(activity).apply {
@@ -162,9 +165,6 @@ object TimerModeBottomSheet {
                             .putString("timer_mode", key)
                             .putString("timerMode", key)
                             .putBoolean("lecture_mode_enabled", key == "LECTURE")
-                        if (key == "SUBJECT") {
-                            editor.putBoolean("show_subject_pie_chart", true)
-                        }
                         if (key == "COUNTDOWN") {
                             val pomoMins = sharedPrefs.safeLong("study_interval_minutes", 25L)
                             val workSecs = pomoMins * 60L
@@ -173,6 +173,10 @@ object TimerModeBottomSheet {
                             if (activity.currentTimerState == TimerState.IDLE) {
                                 activity.focusCountdownSecs = workSecs
                                 activity.focusRemainingSecs = workSecs
+                            }
+                        } else if (key == "STOPWATCH") {
+                            if (activity.currentTimerState == TimerState.IDLE) {
+                                activity.focusRemainingSecs = 0L
                             }
                         }
                         editor.apply()
@@ -374,14 +378,74 @@ object TimerModeBottomSheet {
         })
         breakRow.addView(breakCol)
 
+        val isAutoBreak = if (sharedPrefs.contains("pomodoro_auto_break")) {
+            sharedPrefs.getBoolean("pomodoro_auto_break", true)
+        } else if (sharedPrefs.contains("auto_break_enabled")) {
+            val legacy = sharedPrefs.getBoolean("auto_break_enabled", true)
+            sharedPrefs.edit().putBoolean("pomodoro_auto_break", legacy).apply()
+            legacy
+        } else {
+            true
+        }
+
         val breakSwitch = SwitchMaterial(activity).apply {
-            isChecked = sharedPrefs.getBoolean("auto_break_enabled", false)
+            isChecked = isAutoBreak
             setOnCheckedChangeListener { _, isChecked ->
-                sharedPrefs.edit().putBoolean("auto_break_enabled", isChecked).apply()
+                sharedPrefs.edit().putBoolean("pomodoro_auto_break", isChecked).apply()
             }
         }
         breakRow.addView(breakSwitch)
         content.addView(breakRow)
+
+        // Toggle 3: App Blocker (Focus Shield)
+        val isBlockerEnabled = AppBlockerManager.isEnabled(activity)
+        val blockerRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(if (isDark) 0xFF1A1D27.toInt() else 0xFFF8FAFC.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(8)
+            }
+            setOnClickListener {
+                dialog.dismiss()
+                AppBlockerSettingsSheet.show(activity)
+            }
+        }
+        val blockerCol = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        blockerCol.addView(TextView(activity).apply {
+            text = "App Blocker (Focus Shield)"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(textColor)
+        })
+        val blockerDesc = if (isBlockerEnabled) {
+            val count = AppBlockerManager.getBlockedPackages(activity).size
+            "Shield active • $count apps blocked (tap to configure)"
+        } else {
+            "Shield your focus from distracting apps"
+        }
+        blockerCol.addView(TextView(activity).apply {
+            text = blockerDesc
+            textSize = 11.5f
+            setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
+        })
+        blockerRow.addView(blockerCol)
+
+        val blockerChevron = TextView(activity).apply {
+            text = "›"
+            textSize = 18f
+            setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
+            setPadding(dp(8), 0, dp(4), 0)
+        }
+        blockerRow.addView(blockerChevron)
+        content.addView(blockerRow)
 
         scroll.addView(content)
         root.addView(scroll)

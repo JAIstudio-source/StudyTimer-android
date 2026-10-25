@@ -203,28 +203,6 @@ class BackupManager(private val context: Context) {
         }
     }
 
-    fun restorePreAuthSafetySnapshot(): Boolean {
-        val safetyFile = getPreAuthSafetyFile()
-        if (!safetyFile.exists()) return false
-        return try {
-            val jsonString = safetyFile.readText()
-            val importedJsonObject = JSONObject(jsonString)
-            val sharedPrefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val editor = sharedPrefs.edit()
-            editor.clear()
-            sanitizeAndBuildPreferences(importedJsonObject, editor)
-            editor.apply()
-            restoreTimeline(importedJsonObject)
-            restoreSubjectTags(importedJsonObject)
-            restoreExamCountdowns(importedJsonObject)
-            runSilentAutoBackup()
-            true
-        } catch (e: Exception) {
-            android.util.Log.e("BackupManager", "Failed to restore pre-auth safety snapshot", e)
-            false
-        }
-    }
-
     fun runSilentAutoBackup() {
         try {
             val sharedPrefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)

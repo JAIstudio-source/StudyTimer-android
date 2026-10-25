@@ -118,20 +118,4 @@ object NotificationHelper {
         }
     }
 
-    /**
-     * Shows a completion notification on CHANNEL_COMPLETION.
-     */
-    fun showCompletionNotification(context: Context, title: String, text: String) {
-        createAllNotificationChannels(context)
-        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_COMPLETION)
-            .setSmallIcon(R.drawable.ic_small_app_logo)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-
-        nm.notify(NOTIFICATION_ID_COMPLETION, builder.build())
-    }
 }

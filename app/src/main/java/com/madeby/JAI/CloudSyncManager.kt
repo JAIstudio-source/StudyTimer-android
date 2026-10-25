@@ -493,7 +493,7 @@ object CloudSyncManager {
                     } else if (k == "daily_goal_secs") {
                         val localGoal = sharedPrefs.safeLong("daily_goal_secs", 0L)
                         val cloudGoal = cloudPrefs.optLong("daily_goal_secs", 0L)
-                        if (cloudGoal > 0L && (localGoal == 0L || localGoal == 2700L)) {
+                        if (cloudGoal > 0L && localGoal <= 0L) {
                             editor.putLong("daily_goal_secs", cloudGoal)
                             editor.putInt("daily_goal_minutes", (cloudGoal / 60).toInt())
                         }

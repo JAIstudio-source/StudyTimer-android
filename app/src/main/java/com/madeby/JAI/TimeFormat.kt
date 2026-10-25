@@ -15,11 +15,6 @@ object TimeFormat {
         return runCatching { Mode.valueOf(v ?: "SYSTEM") }.getOrDefault(Mode.SYSTEM)
     }
 
-    fun setMode(context: Context, mode: Mode) {
-        context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            .edit().putString(PREF_KEY, mode.name).apply()
-    }
-
     fun is24Hour(context: Context): Boolean {
         return when (currentMode(context)) {
             Mode.H24 -> true

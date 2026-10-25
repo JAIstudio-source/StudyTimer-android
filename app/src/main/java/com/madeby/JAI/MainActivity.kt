@@ -228,6 +228,21 @@ class MainActivity : AppCompatActivity() {
             array.put(obj)
         }
         getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putString("session_goals_json", array.toString()).apply()
+        PlannerStateManager.notifyGoalsChanged()
+    }
+
+    private val plannerGoalListener = object : PlannerStateManager.GoalChangeListener {
+        override fun onGoalsChanged() {
+            runOnUiThread {
+                if (currentPanel == AppPanel.PLANNER) {
+                    buildPlannerPanel()
+                } else if (currentPanel == AppPanel.STATS && currentStatsTab == AppStatsTab.PLANNER) {
+                    refreshStatsPanel()
+                } else {
+                    updateStatsLiveViews()
+                }
+            }
+        }
     }
 
     internal fun resolvePlannerColors(): Pair<Int, Int> =
@@ -369,21 +384,6 @@ class MainActivity : AppCompatActivity() {
     internal fun setLiveWallpaper(type: String) {
         WallpaperManager.setWallpaperType(this, type)
         AppToast.show(this, "Live wallpaper applied!")
-        updateWallpaperLayer()
-        updateVisualStyles()
-        tabPageCache.clear()
-        if (currentPanel == AppPanel.SETTINGS) {
-            navigateToPanel(AppPanel.SETTINGS)
-        }
-    }
-
-    internal fun applyPresetWallpaper(presetId: String) {
-        WallpaperManager.setActivePreset(this, presetId)
-        val preset = WallpaperManager.getPresetById(this, presetId)
-        if (preset != null && !WallpaperManager.hasUserCustomDimAlpha(this)) {
-            WallpaperManager.setWallpaperDimAlpha(this, preset.recommendedDim, isUserExplicit = false)
-        }
-        AppToast.show(this, "Wallpaper applied!")
         updateWallpaperLayer()
         updateVisualStyles()
         tabPageCache.clear()
@@ -658,36 +658,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val CHANNEL_ID = NotificationHelper.CHANNEL_TIMER
-
-    private fun requestNotificationPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT < 33) return
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().remove("notification_perm_prompt_count").apply()
-            return
-        }
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val promptCount = prefs.safeInt("notification_perm_prompt_count", 0)
-
-        if (promptCount == 0 || !ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.POST_NOTIFICATIONS)) {
-            prefs.edit().putInt("notification_perm_prompt_count", promptCount + 1).apply()
-            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
-            return
-        }
-
-        // Theme-styled rationale dialog if rationale is needed
-        showCustomDialog(
-            badge = "NOTIFICATION PERMISSION",
-            title = getString(R.string.notif_permission_title),
-            message = getString(R.string.notif_permission_rationale),
-            positiveText = getString(R.string.btn_allow_upper),
-            onPositive = {
-                prefs.edit().putInt("notification_perm_prompt_count", promptCount + 1).apply()
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), NOTIFICATION_PERMISSION_REQUEST_CODE)
-            },
-            negativeText = getString(R.string.btn_not_now)
-        )
-    }
 
     internal fun showCustomDialog(
         badge: String? = null,
@@ -837,13 +807,6 @@ class MainActivity : AppCompatActivity() {
         return if (showPause) View.VISIBLE else View.GONE
     }
 
-    private fun metricRowBackground(color: Int): GradientDrawable {
-        return GradientDrawable().apply {
-            cornerRadius = dp(16).toFloat()
-            setColor(tintedColor(color, 64))
-        }
-    }
-
     internal fun formatGoalLabel(secs: Long): String {
         val h = secs / 3600
         val m = (secs % 3600) / 60
@@ -857,36 +820,6 @@ class MainActivity : AppCompatActivity() {
     internal fun dailyGoalSecs(): Long = statsEngine.dailyGoalSecs()
 
     internal fun resolveGoalFor(dateStr: String): Long = statsEngine.resolveGoalFor(dateStr)
-
-    internal fun applyHoldToRepeat(view: View, initialDelayMs: Long = 300L, step: () -> Unit) {
-        val repeatHandler = Handler(Looper.getMainLooper())
-        var repeatDelay = initialDelayMs
-        val repeatRunnable = object : Runnable {
-            override fun run() {
-                step()
-                repeatDelay = max(50L, repeatDelay - 25L)
-                repeatHandler.postDelayed(this, repeatDelay)
-            }
-        }
-        view.setOnTouchListener { v, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    v.isPressed = true
-                    step()
-                    repeatDelay = initialDelayMs
-                    repeatHandler.removeCallbacks(repeatRunnable)
-                    repeatHandler.postDelayed(repeatRunnable, initialDelayMs)
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    v.isPressed = false
-                    repeatHandler.removeCallbacks(repeatRunnable)
-                    true
-                }
-                else -> true
-            }
-        }
-    }
 
     internal fun pureWhiteTimerEnabled(): Boolean {
         val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
@@ -948,6 +881,15 @@ class MainActivity : AppCompatActivity() {
                 .apply()
         }
 
+        if (!sharedPrefs.contains("daily_goal_secs") && !sharedPrefs.contains("daily_goal_minutes")) {
+            sharedPrefs.edit()
+                .putLong("daily_goal_secs", StatsEngine.DEFAULT_DAILY_GOAL_SECS)
+                .putInt("daily_goal_minutes", (StatsEngine.DEFAULT_DAILY_GOAL_SECS / 60L).toInt())
+                .apply()
+        }
+
+        PlannerStateManager.addListener(plannerGoalListener)
+
         themeCoordinator = ThemeCoordinator(this)
         backupManager = BackupManager(this)
         themeCoordinator.applyThemeCoordinates()
@@ -955,9 +897,6 @@ class MainActivity : AppCompatActivity() {
         GoalHistoryManager.reconcileAllHistoricalGoals(this)
         createNotificationChannel()
 
-        if (BuildConfig.DEBUG) {
-            TestServerHelper.startIfDebug(this)
-        }
 
         Thread {
             try {
@@ -1102,6 +1041,10 @@ class MainActivity : AppCompatActivity() {
                 if (currentPanel == AppPanel.HEATMAP) {
                     // Pop from full-screen Heatmap back to Insights
                     navigateToPanel(AppPanel.STATS)
+                } else if (currentPanel == AppPanel.STATS && currentStatsTab == AppStatsTab.TIMELINE) {
+                    // Return from Detailed Calendar History back to Stats Overview
+                    currentStatsTab = AppStatsTab.OVERVIEW
+                    navigateToPanel(AppPanel.STATS)
                 } else if (currentPanel == AppPanel.SETTINGS) {
                     handleSettingsBack()
                 } else if (currentPanel != AppPanel.FOCUS) {
@@ -1114,7 +1057,11 @@ class MainActivity : AppCompatActivity() {
                         finish()
                     } else {
                         lastBackTime = now
-                        AppToast.show(this@MainActivity, R.string.toast_press_back_again)
+                        if (currentTimerState != TimerState.IDLE) {
+                            AppToast.show(this@MainActivity, "Timer is active. Press back again to exit.")
+                        } else {
+                            AppToast.show(this@MainActivity, R.string.toast_press_back_again)
+                        }
                     }
                 }
             }
@@ -1335,24 +1282,6 @@ class MainActivity : AppCompatActivity() {
         return false
     }
 
-    private fun swapPanelContent(page: View) {
-        panelContainer.removeAllViews()
-        panelContainer.addView(page)
-        if (currentPanel == AppPanel.SETTINGS) {
-            settingsScrollViewRef = findScrollViewDescendant(page)
-        }
-    }
-
-    private fun findScrollViewDescendant(root: View): ScrollView? {
-        if (root is ScrollView) return root
-        if (root is android.view.ViewGroup) {
-            for (i in 0 until root.childCount) {
-                findScrollViewDescendant(root.getChildAt(i))?.let { return it }
-            }
-        }
-        return null
-    }
-
     internal fun statsTabKey(t: AppStatsTab): String = "S:${t.ordinal}"
     internal fun settingsTabKey(t: AppSettingsTab): String = "ST:${t.ordinal}"
 
@@ -1434,34 +1363,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun swipeStartedOnHorizontalScroll(rawX: Float, rawY: Float): Boolean {
-        val loc = IntArray(2)
-        panelContainer.getLocationOnScreen(loc)
-        val x = rawX - loc[0]
-        val y = rawY - loc[1]
-        if (x < 0 || y < 0 || x > panelContainer.width || y > panelContainer.height) return false
-        val hit = findViewAt(panelContainer, x, y) ?: return false
-        var v: View? = hit
-        while (v != null) {
-            if (v is HorizontalScrollView) return true
-            v = v.parent as? View
-        }
-        return false
-    }
-
-    private fun findViewAt(parent: View, x: Float, y: Float): View? {
-        if (parent is android.view.ViewGroup) {
-            for (i in parent.childCount - 1 downTo 0) {
-                val child = parent.getChildAt(i)
-                if (child.visibility != View.VISIBLE) continue
-                if (x >= child.left && x <= child.right && y >= child.top && y <= child.bottom) {
-                    return findViewAt(child, x - child.left, y - child.top) ?: child
-                }
-            }
-        }
-        return parent
-    }
-
     internal fun buildCurrentPanel() {
         panelContainer.alpha = 1f
         panelContainer.translationX = 0f
@@ -1488,7 +1389,7 @@ class MainActivity : AppCompatActivity() {
         updateStatusBarIcons()
     }
 
-    private fun buildPlannerPanel(target: android.view.ViewGroup = panelContainer) {
+    internal fun buildPlannerPanel(target: android.view.ViewGroup = panelContainer) {
         PlannerPanelBuilder(this).build(target)
     }
 
@@ -1497,10 +1398,6 @@ class MainActivity : AppCompatActivity() {
         val initialSeg = defaultCommunitySegment ?: CommunityPanelBuilder.CommunitySegment.LEADERBOARD
         defaultCommunitySegment = null
         CommunityPanelBuilder(this).build(target, initialSeg)
-    }
-
-    private fun buildLeaderboardPanel(target: android.view.ViewGroup = panelContainer) {
-        LeaderboardPanelBuilder(this).build(target)
     }
 
     internal fun navigateToPanel(targetPanel: AppPanel) {
@@ -1540,6 +1437,10 @@ class MainActivity : AppCompatActivity() {
             CoroutineScope(Dispatchers.IO).launch {
                 backupManager.runSilentAutoBackup()
             }
+        }
+
+        if (currentPanel == AppPanel.COMMUNITY && targetPanel != AppPanel.COMMUNITY) {
+            CommunityPanelBuilder.cancelActivePolling()
         }
 
         if (targetPanel == AppPanel.HEATMAP && currentPanel != AppPanel.HEATMAP) {
@@ -1783,56 +1684,6 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             background = themeCoordinator.createCardBackground()
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(4)) }
-        }
-    }
-
-    private fun createInsightCard(iconRes: Int, color: Int, title: String, statement: String, subtext: String): LinearLayout {
-        return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = themeCoordinator.createCardBackground()
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) }
-
-            val iconBox = FrameLayout(this@MainActivity).apply {
-                background = GradientDrawable().apply { cornerRadius = dp(13).toFloat(); setColor(tintedColor(color, 30)) }
-                layoutParams = LinearLayout.LayoutParams(dp(42), dp(42))
-            }
-            iconBox.addView(ImageView(this@MainActivity).apply {
-                setImageResource(iconRes)
-                setColorFilter(color)
-                contentDescription = title
-                layoutParams = FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER)
-            })
-            addView(iconBox)
-
-            val textCol = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(12), 0, 0, 0) }
-            }
-            textCol.addView(TextView(this@MainActivity).apply {
-                text = title
-                setTextColor(color)
-                textSize = 10f
-                letterSpacing = 0.18f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            })
-            textCol.addView(TextView(this@MainActivity).apply {
-                text = statement
-                setTextColor(themeCoordinator.textColor)
-                textSize = 14f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(0, dp(3), 0, 0)
-            })
-            textCol.addView(TextView(this@MainActivity).apply {
-                text = subtext
-                setTextColor(themeCoordinator.textColor)
-                textSize = 11f
-                alpha = 0.55f
-                setPadding(0, dp(2), 0, 0)
-                visibility = if (subtext.isEmpty()) View.GONE else View.VISIBLE
-            })
-            addView(textCol)
         }
     }
 
@@ -2229,22 +2080,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    internal fun applyRandomBothHues() {
-        val primaryHue = (0..359).random()
-        val secondaryHue = (0..359).random()
-        val primaryColor = Color.HSVToColor(floatArrayOf(primaryHue.toFloat(), 0.65f, 0.95f))
-        val secondaryColor = Color.HSVToColor(floatArrayOf(secondaryHue.toFloat(), 0.65f, 0.95f))
-        getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
-            .putBoolean("dynamic_color", false)
-            .putInt("customHue", primaryHue)
-            .putInt("customPrimary", primaryColor)
-            .putInt("customSecondaryHue", secondaryHue)
-            .putInt("customSecondary", secondaryColor)
-            .apply()
-        themeCoordinator.applyThemeCoordinates()
-        refreshSettingsPanelPreservingScroll()
-    }
-
     private fun buildSettingsPanel(target: android.view.ViewGroup = panelContainer, captureScrollRef: Boolean = true) {
         SettingsPanelBuilder(this).build(target, captureScrollRef)
     }
@@ -2345,10 +2180,8 @@ class MainActivity : AppCompatActivity() {
                     statsDirty = true
                     statsSnapshotCache = null
                     tabPageCache.clear()
-                    if (currentPanel == AppPanel.STATS) {
-                        refreshStatsPanel()
-                    } else if (currentPanel == AppPanel.PLANNER) {
-                        refreshStatsPanel()
+                    if (currentPanel == AppPanel.STATS || currentPanel == AppPanel.PLANNER) {
+                        updateStatsLiveViews()
                     }
                 }
             }
@@ -2669,13 +2502,21 @@ class MainActivity : AppCompatActivity() {
                             val currentSecs = map[activeSub.id]?.second ?: 0L
                             map[activeSub.id] = activeSub to (currentSecs + accumulatedStudy)
                         }
+                        val todayFocusSecs = FocusTimeProvider.getTodayFocusSeconds(this)
+                        val sumRecorded = map.values.sumOf { it.second }
+                        if (todayFocusSecs > sumRecorded) {
+                            val diff = todayFocusSecs - sumRecorded
+                            val genSub = SubjectTagManager.resolveSubject(this, "general", "General Study", "#6366F1")
+                            val curr = map[genSub.id]?.second ?: 0L
+                            map[genSub.id] = genSub to (curr + diff)
+                        }
                         val sortedSubjects = map.values.filter { it.second > 0L }.sortedByDescending { it.second }
                         if (sortedSubjects.isNotEmpty()) {
                             val slicesList = ArrayList<SubjectPieChartView.PieSlice>()
                             for ((subj, secs) in sortedSubjects) {
                                 slicesList.add(SubjectPieChartView.PieSlice(subj.name, subj.iconEmoji, secs.toDouble(), subj.colorHex))
                             }
-                            pieChart.setData(slicesList)
+                            pieChart.setData(slicesList, preserveSelection = true)
                         }
                     }
                 }
@@ -2692,34 +2533,6 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-    }
-
-    internal fun resolveLectureCountdownSecs(context: Context): Long {
-        val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val jsonStr = prefs.getString("lecture_schedules_json", "[]") ?: "[]"
-        val items = loadLectureSchedulesFromJson(jsonStr).filter { it.enabled }
-        if (items.isEmpty()) return 3600L
-
-        val cal = Calendar.getInstance()
-        val currentMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
-
-        for (item in items) {
-            val startMins = parseTimeToMinutes(item.startTime) ?: continue
-            val endMins = parseTimeToMinutes(item.endTime) ?: continue
-
-            if (currentMins in startMins until endMins) {
-                return ((endMins - currentMins) * 60).toLong()
-            } else if (startMins > currentMins) {
-                return ((endMins - startMins) * 60).toLong()
-            }
-        }
-        val first = items.firstOrNull()
-        if (first != null) {
-            val startMins = parseTimeToMinutes(first.startTime) ?: 0
-            val endMins = parseTimeToMinutes(first.endTime) ?: 60
-            return ((endMins - startMins) * 60).toLong()
-        }
-        return 3600L
     }
 
 
@@ -3214,35 +3027,40 @@ class MainActivity : AppCompatActivity() {
                 studyTimerDisplay.setTextColor(timerColor)
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.GONE
                 if (timerMode == "COUNTDOWN") {
-                    mainBtn.text = "Start"
-                    mainBtn.setTextColor(mainBtnTextColor)
+                    pauseBtn.visibility = View.VISIBLE
+                    pauseBtn.text = "Start"
+                    pauseBtn.setTextColor(mainBtnTextColor)
                     if (isPomoWhite) {
-                        mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
+                        pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
                             cornerRadius = dp(20).toFloat()
                             setColor(0xFF000000.toInt())
                         }
                     } else {
-                        mainBtn.background = rippleBackground(themeCoordinator.primaryColor)
+                        pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
                     }
-                    pauseBtn.visibility = View.VISIBLE
-                    pauseBtn.text = "Break"
+                    pauseBtn.setOnClickListener { handleStateToggle() }
+
+                    mainBtn.visibility = View.VISIBLE
+                    mainBtn.text = "Break"
                     if (isPomoWhite) {
-                        pauseBtn.setTextColor(0xFF0F172A.toInt())
-                        pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
+                        mainBtn.setTextColor(0xFF0F172A.toInt())
+                        mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
                             cornerRadius = dp(20).toFloat()
                             setColor(0xFFF1F5F9.toInt())
                         }
                     } else {
-                        pauseBtn.setTextColor(themeCoordinator.textColor)
-                        pauseBtn.background = outlinedButtonBackground()
+                        mainBtn.setTextColor(themeCoordinator.textColor)
+                        mainBtn.background = outlinedButtonBackground()
                     }
-                    pauseBtn.setOnClickListener { showBreakDurationDialog() }
+                    mainBtn.setOnClickListener { showBreakDurationDialog() }
                     stopBtn.visibility = View.GONE
                 } else {
-                    mainBtn.text = "Start"
-                    mainBtn.setTextColor(mainBtnTextColor)
-                    mainBtn.background = rippleBackground(themeCoordinator.primaryColor)
-                    pauseBtn.visibility = View.GONE
+                    pauseBtn.visibility = View.VISIBLE
+                    pauseBtn.text = "Start"
+                    pauseBtn.setTextColor(mainBtnTextColor)
+                    pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
+                    pauseBtn.setOnClickListener { handleStateToggle() }
+                    mainBtn.visibility = View.GONE
                     stopBtn.visibility = View.GONE 
                 }
             }
@@ -3275,7 +3093,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
 
-                // Primary Action during Study: PAUSE is the prominent filled CTA
+                // Slot 0 (Left): Primary CTA - PAUSE
                 pauseBtn.visibility = pauseButtonVisibility()
                 pauseBtn.text = "Pause"
                 pauseBtn.setOnClickListener { handlePause() }
@@ -3290,7 +3108,8 @@ class MainActivity : AppCompatActivity() {
                     pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
                 }
 
-                // Secondary Action during Study: BREAK is subtle outlined
+                // Slot 1 (Center): Auxiliary - BREAK
+                mainBtn.visibility = View.VISIBLE
                 mainBtn.text = "Break"
                 mainBtn.setOnClickListener { handleStateToggle() }
                 if (isPomoWhite) {
@@ -3304,8 +3123,9 @@ class MainActivity : AppCompatActivity() {
                     mainBtn.background = outlinedButtonBackground()
                 }
 
+                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Finish"
+                stopBtn.text = "Hold to Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3325,12 +3145,14 @@ class MainActivity : AppCompatActivity() {
                 statusBadge.background = themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 30f)
                 studyTimerDisplay.setTextColor(timerColor)
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.GONE
-                mainBtn.text = "Break"
-                mainBtn.setTextColor(mainBtnTextColor)
-                mainBtn.background = rippleBackground(themeCoordinator.secondaryColor)
-                pauseBtn.visibility = View.GONE
+                pauseBtn.visibility = View.VISIBLE
+                pauseBtn.text = "Break"
+                pauseBtn.setTextColor(mainBtnTextColor)
+                pauseBtn.background = rippleBackground(themeCoordinator.secondaryColor)
+                pauseBtn.setOnClickListener { handleStateToggle() }
+                mainBtn.visibility = View.GONE
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Finish"
+                stopBtn.text = "Hold to Finish"
                 stopBtn.ringColor = themeCoordinator.primaryColor
                 checkAndShowLecturePrompt()
             }
@@ -3352,33 +3174,38 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
 
-                mainBtn.text = "Resume"
-                mainBtn.setTextColor(mainBtnTextColor)
+                // Slot 0 (Left): Primary CTA - RESUME STUDY
+                pauseBtn.visibility = View.VISIBLE
+                pauseBtn.text = "Resume"
+                pauseBtn.setTextColor(mainBtnTextColor)
                 if (isPomoWhite) {
-                    mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
+                    pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
                         cornerRadius = dp(20).toFloat()
                         setColor(0xFF000000.toInt())
                     }
                 } else {
-                    mainBtn.background = rippleBackground(themeCoordinator.primaryColor)
+                    pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
                 }
+                pauseBtn.setOnClickListener { handleStateToggle() }
 
-                pauseBtn.visibility = pauseButtonVisibility()
-                pauseBtn.text = "Pause"
-                pauseBtn.setOnClickListener { handlePause() }
+                // Slot 1 (Center): Auxiliary - PAUSE BREAK
+                mainBtn.visibility = pauseButtonVisibility()
+                mainBtn.text = "Pause"
+                mainBtn.setOnClickListener { handlePause() }
                 if (isPomoWhite) {
-                    pauseBtn.setTextColor(0xFF0F172A.toInt())
-                    pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
+                    mainBtn.setTextColor(0xFF0F172A.toInt())
+                    mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
                         cornerRadius = dp(20).toFloat()
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
-                    pauseBtn.setTextColor(themeCoordinator.textColor)
-                    pauseBtn.background = outlinedButtonBackground()
+                    mainBtn.setTextColor(themeCoordinator.textColor)
+                    mainBtn.background = outlinedButtonBackground()
                 }
 
+                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Finish"
+                stopBtn.text = "Hold to Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3410,20 +3237,38 @@ class MainActivity : AppCompatActivity() {
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
 
-                mainBtn.text = "Resume"
-                mainBtn.setTextColor(mainBtnTextColor)
+                // Slot 0 (Left): Primary CTA - RESUME
+                pauseBtn.visibility = View.VISIBLE
+                pauseBtn.text = "Resume"
+                pauseBtn.setTextColor(mainBtnTextColor)
                 if (isPomoWhite) {
-                    mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
+                    pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
                         cornerRadius = dp(20).toFloat()
                         setColor(0xFF000000.toInt())
                     }
                 } else {
-                    mainBtn.background = rippleBackground(themeCoordinator.primaryColor)
+                    pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
                 }
+                pauseBtn.setOnClickListener { handleStateToggle() }
 
-                pauseBtn.visibility = View.GONE
+                // Slot 1 (Center): Auxiliary - BREAK
+                mainBtn.visibility = View.VISIBLE
+                mainBtn.text = "Break"
+                if (isPomoWhite) {
+                    mainBtn.setTextColor(0xFF0F172A.toInt())
+                    mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
+                        setColor(0xFFF1F5F9.toInt())
+                    }
+                } else {
+                    mainBtn.setTextColor(themeCoordinator.textColor)
+                    mainBtn.background = outlinedButtonBackground()
+                }
+                mainBtn.setOnClickListener { handleStateToggle() }
+
+                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Finish"
+                stopBtn.text = "Hold to Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3513,26 +3358,8 @@ class MainActivity : AppCompatActivity() {
     }
 
 
-    private fun maybeShowOnboarding() {
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("has_seen_app_guide", false)) return
-        prefs.edit().putBoolean("has_seen_app_guide", true).apply()
-        showAppGuideDialog()
-    }
-
     private fun createNotificationChannel() {
         NotificationHelper.createAllNotificationChannels(this)
-    }
-
-    internal fun ensureExactAlarmPermissionIfNeeded() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            if (!am.canScheduleExactAlarms()) {
-                try {
-                    startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
-                } catch (_: Exception) {}
-            }
-        }
     }
 
     fun syncFlipToFocusState() {
@@ -3578,6 +3405,7 @@ class MainActivity : AppCompatActivity() {
         checkCelebration()
         triggerAutoSyncIfEligible()
         syncFlipToFocusState()
+        AppBlockerManager.onStudyTimerResumed(this)
         val oldProfile = ProfileManager.getProfile(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             val updated = ProfileSyncService.refreshProfileStatus(this@MainActivity)
@@ -3585,7 +3413,7 @@ class MainActivity : AppCompatActivity() {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     if (!isFinishing && !isDestroyed) {
                         AppToast.show(this@MainActivity, "🎉 Your profile changes have been approved by the moderator!", Toast.LENGTH_LONG)
-                        if (currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.LEADERBOARD) {
+                        if (currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.COMMUNITY || currentPanel == AppPanel.LEADERBOARD) {
                             buildCurrentPanel()
                         }
                     }
@@ -3594,7 +3422,7 @@ class MainActivity : AppCompatActivity() {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     if (!isFinishing && !isDestroyed) {
                         AppToast.show(this@MainActivity, "⚠️ Your recent profile edit was not approved.", Toast.LENGTH_LONG)
-                        if (currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.LEADERBOARD) {
+                        if (currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.COMMUNITY || currentPanel == AppPanel.LEADERBOARD) {
                             buildCurrentPanel()
                         }
                     }
@@ -3693,6 +3521,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        PlannerStateManager.removeListener(plannerGoalListener)
         liveWallpaperView?.release()
         systemDialogHelper.dismissDialogs()
         handler.removeCallbacks(holdToEndRunnable)
@@ -4074,6 +3903,7 @@ class MainActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         hasPlayedStatsEntranceAnimation = false
+        CommunityPanelBuilder.cancelActivePolling()
     }
 
 }

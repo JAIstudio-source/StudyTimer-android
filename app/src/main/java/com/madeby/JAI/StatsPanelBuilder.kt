@@ -289,39 +289,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
         panelContainer.addView(root)
     }
 
-    internal fun showDeleteGoalDialog(dateStr: String, dateLabel: String) {
-        val focusSecs = sharedPrefs.getLong("day_focus_$dateStr", 0L)
-        val formattedFocus = if (focusSecs >= 3600) "${focusSecs / 3600}h ${(focusSecs % 3600) / 60}m" else "${(focusSecs % 3600) / 60}m"
-
-        DialogFactory.showConfirmationDialog(
-            context = host,
-            themeCoordinator = themeCoordinator,
-            title = "Delete Goal & Habit History?",
-            message = "Date: $dateLabel\nRecorded Focus: $formattedFocus\n\nWould you like to keep or delete this goal history entry?",
-            positiveText = "Delete",
-            negativeText = "Keep",
-            isDestructive = true,
-            onConfirm = {
-                sharedPrefs.edit()
-                    .remove("day_focus_$dateStr")
-                    .remove("daily_goal_sec_$dateStr")
-                    .apply()
-                TimelineLogger.deleteDay(host, dateStr)
-                SubjectTagManager.clearTodaySubjectDurations(host, dateStr)
-                statsSnapshotCache = null
-                tabPageCache.remove(statsTabKey(AppStatsTab.OVERVIEW))
-                tabPageCache.remove(statsTabKey(AppStatsTab.TIMELINE))
-                if (currentPanel == AppPanel.STATS || currentPanel == AppPanel.HEATMAP) {
-                    navigateToPanel(currentPanel)
-                }
-                AppToast.show(host, "Goal history deleted for $dateLabel")
-                CoroutineScope(Dispatchers.IO).launch {
-                    CloudSyncManager.syncDataToCloud(host)
-                }
-            }
-        )
-    }
-
     internal fun showStreakFreezeDialog() {
         val dialog = Dialog(host)
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
@@ -543,43 +510,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
         dialog.show()
     }
 
-    private var insightsPillBarRef: InsightsPillNavBar? = null
-
-    internal fun buildStatsTabScrollView(snap: StatsSnapshot, tab: AppStatsTab, todayStr: String): ScrollView {
-        val scroll = ScrollView(host).apply {
-            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            setBackgroundColor(Color.TRANSPARENT)
-            isFillViewport = true
-            isVerticalScrollBarEnabled = false
-            isHorizontalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                setOnScrollChangeListener { _, _, scrollY, _, oldScrollY ->
-                    val dy = scrollY - oldScrollY
-                    if (dy > 12 && scrollY > dp(40)) {
-                        insightsPillBarRef?.setBarVisibility(false)
-                    } else if (dy < -12 || scrollY <= dp(10)) {
-                        insightsPillBarRef?.setBarVisibility(true)
-                    }
-                }
-            }
-        }
-        val content = LinearLayout(host).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(dp(4), dp(8), dp(4), dp(96)) // 96dp bottom padding so cards never clip under pill
-        }
-        scroll.addView(content)
-
-        when (tab) {
-            AppStatsTab.OVERVIEW -> renderOverviewTabContent(content, snap) {
-                insightsPillBarRef?.selectTab(AppStatsTab.TIMELINE)
-            }
-            AppStatsTab.TIMELINE -> CalendarTimeline(host).build(content, snap, todayStr)
-            AppStatsTab.PLANNER -> PlannerPanelBuilder(host).renderPlannerTabContent(content, snap)
-        }
-        return scroll
-    }
 
     internal fun renderStatsContent(statsRoot: FrameLayout, snap: StatsSnapshot, tab: AppStatsTab = currentStatsTab) {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
@@ -601,6 +531,56 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val header = UniversalHeaderHelper.createHeader(host, title = "INSIGHTS")
         mainColumn.addView(header)
 
+        // 2. Insights Subtab Segment Control (Overview vs Timeline & History)
+        val tabSegment = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            val isDark = themeCoordinator.isDarkMode()
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(if (isDark) 0x331E293B.toInt() else 0x22CBD5E1.toInt())
+                setStroke(dp(1), if (isDark) 0x44475569.toInt() else 0x40CBD5E1.toInt())
+            }
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(14), dp(2), dp(14), dp(8))
+            }
+        }
+
+        fun makeTabBtn(title: String, targetTab: AppStatsTab): TextView {
+            val isSelected = (tab == targetTab)
+            return TextView(host).apply {
+                text = title
+                textSize = 12.5f
+                gravity = Gravity.CENTER
+                typeface = themeCoordinator.getAppTypeface(isBold = isSelected)
+                setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                alpha = if (isSelected) 1f else 0.7f
+                background = if (isSelected) {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(16).toFloat()
+                        setColor(themeCoordinator.primaryColor)
+                    }
+                } else null
+                setPadding(dp(16), dp(7), dp(16), dp(7))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                setOnClickListener {
+                    if (tab != targetTab) {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        host.currentStatsTab = targetTab
+                        renderStatsContent(statsRoot, snap, targetTab)
+                    }
+                }
+            }
+        }
+
+        tabSegment.addView(makeTabBtn("Overview", AppStatsTab.OVERVIEW))
+        tabSegment.addView(makeTabBtn("Timeline & History", AppStatsTab.TIMELINE))
+        mainColumn.addView(tabSegment)
+
         val scroll = ScrollView(host).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
             isFillViewport = true
@@ -617,20 +597,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
         scroll.addView(content)
 
         if (tab == AppStatsTab.TIMELINE) {
-            val backToOverviewBtn = TextView(host).apply {
-                text = "← Back to Overview"
-                textSize = 13f
-                typeface = themeCoordinator.getAppTypeface(isBold = true)
-                setTextColor(themeCoordinator.primaryColor)
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(8), dp(12), dp(10))
-                setOnClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    host.currentStatsTab = AppStatsTab.OVERVIEW
-                    renderStatsContent(statsRoot, snap, AppStatsTab.OVERVIEW)
-                }
-            }
-            content.addView(backToOverviewBtn)
             CalendarTimeline(host).build(content, snap, todayStr)
         } else {
             renderOverviewTabContent(content, snap) {
@@ -662,6 +628,9 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val avg7 = snap.avg7
         val avgH = avg7 / 3600
         val avgM = (avg7 % 3600) / 60
+
+        var syncPieFromBar: ((Int) -> Unit)? = null
+        var syncBarFromPie: ((SubjectTagManager.SubjectStatsPeriod) -> Unit)? = null
 
         val chartCard = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -961,6 +930,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         sharedPrefs.edit().putInt("selected_days_filter", selectedDaysFilter).apply()
                         refreshChipStyles()
                         buildChartFn(selectedDaysFilter)
+                        syncPieFromBar?.invoke(selectedDaysFilter)
                     }
                 }
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, dp(6), 0) }
@@ -1189,6 +1159,23 @@ class StatsPanelBuilder(private val host: MainActivity) {
                             map[subj.id] = subj to (currentSecs + secs)
                         }
                     }
+                    val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                    val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
+                    val runningStudy = if (timerState == "STUDYING" || timerState == "PAUSED") prefs.getLong("accumulatedStudy", 0L) else 0L
+                    val hasLive = allDaySessions.any { it.running }
+                    if (!hasLive && runningStudy > 0L) {
+                        val activeSub = SubjectTagManager.getSelectedSubject(host)
+                        val currentSecs = map[activeSub.id]?.second ?: 0L
+                        map[activeSub.id] = activeSub to (currentSecs + runningStudy)
+                    }
+                    val todayFocusSecs = FocusTimeProvider.getTodayFocusSeconds(host)
+                    val sumRecorded = map.values.sumOf { it.second }
+                    if (todayFocusSecs > sumRecorded) {
+                        val diff = todayFocusSecs - sumRecorded
+                        val genSub = SubjectTagManager.resolveSubject(host, "general", "General Study", "#6366F1")
+                        val curr = map[genSub.id]?.second ?: 0L
+                        map[genSub.id] = genSub to (curr + diff)
+                    }
                     map
                 }
                 SubjectTagManager.SubjectStatsPeriod.WEEK -> {
@@ -1207,8 +1194,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
             val sortedSubjects = subjectMap.values
                 .filter { it.second > 0L }
                 .sortedByDescending { it.second }
-
-
 
             if (sortedSubjects.isEmpty() || totalSecsAll < 60L) {
                 val emptyBox = LinearLayout(host).apply {
@@ -1246,14 +1231,8 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     isDonutMode = isDonut
                     boxColor = if (themeCoordinator.isDarkMode()) (if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF111625.toInt()) else 0xFFFFFFFF.toInt()
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(340))
-                    setOnClickListener { showPieChartDetailsModal(initialPeriod = activePiePeriod) }
-                    onSliceSelectedListener = { slice, _ ->
-                        if (slice != null && (slice.label == "Others" || slice.bundledSlices.isNotEmpty())) {
-                            SubjectDialogHelper(host).showOthersBreakdownDialog(slice, totalSecsAll.toDouble())
-                        }
-                    }
                 }
-                pieView.setData(slicesList)
+                pieView.setData(slicesList, preserveSelection = true)
                 container.addView(pieView)
 
                 // Note: Duplicate bottom "View Details" button removed as the card header already provides a sleek action link
@@ -1289,12 +1268,43 @@ class StatsPanelBuilder(private val host: MainActivity) {
                             activePiePeriod = p
                             renderPeriodTabs()
                             updatePieChartContent(pieContentContainer)
+                            syncBarFromPie?.invoke(p)
                         }
                     }
                 }
                 periodTabsRow.addView(tabBtn)
             }
         }
+
+        syncPieFromBar = { days ->
+            val targetPeriod = when (days) {
+                7 -> SubjectTagManager.SubjectStatsPeriod.WEEK
+                30 -> SubjectTagManager.SubjectStatsPeriod.MONTH
+                -1 -> SubjectTagManager.SubjectStatsPeriod.ALL_TIME
+                else -> null
+            }
+            if (targetPeriod != null && activePiePeriod != targetPeriod) {
+                activePiePeriod = targetPeriod
+                renderPeriodTabs()
+                updatePieChartContent(pieContentContainer)
+            }
+        }
+
+        syncBarFromPie = { period ->
+            val targetDays = when (period) {
+                SubjectTagManager.SubjectStatsPeriod.WEEK -> 7
+                SubjectTagManager.SubjectStatsPeriod.MONTH -> 30
+                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> -1
+                else -> null
+            }
+            if (targetDays != null && selectedDaysFilter != targetDays) {
+                selectedDaysFilter = targetDays
+                sharedPrefs.edit().putInt("selected_days_filter", targetDays).apply()
+                refreshChipStyles()
+                buildChartFn(targetDays)
+            }
+        }
+
         renderPeriodTabs()
 
         pieCard.addView(pieContentContainer)
@@ -1646,7 +1656,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 isFocusable = true
                 setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    StudyScorecardExportHelper(host).showExportDialog(snap)
+                    host.showStudyScorecardExportDialog()
                 }
             }
 
@@ -1914,6 +1924,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(10), dp(4), dp(4), dp(4))
                 setOnClickListener {
                     sharedPrefs.edit().putBoolean("show_focus_pattern", false).apply()
+                    invalidateStatsCache()
                     (patternCard.parent as? android.view.ViewGroup)?.removeView(patternCard)
                     AppToast.show(host, "Daily Study Rhythm hidden (re-enable in Settings)")
                 }
@@ -2099,7 +2110,8 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 rebuildCells()
             }
             rebuildCells()
-            if (snap.showPattern) {
+            val isPatternVisible = sharedPrefs.getBoolean("show_focus_pattern", true) && snap.showPattern
+            if (isPatternVisible) {
                 (patternCard.parent as? android.view.ViewGroup)?.removeView(patternCard)
                 content.addView(patternCard)
             }
@@ -2155,7 +2167,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             }
             host.navigateToPanel(AppPanel.STATS)
         } else if (host.currentPanel == AppPanel.PLANNER) {
-            host.updateStatsLiveViews()
+            host.buildPlannerPanel()
         }
     }
 

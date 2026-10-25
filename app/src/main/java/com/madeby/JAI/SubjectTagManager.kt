@@ -401,20 +401,6 @@ object SubjectTagManager {
         return list
     }
 
-    fun getWeeklySubjectSeconds(context: Context, subjectId: String): Long {
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val mon = WeekHelper.mondayOf(java.util.Calendar.getInstance())
-        var total = 0L
-        for (i in 0..6) {
-            val dCal = mon.clone() as java.util.Calendar
-            dCal.add(java.util.Calendar.DAY_OF_YEAR, i)
-            val dStr = sdf.format(dCal.time)
-            val map = getSubjectDurationsForDate(context, dStr)
-            total += map[subjectId] ?: 0L
-        }
-        return total
-    }
-
     fun getSelectedSubject(context: Context): SubjectTag {
         val all = getAllSubjects(context)
         val id = getPrefs(context).getString(KEY_SELECTED_SUBJECT, "general") ?: "general"
@@ -797,10 +783,6 @@ object SubjectTagManager {
             dailyJson.remove(dateKey)
             prefs.edit().putString(KEY_DAILY_SUBJECT_DURATIONS, dailyJson.toString()).apply()
         } catch (_: Exception) {}
-    }
-
-    fun clearAllSubjectDurations(context: Context) {
-        getPrefs(context).edit().remove(KEY_SUBJECT_DURATIONS).remove(KEY_DAILY_SUBJECT_DURATIONS).apply()
     }
 
     fun getSubjectHeatmapData(context: Context, subjectId: String): Map<String, Long> {

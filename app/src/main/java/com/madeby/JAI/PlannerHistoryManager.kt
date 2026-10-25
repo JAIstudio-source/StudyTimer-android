@@ -19,16 +19,6 @@ data class GoalInsights(
     val bestWeekday: String
 )
 
-data class OverallPlannerInsights(
-    val bestStreakGoalTitle: String,
-    val bestStreakDays: Int,
-    val mostConsistentGoalTitle: String,
-    val mostConsistentPct: Int,
-    val bestWeekdayName: String,
-    val overallCompletionPct: Int,
-    val hasEnoughData: Boolean
-)
-
 data class GoalProgress(
     val goalId: String,
     val actualMinutes: Int,
@@ -420,10 +410,6 @@ object PlannerHistoryManager {
         editor.apply()
     }
 
-    fun loadGoalHistory(context: Context, goalId: String): Map<String, Boolean> {
-        return loadGoalHistoryDetailed(context, goalId).mapValues { it.value == GoalHistoryStatus.ACHIEVED }
-    }
-
     fun computeGoalInsights(
         context: Context,
         goalId: String,
@@ -498,73 +484,6 @@ object PlannerHistoryManager {
             longestStreak = maxStreak,
             completionRate = completionRate,
             bestWeekday = bestWeekdayName
-        )
-    }
-
-    fun computeOverallPlannerInsights(context: Context, currentGoals: List<PlannerGoal>): OverallPlannerInsights {
-        if (currentGoals.isEmpty()) {
-            return OverallPlannerInsights("", 0, "", 0, "N/A", 0, false)
-        }
-
-        var maxStreakVal = 0
-        var maxStreakGoalTitle = ""
-
-        var maxRateVal = 0f
-        var maxRateGoalTitle = ""
-
-        var totalGoalDays = 0
-        var totalCompletedDays = 0
-
-        val weekdayTotals = IntArray(7)
-
-        for (goal in currentGoals) {
-            val insights = computeGoalInsights(context, goal.id)
-            if (insights.totalDaysTracked > 0) {
-                totalGoalDays += insights.totalDaysTracked
-                totalCompletedDays += insights.completedDays
-
-                if (insights.longestStreak > maxStreakVal) {
-                    maxStreakVal = insights.longestStreak
-                    maxStreakGoalTitle = goal.title
-                }
-
-                if (insights.completionRate > maxRateVal) {
-                    maxRateVal = insights.completionRate
-                    maxRateGoalTitle = goal.title
-                }
-            }
-        }
-
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        for (key in prefs.all.keys) {
-            if (key.endsWith(SNAPSHOT_KEY_SUFFIX)) {
-                val dStr = key.removeSuffix(SNAPSHOT_KEY_SUFFIX)
-                val parsed = runCatching { sdf.parse(dStr) }.getOrNull() ?: continue
-                val cal = Calendar.getInstance().apply { time = parsed }
-                val idx = cal.get(Calendar.DAY_OF_WEEK) - 1
-                val rawJson = prefs.getString(key, null) ?: continue
-                val snapshots = parseSnapshots(rawJson)
-                val completedCount = snapshots.count { it.completed }
-                weekdayTotals[idx] += completedCount
-            }
-        }
-
-        val bestDayIdx = (0 until 7).maxByOrNull { weekdayTotals[it] } ?: 0
-        val dayNameSdf = SimpleDateFormat("EEEE", Locale.getDefault())
-        val bestDayName = dayNameSdf.format(Calendar.getInstance().apply { set(Calendar.DAY_OF_WEEK, bestDayIdx + 1) }.time)
-
-        val overallPct = if (totalGoalDays > 0) (totalCompletedDays * 100) / totalGoalDays else 0
-        val hasEnoughData = totalGoalDays >= 3 || currentGoals.any { it.completed }
-
-        return OverallPlannerInsights(
-            bestStreakGoalTitle = if (maxStreakGoalTitle.isNotBlank()) maxStreakGoalTitle else currentGoals.first().title,
-            bestStreakDays = maxStreakVal,
-            mostConsistentGoalTitle = if (maxRateGoalTitle.isNotBlank()) maxRateGoalTitle else currentGoals.first().title,
-            mostConsistentPct = (maxRateVal * 100).toInt(),
-            bestWeekdayName = bestDayName,
-            overallCompletionPct = overallPct,
-            hasEnoughData = hasEnoughData
         )
     }
 }

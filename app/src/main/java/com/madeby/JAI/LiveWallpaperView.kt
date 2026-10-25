@@ -330,6 +330,7 @@ class LiveWallpaperView @JvmOverloads constructor(
                 "LIVE_AURORA" -> drawAurora(canvas, w, h, t)
                 "LIVE_COSMIC" -> drawCosmic(canvas, w, h, t)
                 "LIVE_LOFI_RAIN" -> drawRain(canvas, w, h)
+                "LIVE_AMBER_GLOW" -> drawAmberGlow(canvas, w, h, t)
                 else -> drawAurora(canvas, w, h, t)
             }
 

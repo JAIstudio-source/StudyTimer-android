@@ -177,12 +177,24 @@ class SubjectPieChartView(context: Context) : View(context) {
         }
     }
 
-    fun setData(items: List<PieSlice>) {
+    fun setData(items: List<PieSlice>, preserveSelection: Boolean = true) {
+        val previousSelectedLabel = if (selectedSliceIndex in slices.indices) slices[selectedSliceIndex].label else null
         rawItems.clear()
         rawItems.addAll(items.filter { it.value > 0 })
-        selectedSliceIndex = -1
-        popAnimProgress = 0f
         rebuildSlices()
+        if (preserveSelection && previousSelectedLabel != null) {
+            val newIdx = slices.indexOfFirst { it.label == previousSelectedLabel }
+            if (newIdx != -1) {
+                selectedSliceIndex = newIdx
+                popAnimProgress = 1f
+            } else {
+                selectedSliceIndex = -1
+                popAnimProgress = 0f
+            }
+        } else if (!preserveSelection) {
+            selectedSliceIndex = -1
+            popAnimProgress = 0f
+        }
         invalidate()
     }
 
@@ -209,16 +221,6 @@ class SubjectPieChartView(context: Context) : View(context) {
         }
 
         totalVal = slices.sumOf { it.value }.coerceAtLeast(0.001)
-    }
-
-    fun selectSlice(index: Int) {
-        if (index == selectedSliceIndex) {
-            clearSelection()
-            return
-        }
-        selectedSliceIndex = if (index in slices.indices) index else -1
-        animatePop()
-        onSliceSelectedListener?.invoke(if (selectedSliceIndex >= 0) slices[selectedSliceIndex] else null, selectedSliceIndex)
     }
 
     fun clearSelection() {
@@ -273,13 +275,9 @@ class SubjectPieChartView(context: Context) : View(context) {
 
                 if (isDonutMode && dist < innerRadius) {
                     // Tapped the center HUD in Donut mode
-                    if (selectedSliceIndex != -1) {
+                    if (selectedSliceIndex != -1 && selectedSliceIndex in slices.indices) {
                         val sel = slices[selectedSliceIndex]
-                        if (sel.label == "Others" || sel.bundledSlices.isNotEmpty()) {
-                            onSliceSelectedListener?.invoke(sel, selectedSliceIndex)
-                        } else {
-                            clearSelection()
-                        }
+                        onSliceSelectedListener?.invoke(sel, selectedSliceIndex)
                     } else {
                         performClick()
                     }
@@ -303,8 +301,8 @@ class SubjectPieChartView(context: Context) : View(context) {
 
                     if (clickedIndex != -1) {
                         if (clickedIndex == selectedSliceIndex) {
-                            // Tapping the already elevated slice un-elevates / deselects it!
-                            clearSelection()
+                            // Tapping the already elevated slice opens its comprehensive details breakdown
+                            onSliceSelectedListener?.invoke(slices[selectedSliceIndex], selectedSliceIndex)
                         } else {
                             selectedSliceIndex = clickedIndex
                             animatePop()
@@ -317,10 +315,8 @@ class SubjectPieChartView(context: Context) : View(context) {
 
             if (pillRectF.contains(event.x, event.y) && selectedSliceIndex in slices.indices) {
                 val sel = slices[selectedSliceIndex]
-                if (sel.label == "Others" || sel.bundledSlices.isNotEmpty()) {
-                    onSliceSelectedListener?.invoke(sel, selectedSliceIndex)
-                    return true
-                }
+                onSliceSelectedListener?.invoke(sel, selectedSliceIndex)
+                return true
             }
 
             // Tapping empty space / anywhere outside the chart deselects any elevated slice!

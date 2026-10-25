@@ -313,7 +313,4 @@ class ThemeCoordinator(private val context: Context) {
         return if (isBold) FontStyleManager.getBoldTypeface(context) else FontStyleManager.getNormalTypeface(context)
     }
 
-    fun applyTypography(textView: android.widget.TextView, isBold: Boolean = false) {
-        FontStyleManager.applyTo(textView, isBold)
-    }
 }

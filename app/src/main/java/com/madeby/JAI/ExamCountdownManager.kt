@@ -226,34 +226,4 @@ object ExamCountdownManager {
         )
     }
 
-    /**
-     * Compact display string for small card badge.
-     */
-    fun formatShortCountdown(targetMs: Long): String {
-        val breakdown = getCountdownBreakdown(targetMs)
-        return if (breakdown.isToday) {
-            "Today"
-        } else if (breakdown.isPast) {
-            "${breakdown.daysAgo}d ago"
-        } else {
-            breakdown.mainHeadline
-        }
-    }
-
-    /**
-     * Clean detailed decomposition string (e.g. "4 Months, 1 Day, 6 Hours").
-     */
-    fun formatDetailedCountdown(targetMs: Long): String {
-        val breakdown = getCountdownBreakdown(targetMs)
-        if (breakdown.isToday) return "Exam is scheduled for today"
-        if (breakdown.isPast) return "Exam date passed ${breakdown.daysAgo} days ago"
-
-        val parts = mutableListOf<String>()
-        if (breakdown.monthsPart > 0) parts.add("${breakdown.monthsPart} ${if (breakdown.monthsPart == 1L) "Month" else "Months"}")
-        if (breakdown.daysPart > 0) parts.add("${breakdown.daysPart} ${if (breakdown.daysPart == 1L) "Day" else "Days"}")
-        if (breakdown.hoursPart > 0 && breakdown.monthsPart == 0L) parts.add("${breakdown.hoursPart} ${if (breakdown.hoursPart == 1L) "Hour" else "Hours"}")
-        if (breakdown.minsPart > 0 && breakdown.monthsPart == 0L) parts.add("${breakdown.minsPart} ${if (breakdown.minsPart == 1L) "Min" else "Mins"}")
-
-        return if (parts.isNotEmpty()) parts.joinToString(", ") else "Less than 1 minute left"
-    }
 }

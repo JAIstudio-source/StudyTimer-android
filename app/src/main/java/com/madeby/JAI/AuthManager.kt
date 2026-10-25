@@ -127,9 +127,6 @@ object AuthManager {
         return getPrefs(context).getString(KEY_USER_ID, null) ?: getUserEmail(context)
     }
 
-    fun getLastActiveUserId(context: Context): String? {
-        return getPrefs(context).getString(KEY_LAST_ACTIVE_USER_ID, null)
-    }
 
     fun getAccessToken(context: Context): String? {
         return getPrefs(context).getString(KEY_ACCESS_TOKEN, null)
@@ -172,10 +169,6 @@ object AuthManager {
         logout(context)
     }
 
-    fun hasAcceptedTerms(context: Context): Boolean {
-        val prefs = getPrefs(context)
-        return prefs.getLong(KEY_TERMS_ACCEPTED_EPOCH, 0L) > 0L
-    }
 
     fun recordTermsConsent(
         context: Context,

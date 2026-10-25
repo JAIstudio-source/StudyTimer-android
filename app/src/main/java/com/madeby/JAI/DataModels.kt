@@ -13,7 +13,12 @@ enum class AppPanel {
     LEADERBOARD 
 }
 enum class TimerState { IDLE, STUDYING, BREAK, PAUSED, LECTURE_ENDED }
-enum class AppStatsTab { OVERVIEW, TIMELINE, PLANNER }
+enum class AppStatsTab { 
+    OVERVIEW, 
+    TIMELINE, 
+    @Deprecated("Legacy subtab; Planner is now a top-level panel", ReplaceWith("AppPanel.PLANNER"))
+    PLANNER 
+}
 enum class LeaderboardPeriod { DAILY, WEEKLY, MONTHLY }
 
 data class LeaderboardEntry(
@@ -33,7 +38,6 @@ data class LeaderboardEntry(
 enum class AppSettingsTab { 
     HUB, 
     TIMER, 
-    AMBIENCE, 
     ANALYTICS, 
     PLANNER,
     CLOUD, 
@@ -92,12 +96,4 @@ data class LectureScheduleItem(
     val endTime: String,   // "HH:mm" e.g. "11:00"
     val enabled: Boolean = true,
     val subjectId: String = "general"
-)
-
-data class AchievementBadge(
-    val id: String,
-    val title: String,
-    val description: String,
-    val icon: String,
-    val isUnlocked: Boolean
 )

@@ -42,34 +42,6 @@ object LocalAvatarManager {
         return GOOGLE_PALETTE[hash % GOOGLE_PALETTE.size]
     }
 
-    fun getLetterAvatarBitmap(name: String?, targetSizePx: Int): Bitmap {
-        val letter = name?.trim()?.firstOrNull()?.uppercaseChar()?.toString() ?: "S"
-        val bgColor = getGoogleAvatarColor(name)
-        val bitmap = Bitmap.createBitmap(targetSizePx, targetSizePx, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-
-        // Draw Google-colored Circle
-        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = bgColor
-            style = Paint.Style.FILL
-        }
-        val radius = targetSizePx / 2f
-        canvas.drawCircle(radius, radius, radius, bgPaint)
-
-        // Draw Bold White Letter
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.WHITE
-            textSize = targetSizePx * 0.48f
-            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-        val fontMetrics = textPaint.fontMetrics
-        val yOffset = radius - (fontMetrics.ascent + fontMetrics.descent) / 2f
-        canvas.drawText(letter, radius, yOffset, textPaint)
-
-        return bitmap
-    }
-
     fun getAvatarFile(context: Context): File {
         return File(context.filesDir, AVATAR_FILE_NAME)
     }
@@ -100,62 +72,6 @@ object LocalAvatarManager {
             AuthManager.saveProfileImageUri(context, targetFile.absolutePath)
             markAvatarPendingUpload(context, true)
             true
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    fun saveAvatarFromUri(context: Context, uri: Uri): Boolean {
-        return try {
-            val inputStream: InputStream? = context.contentResolver.openInputStream(uri)
-            if (inputStream != null) {
-                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                var tempStream = context.contentResolver.openInputStream(uri)
-                BitmapFactory.decodeStream(tempStream, null, options)
-                tempStream?.close()
-
-                val origWidth = options.outWidth
-                val origHeight = options.outHeight
-                if (origWidth <= 0 || origHeight <= 0) return false
-
-                var sampleSize = 1
-                while (origWidth / sampleSize > MAX_DIMENSION * 2 || origHeight / sampleSize > MAX_DIMENSION * 2) {
-                    sampleSize *= 2
-                }
-
-                val decodeOptions = BitmapFactory.Options().apply {
-                    inSampleSize = sampleSize
-                    inPreferredConfig = Bitmap.Config.ARGB_8888
-                }
-
-                tempStream = context.contentResolver.openInputStream(uri)
-                val sampledBitmap = BitmapFactory.decodeStream(tempStream, null, decodeOptions)
-                tempStream?.close()
-
-                if (sampledBitmap == null) return false
-
-                val size = Math.min(sampledBitmap.width, sampledBitmap.height)
-                val xOffset = (sampledBitmap.width - size) / 2
-                val yOffset = (sampledBitmap.height - size) / 2
-                val squareBitmap = Bitmap.createBitmap(sampledBitmap, xOffset, yOffset, size, size)
-
-                val finalBitmap = if (size > MAX_DIMENSION) {
-                    Bitmap.createScaledBitmap(squareBitmap, MAX_DIMENSION, MAX_DIMENSION, true)
-                } else {
-                    squareBitmap
-                }
-
-                val targetFile = getAvatarFile(context)
-                val fos = FileOutputStream(targetFile)
-                finalBitmap.compress(Bitmap.CompressFormat.JPEG, COMPRESS_QUALITY, fos)
-                fos.flush()
-                fos.close()
-                AuthManager.saveProfileImageUri(context, targetFile.absolutePath)
-                markAvatarPendingUpload(context, true)
-                true
-            } else {
-                false
-            }
         } catch (_: Exception) {
             false
         }

@@ -48,21 +48,43 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             setPadding(0, 0, 0, dp(14))
         })
 
-        val options = listOf(
+        val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val customBreakMins = prefs.safeLong("break_interval_minutes", 5L)
+        val customSecs = customBreakMins * 60L
+
+        val options = mutableListOf<Pair<String, Long>>()
+        options.add(Pair("$customBreakMins Minutes (Your Default)", customSecs))
+
+        val standardOptions = listOf(
             Pair("5 Minutes (Quick Rest)", 300L),
             Pair("10 Minutes (Standard)", 600L),
             Pair("15 Minutes (Deep Rest)", 900L),
             Pair("20 Minutes (Long Break)", 1200L),
             Pair("30 Minutes (Meal / Walk)", 1800L)
         )
+        for (opt in standardOptions) {
+            if (opt.second != customSecs) {
+                options.add(opt)
+            }
+        }
 
-        for ((label, secs) in options) {
+        for (i in options.indices) {
+            val (label, secs) = options[i]
+            val isCustomDefault = (i == 0)
             val btn = Button(host).apply {
                 text = label
                 textSize = 13.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(themeCoordinator.textColor)
-                background = themeCoordinator.createCardBackground(14f)
+                setTextColor(if (isCustomDefault) themeCoordinator.primaryColor else themeCoordinator.textColor)
+                background = if (isCustomDefault) {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(tintedColor(themeCoordinator.primaryColor, 35))
+                        setStroke(dp(1), themeCoordinator.primaryColor)
+                    }
+                } else {
+                    themeCoordinator.createCardBackground(14f)
+                }
                 setPadding(dp(16), dp(12), dp(16), dp(12))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,

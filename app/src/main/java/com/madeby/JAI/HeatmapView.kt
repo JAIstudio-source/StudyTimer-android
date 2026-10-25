@@ -330,8 +330,5 @@ class HeatmapView @JvmOverloads constructor(
         super.performClick()
         return true
     }
-
-    private fun parseSafe(dateStr: String): Date {
-        return try { dateSdf.parse(dateStr) ?: Date() } catch (_: Exception) { Date() }
-    }
 }
+

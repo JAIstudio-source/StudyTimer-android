@@ -11,12 +11,9 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -58,6 +55,46 @@ class TimerService : Service() {
     private var isPendingActivityConfirmation: Boolean = false
     private var activityConfirmationPromptTime: Long = 0L
     private var activeSessionDateStr: String? = null
+
+    // Fast Foreground App Blocker Monitor (120ms polling during study session)
+    private var blockerMonitorJob: Job? = null
+
+    private fun startBlockerMonitorIfNeeded() {
+        if (blockerMonitorJob?.isActive == true) return
+        if (currentTimerState != TimerState.STUDYING) return
+        if (!AppBlockerManager.isEnabled(this)) return
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+
+        blockerMonitorJob = serviceScope.launch(Dispatchers.IO) {
+            while (isActive && currentTimerState == TimerState.STUDYING && AppBlockerManager.isEnabled(this@TimerService)) {
+                // Screen-Off Power Suspension: when screen is turned off or locked,
+                // suspend aggressive polling to save ~90% battery.
+                if (powerManager?.isInteractive == false) {
+                    delay(1000L)
+                    continue
+                }
+
+                val isSelfInForeground = try {
+                    AppBlockerManager.checkForegroundApp(this@TimerService)
+                } catch (_: Exception) {
+                    false
+                }
+
+                // Adaptive Polling:
+                // When StudyTimer is active in the foreground, 300ms is efficient and responsive.
+                // When user switches away or exits, 100ms catches distraction instantly.
+                val nextDelay = if (isSelfInForeground) 300L else 100L
+                delay(nextDelay)
+            }
+        }
+    }
+
+    private fun stopBlockerMonitor() {
+        blockerMonitorJob?.cancel()
+        blockerMonitorJob = null
+        BlockerOverlayWindowManager.hide(this)
+    }
 
     companion object {
         const val ACTION_TOGGLE = "com.madeby.JAI.ACTION_TOGGLE"
@@ -483,6 +520,7 @@ class TimerService : Service() {
 
     private fun handlePause() {
         if (currentTimerState != TimerState.STUDYING && currentTimerState != TimerState.BREAK) return
+        stopBlockerMonitor()
         prePauseState = currentTimerState
         currentTimerState = TimerState.PAUSED
         lastTimestamp = System.currentTimeMillis() / 1000
@@ -547,6 +585,7 @@ class TimerService : Service() {
     }
 
     private fun handleStop(completed: Boolean = false, alreadyFinalized: Boolean = false) {
+        stopBlockerMonitor()
         finalizeSessionStats(completed, alreadyFinalized)
 
         currentTimerState = TimerState.IDLE
@@ -573,6 +612,7 @@ class TimerService : Service() {
     }
 
     private fun handleStopSilent(alreadyFinalized: Boolean = false) {
+        stopBlockerMonitor()
         finalizeSessionStats(completed = false, alreadyFinalized = alreadyFinalized)
 
         currentTimerState = TimerState.IDLE
@@ -641,10 +681,6 @@ class TimerService : Service() {
 
     private fun triggerBreakEndVibration() {
         triggerVibrationPattern(longArrayOf(0, 500))
-    }
-
-    private fun triggerGoalVibration() {
-        triggerVibrationPattern(longArrayOf(0, 300, 150, 300, 150, 500))
     }
 
     private fun checkScheduledLectures(nowSecs: Long) {
@@ -731,26 +767,6 @@ class TimerService : Service() {
                 break
             }
         }
-    }
-
-    private fun calculateOngoingLectureRemainingSecs(prefs: SharedPreferences): Long {
-        val jsonStr = prefs.getString("lecture_schedules_json", "[]") ?: "[]"
-        val items = loadLectureSchedulesFromJson(jsonStr).filter { it.enabled }
-        if (items.isEmpty()) return 0L
-        val cal = Calendar.getInstance()
-        val curMins = cal.get(Calendar.HOUR_OF_DAY) * 60 + cal.get(Calendar.MINUTE)
-        val curSecs = cal.get(Calendar.SECOND)
-        for (item in items) {
-            val startMins = parseTimeToMinutes(item.startTime) ?: continue
-            val endMins = parseTimeToMinutes(item.endTime) ?: continue
-            if (curMins in startMins until endMins) {
-                if (item.subjectId.isNotBlank()) {
-                    prefs.edit().putString("active_lecture_subject_id", item.subjectId).apply()
-                }
-                return ((endMins - curMins) * 60 - curSecs).toLong().coerceAtLeast(1L)
-            }
-        }
-        return 0L
     }
 
     private fun postLectureStartedNotification(lectureTitle: String) {
@@ -922,6 +938,12 @@ class TimerService : Service() {
                             accumulatedStudy += gap
                             continuousStudySecs += gap
 
+                            // Optional App Blocker Fast Background Monitor (120ms polling)
+                            if (AppBlockerManager.isEnabled(this@TimerService)) {
+                                startBlockerMonitorIfNeeded()
+                            } else {
+                                stopBlockerMonitor()
+                            }
 
                             // Anti-Cheat: 3.5 Hours Continuous Study Inactivity Check-in
                             if (!isPendingActivityConfirmation && continuousStudySecs >= CONTINUOUS_STUDY_LIMIT_SECS) {
@@ -1102,6 +1124,7 @@ class TimerService : Service() {
                             }
                         }
                         TimerState.BREAK -> {
+                            stopBlockerMonitor()
                             currentBreakSeconds += gap
                             val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
                             val activeSubjId = if (timerMode == "LECTURE" && lectureModeEnabled) {
@@ -1396,9 +1419,11 @@ class TimerService : Service() {
         lastTimestamp = now
         activeSessionDateStr = newDateStr
 
-        // 6. Ensure new day's goal exists
-        if (!sp.contains("${newDateStr}_goal_secs")) {
-            sp.edit().putLong("${newDateStr}_goal_secs", StatsEngine.getDailyGoalSecs(sp)).apply()
+        // 6. Ensure new day's goal exists preserving user settings
+        val configuredGoal = StatsEngine.getDailyGoalSecs(sp)
+        if (!sp.contains("${newDateStr}_goal_secs") || sp.getLong("${newDateStr}_goal_secs", 0L) <= 0L) {
+            sp.edit().putLong("${newDateStr}_goal_secs", configuredGoal).apply()
+            GoalHistoryManager.recordGoalChange(this, newDateStr, configuredGoal)
         }
 
         saveState()
@@ -1594,6 +1619,7 @@ class TimerService : Service() {
     }
 
     override fun onDestroy() {
+        stopBlockerMonitor()
         handler.removeCallbacks(timerRunnable)
         serviceScope.cancel()
         foregroundStarted = false

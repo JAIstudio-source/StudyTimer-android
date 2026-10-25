@@ -43,8 +43,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             // 2. Active Subject & Task Header (Unified Session Capsule)
-            val timerModeSetting = sharedPrefs.getString("timer_mode", "SUBJECT") ?: "SUBJECT"
-            val showSubjectTagging = sharedPrefs.getBoolean("enable_subject_tagging", true) && timerModeSetting != "STOPWATCH"
+            val timerModeSetting = sharedPrefs.getString("timer_mode", "COUNTDOWN") ?: "COUNTDOWN"
+            val showSubjectTagging = sharedPrefs.getBoolean("enable_subject_tagging", true)
 
             val controlsContainer = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -589,7 +589,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 ).apply {
-                    bottomMargin = dp(76)
+                    bottomMargin = dp(14)
                 }
             }
             host.gestureHintView = gestureHint
@@ -638,7 +638,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             stopBtn = HoldRingButton(this).apply {
-                text = "Finish"
+                text = "Hold to Finish"
                 ringColor = themeCoordinator.primaryColor
                 setTextColor(themeCoordinator.textColor)
                 textSize = 14f
@@ -666,7 +666,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                         MotionEvent.ACTION_UP -> {
                             val elapsed = SystemClock.uptimeMillis() - holdStartTime
                             if (elapsed < 500L) {
-                                AppToast.show(host, "Press and hold to finish session")
+                                AppToast.show(host, "Hold for 0.5s to finish session")
                                 try { v.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK) } catch (_: Exception) {}
                                 v.animate().translationX(-8f).setDuration(40).withEndAction {
                                     v.animate().translationX(8f).setDuration(40).withEndAction {

@@ -965,7 +965,7 @@ class CalendarTimeline(private val host: MainActivity) {
         dialog.show()
     }
 
-    private fun showAddEditExamModal(existing: ExamCountdown?) {
+    internal fun showAddEditExamModal(existing: ExamCountdown?) {
         val activity = host
         val themeCoordinator = activity.themeCoordinator
         val dialog = Dialog(activity)

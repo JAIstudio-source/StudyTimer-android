@@ -102,24 +102,7 @@ object GoalHistoryManager {
             if (explicit > 0L) return explicit
         }
 
-        // 2. Second priority: Check if a planner snapshot exists for this specific date with target minutes
-        val snapshotRaw = prefs.getString("${dateStr}_planner_snapshot", null)
-        if (!snapshotRaw.isNullOrBlank() && snapshotRaw != "[]") {
-            try {
-                val array = JSONArray(snapshotRaw)
-                var totalTargetMins = 0
-                for (i in 0 until array.length()) {
-                    totalTargetMins += array.getJSONObject(i).optInt("targetMinutes", 0)
-                }
-                if (totalTargetMins > 0) {
-                    val inferredSecs = (totalTargetMins * 60).toLong()
-                    prefs.edit().putLong("${dateStr}_goal_secs", inferredSecs).apply()
-                    return inferredSecs
-                }
-            } catch (_: Exception) {}
-        }
-
-        // 3. Third priority: Search Goal History log for the goal active on or immediately before dateStr
+        // 2. Second priority: Search Goal History log for the goal active on or immediately before dateStr
         val history = loadHistory(context)
         if (history.isNotEmpty()) {
             val matchingEntry = history.filter { it.date <= dateStr }.maxByOrNull { it.date }
@@ -129,11 +112,12 @@ object GoalHistoryManager {
             }
         }
 
-        // 4. Default fallback: use global goal for today or fallback
-        val defaultGoal = if (fallbackGlobalGoal > 0L) fallbackGlobalGoal else StatsEngine.getDailyGoalSecs(prefs)
+        // 3. Authoritative fallback: Use user's configured daily goal from settings
+        val configuredGoal = StatsEngine.getDailyGoalSecs(prefs)
+        val defaultGoal = if (configuredGoal > 0L) configuredGoal else (if (fallbackGlobalGoal > 0L) fallbackGlobalGoal else StatsEngine.DEFAULT_DAILY_GOAL_SECS)
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        if (dateStr == todayStr) {
-            prefs.edit().putLong("${todayStr}_goal_secs", defaultGoal).apply()
+        if (dateStr >= todayStr) {
+            prefs.edit().putLong("${dateStr}_goal_secs", defaultGoal).apply()
         }
         return defaultGoal
     }

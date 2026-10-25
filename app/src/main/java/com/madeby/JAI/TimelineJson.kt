@@ -180,27 +180,5 @@ internal fun insertEntrySorted(entries: List<TimelineEntry>, e: TimelineEntry): 
     return out
 }
 
-internal fun removeEntryWithTs(entries: List<TimelineEntry>, ts: Long): List<TimelineEntry> =
-    entries.filter { it.timestamp != ts }
-
-internal fun moveEntryInList(entries: List<TimelineEntry>, oldTs: Long, newTs: Long): List<TimelineEntry>? {
-    val idx = entries.indexOfFirst { it.timestamp == oldTs }
-    if (idx < 0) return null
-    val without = ArrayList(entries)
-    without.removeAt(idx)
-    val moved = entries[idx].copy(timestamp = newTs)
-    val insertIdx = without.indexOfFirst { it.timestamp > newTs }
-    val out = ArrayList<TimelineEntry>(without.size + 1)
-    if (insertIdx < 0) {
-        out.addAll(without)
-        out.add(moved)
-    } else {
-        out.addAll(without.subList(0, insertIdx))
-        out.add(moved)
-        out.addAll(without.subList(insertIdx, without.size))
-    }
-    return out
-}
-
 internal fun removeDayEntries(entries: List<TimelineEntry>, dateStr: String, fmt: SimpleDateFormat): List<TimelineEntry> =
     entries.filter { it.timestamp > 0L && fmt.format(Date(it.timestamp)) != dateStr }

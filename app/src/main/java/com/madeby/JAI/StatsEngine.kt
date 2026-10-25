@@ -13,7 +13,7 @@ class StatsEngine(private val context: Context) {
     private val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
 
     companion object {
-        const val DEFAULT_DAILY_GOAL_SECS = 7200L // 2 hours default
+        const val DEFAULT_DAILY_GOAL_SECS = 2700L // 45 minutes default for brand-new users upon first install
 
         fun getDailyGoalSecs(prefs: android.content.SharedPreferences): Long {
             if (prefs.contains("daily_goal_secs")) {
@@ -462,7 +462,7 @@ class StatsEngine(private val context: Context) {
         recalculateStreak(todayExtra = currentSessionSecs)
         val streak = prefs.safeInt("current_streak", 0)
 
-        val todayFocus = prefs.getLong("${todayStr}_focus_total", 0L) + currentSessionSecs
+        val todayFocus = FocusTimeProvider.getTodayFocusSeconds(context)
         val todayBreak = prefs.getLong("${todayStr}_break_total", 0L) + currentBreakSecs
 
         var total7 = 0L

@@ -443,19 +443,6 @@ object TimelineLogger {
         }
     }
 
-    fun deleteEntry(context: Context, startMs: Long) {
-        synchronized(this) {
-            persist(context, removeEntryWithTs(load(context), startMs))
-        }
-    }
-
-    fun moveEntry(context: Context, oldTs: Long, newTs: Long) {
-        synchronized(this) {
-            val entries = moveEntryInList(load(context), oldTs, newTs) ?: return
-            persist(context, entries)
-        }
-    }
-
     fun deleteDay(context: Context, dateStr: String) {
         synchronized(this) {
             val fmt = SimpleDateFormat("yyyy-MM-dd", Locale.US)

@@ -2295,6 +2295,123 @@ class SubjectDialogHelper(private val host: MainActivity) {
         }
     }
 
+    fun showSubjectSliceBreakdownDialog(
+        slice: SubjectPieChartView.PieSlice,
+        totalVal: Double,
+        period: SubjectTagManager.SubjectStatsPeriod
+    ) {
+        try {
+            val dialog = Dialog(host)
+            dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+            val container = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                background = themeCoordinator.createDialogBackground(28f)
+                setPadding(dp(22), dp(20), dp(22), dp(20))
+                layoutParams = LinearLayout.LayoutParams(
+                    (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(440)),
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+
+            // Header Row
+            val headerRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(10))
+            }
+            val sliceColor = try { Color.parseColor(slice.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+            val colorCircle = FrameLayout(host).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(sliceColor) }
+                layoutParams = LinearLayout.LayoutParams(dp(14), dp(14)).apply { setMargins(0, 0, dp(8), 0) }
+            }
+            headerRow.addView(colorCircle)
+            headerRow.addView(TextView(host).apply {
+                text = "${slice.emoji} ${slice.label}"
+                setTextColor(themeCoordinator.textColor)
+                textSize = 18f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            val closeBtn = TextView(host).apply {
+                text = "✕"
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.6f
+                textSize = 18f
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                setOnClickListener { dialog.dismiss() }
+            }
+            headerRow.addView(closeBtn)
+            container.addView(headerRow)
+
+            val totalSecs = slice.value.toLong()
+            val overallPct = if (totalVal > 0) Math.round((slice.value / totalVal) * 100).toInt() else 0
+
+            fun formatDur(secs: Long): String {
+                val h = secs / 3600
+                val m = (secs % 3600) / 60
+                return when {
+                    h > 0 && m > 0 -> "${h}h ${m}m"
+                    h > 0 -> "${h}h"
+                    m > 0 -> "${m}m"
+                    else -> "<1m"
+                }
+            }
+
+            val totalFormatted = formatDur(totalSecs)
+
+            // Subtitle summary card
+            val summaryCard = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                background = themeCoordinator.createGlassChip(tintedColor(sliceColor, 35), 14f)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(14)) }
+            }
+            summaryCard.addView(TextView(host).apply {
+                text = "$totalFormatted ($overallPct% of ${period.displayName.lowercase()} study time)"
+                setTextColor(sliceColor)
+                textSize = 14f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            })
+            summaryCard.addView(TextView(host).apply {
+                text = "Active Tracking Period: ${period.displayName}"
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.65f
+                textSize = 11.5f
+                setPadding(0, dp(2), 0, 0)
+            })
+            container.addView(summaryCard)
+
+            // Action: Full Analytics
+            val analyticsBtn = TextView(host).apply {
+                text = "Open Full Subject Analytics ↗"
+                textSize = 13f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(themeCoordinator.primaryColor)
+                }
+                setPadding(dp(16), dp(10), dp(16), dp(10))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, dp(4), 0, 0)
+                }
+                setOnClickListener {
+                    dialog.dismiss()
+                    showPieChartDetailsModal(initialPeriod = period)
+                }
+            }
+            container.addView(analyticsBtn)
+
+            dialog.setContentView(container)
+            dialog.show()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     private var pomoSubjectPromptShowing = false
 
     fun checkPomoSubjectPrompt() {

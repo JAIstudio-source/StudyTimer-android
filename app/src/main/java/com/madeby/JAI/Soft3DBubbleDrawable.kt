@@ -39,11 +39,6 @@ class Soft3DBubbleDrawable(
         strokeWidth = 1.8f
     }
 
-    fun updateColor(newColor: Int) {
-        baseColor = newColor
-        invalidateSelf()
-    }
-
     override fun draw(canvas: Canvas) {
         val bounds = bounds
         if (bounds.width() <= 0 || bounds.height() <= 0) return

@@ -19,6 +19,16 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+/**
+ * Note: The class name WeeklySummaryShareHelper is historical (prior to commit 5a227d2).
+ * This helper exclusively provides interactive stats drilldown dialogs:
+ * - [showCustomizeHighlightsDialog]
+ * - [showWeeklyTrendDetailDialog]
+ * - [showActiveDaysDetailDialog]
+ * - [showSessionDetailDialog]
+ *
+ * For scorecard image exporting and sharing, see [StudyScorecardExportHelper].
+ */
 class WeeklySummaryShareHelper(private val host: MainActivity) {
 
     private val themeCoordinator get() = host.themeCoordinator
