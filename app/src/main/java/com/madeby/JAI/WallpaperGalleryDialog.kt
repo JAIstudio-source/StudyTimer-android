@@ -479,14 +479,14 @@ object WallpaperGalleryDialog {
             )
         }
 
-        fun createActionTile(@androidx.annotation.DrawableRes iconRes: Int, title: String, isSolidReset: Boolean = false, onClick: () -> Unit): LinearLayout {
+        fun createActionTile(@androidx.annotation.DrawableRes iconRes: Int, title: String, onClick: () -> Unit): LinearLayout {
             return LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
                     cornerRadius = activity.dp(14).toFloat()
-                    setColor(if (isSolidReset) 0x1AEE4444.toInt() else 0x1AFFFFFF.toInt())
-                    setStroke(activity.dp(1), if (isSolidReset) 0x33EE4444.toInt() else 0x25FFFFFF)
+                    setColor(0x14FFFFFF)
+                    setStroke(activity.dp(1), 0x22FFFFFF)
                 }
                 setPadding(activity.dp(12), activity.dp(12), activity.dp(12), activity.dp(12))
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -494,7 +494,7 @@ object WallpaperGalleryDialog {
                 }
                 addView(ImageView(context).apply {
                     setImageResource(iconRes)
-                    setColorFilter(if (isSolidReset) 0xFFEF4444.toInt() else themeCoordinator.primaryColor)
+                    setColorFilter(themeCoordinator.primaryColor)
                     layoutParams = LinearLayout.LayoutParams(activity.dp(22), activity.dp(22)).apply {
                         gravity = Gravity.CENTER
                     }
@@ -503,7 +503,7 @@ object WallpaperGalleryDialog {
                     text = title
                     textSize = 11f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(if (isSolidReset) 0xFFEF4444.toInt() else themeCoordinator.textColor)
+                    setTextColor(themeCoordinator.textColor)
                     gravity = Gravity.CENTER
                     setPadding(0, activity.dp(6), 0, 0)
                 })
@@ -527,7 +527,7 @@ object WallpaperGalleryDialog {
         })
 
         // Reset to Default Solid Background
-        customRow.addView(createActionTile(R.drawable.ic_solid_canvas, "Default Solid", isSolidReset = true) {
+        customRow.addView(createActionTile(R.drawable.ic_solid_canvas, "Default Solid") {
             WallpaperManager.clearWallpaper(context)
             activity.updateWallpaperLayer()
             onWallpaperChanged()

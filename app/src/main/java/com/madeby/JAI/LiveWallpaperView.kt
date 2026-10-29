@@ -57,7 +57,7 @@ class LiveWallpaperView @JvmOverloads constructor(
             stopVideoPlayer()
             canvasView.visibility = View.VISIBLE
             canvasView.setPreset(mode)
-            if (isPlaying) canvasView.resume()
+            canvasView.resume()
         } else {
             stopVideoPlayer()
             canvasView.visibility = View.GONE
@@ -70,11 +70,15 @@ class LiveWallpaperView @JvmOverloads constructor(
         if (currentMode.startsWith("LIVE_VIDEO")) {
             try {
                 if (mediaPlayer != null) {
-                    mediaPlayer?.start()
-                } else if (isSurfaceAvailable) {
+                    if (mediaPlayer?.isPlaying == false) {
+                        mediaPlayer?.start()
+                    }
+                } else {
                     startVideoPlayback()
                 }
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+                startVideoPlayback()
+            }
         } else if (currentMode.startsWith("LIVE_")) {
             canvasView.resume()
         }
@@ -102,6 +106,7 @@ class LiveWallpaperView @JvmOverloads constructor(
             val tv = TextureView(context)
             tv.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                 override fun onSurfaceTextureAvailable(surface: SurfaceTexture, width: Int, height: Int) {
+                    videoSurface?.release()
                     videoSurface = Surface(surface)
                     isSurfaceAvailable = true
                     startVideoPlayback()
@@ -128,7 +133,11 @@ class LiveWallpaperView @JvmOverloads constructor(
         }
 
         videoTextureView?.visibility = View.VISIBLE
-        if (isSurfaceAvailable) {
+        val tv = videoTextureView
+        if (tv != null && tv.isAvailable && tv.surfaceTexture != null) {
+            videoSurface?.release()
+            videoSurface = Surface(tv.surfaceTexture)
+            isSurfaceAvailable = true
             startVideoPlayback()
         }
     }
@@ -158,7 +167,15 @@ class LiveWallpaperView @JvmOverloads constructor(
     }
 
     private fun startVideoPlayback() {
+        val tv = videoTextureView ?: return
+        if (tv.isAvailable && tv.surfaceTexture != null && (videoSurface == null || !videoSurface!!.isValid)) {
+            videoSurface?.release()
+            videoSurface = Surface(tv.surfaceTexture)
+            isSurfaceAvailable = true
+        }
         val surface = videoSurface ?: return
+        if (!surface.isValid) return
+
         val videoFile = WallpaperManager.getCustomLiveVideoFile(context)
         if (!videoFile.exists() || videoFile.length() <= 0) return
 
@@ -166,31 +183,31 @@ class LiveWallpaperView @JvmOverloads constructor(
             stopVideoPlaybackOnly()
             val fis = java.io.FileInputStream(videoFile)
             videoFis = fis
-            mediaPlayer = MediaPlayer().apply {
-                setSurface(surface)
-                setDataSource(fis.fd, 0, videoFile.length())
-                isLooping = true
-                setVolume(0f, 0f) // Silent ambient wallpaper
-                setOnVideoSizeChangedListener { _, width, height ->
-                    if (width > 0 && height > 0) {
-                        currentVideoSize = Pair(width, height)
-                        post { adjustAspectRatio(width, height) }
-                    }
+            val mp = MediaPlayer()
+            mediaPlayer = mp
+            mp.setSurface(surface)
+            mp.setDataSource(fis.fd, 0, videoFile.length())
+            mp.isLooping = true
+            mp.setVolume(0f, 0f) // Silent ambient wallpaper
+            mp.setOnVideoSizeChangedListener { _, width, height ->
+                if (width > 0 && height > 0) {
+                    currentVideoSize = Pair(width, height)
+                    post { adjustAspectRatio(width, height) }
                 }
-                setOnErrorListener { mp, what, extra ->
-                    android.util.Log.e("LiveWallpaperView", "MediaPlayer error: what=$what extra=$extra")
-                    try { mp.reset() } catch (_: Exception) {}
-                    true
-                }
-                setOnPreparedListener { mp ->
-                    try {
-                        mp.start()
-                    } catch (e: Exception) {
-                        android.util.Log.e("LiveWallpaperView", "MediaPlayer start failed", e)
-                    }
-                }
-                prepareAsync()
             }
+            mp.setOnErrorListener { player, what, extra ->
+                android.util.Log.e("LiveWallpaperView", "MediaPlayer error: what=$what extra=$extra")
+                try { player.reset() } catch (_: Exception) {}
+                true
+            }
+            mp.setOnPreparedListener { player ->
+                try {
+                    player.start()
+                } catch (e: Exception) {
+                    android.util.Log.e("LiveWallpaperView", "MediaPlayer start failed", e)
+                }
+            }
+            mp.prepareAsync()
         } catch (e: Exception) {
             android.util.Log.e("LiveWallpaperView", "startVideoPlayback exception", e)
         }
@@ -198,10 +215,11 @@ class LiveWallpaperView @JvmOverloads constructor(
 
     private fun stopVideoPlaybackOnly() {
         try {
-            mediaPlayer?.stop()
-        } catch (_: Exception) {}
-        try {
-            mediaPlayer?.release()
+            mediaPlayer?.apply {
+                if (isPlaying) stop()
+                reset()
+                release()
+            }
         } catch (_: Exception) {}
         mediaPlayer = null
         try {

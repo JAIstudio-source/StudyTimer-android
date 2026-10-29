@@ -3467,10 +3467,23 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             if (bm != null) wpImg.setImageBitmap(bm)
                         }
                     }
-                    WallpaperManager.TYPE_LIVE_AURORA -> wpImg.setBackgroundColor(0xFF065F46.toInt())
-                    WallpaperManager.TYPE_LIVE_COSMIC -> wpImg.setBackgroundColor(0xFF1E1B4B.toInt())
-                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> wpImg.setBackgroundColor(0xFF1E293B.toInt())
-                    WallpaperManager.TYPE_LIVE_VIDEO -> wpImg.setBackgroundColor(0xFF1E1E2E.toInt())
+                    WallpaperManager.TYPE_LIVE_AURORA,
+                    WallpaperManager.TYPE_LIVE_COSMIC,
+                    WallpaperManager.TYPE_LIVE_LOFI_RAIN,
+                    WallpaperManager.TYPE_LIVE_VIDEO -> {
+                        val liveThumb = WallpaperManager.getLiveWallpaperThumbnail(this, wallpaperType)
+                        if (liveThumb != null) {
+                            wpImg.setImageBitmap(liveThumb)
+                        } else {
+                            val fallbackColor = when (wallpaperType) {
+                                WallpaperManager.TYPE_LIVE_AURORA -> 0xFF065F46.toInt()
+                                WallpaperManager.TYPE_LIVE_COSMIC -> 0xFF1E1B4B.toInt()
+                                WallpaperManager.TYPE_LIVE_VIDEO -> 0xFF1E1E2E.toInt()
+                                else -> 0xFF1E293B.toInt()
+                            }
+                            wpImg.setBackgroundColor(fallbackColor)
+                        }
+                    }
                     else -> wpImg.setBackgroundColor(if (themeCoordinator.isDarkMode()) 0xFF121212.toInt() else 0xFFE2E8F0.toInt())
                 }
                 wpPreviewFrame.addView(wpImg)

@@ -48,14 +48,6 @@
     "recommendedDim": 0.45
   },
   {
-    "id": "studying_desk",
-    "title": "Study Desk",
-    "category": "Lofi Study",
-    "assetPath": "wallpapers/studying_desk.webp",
-    "thumbAssetPath": "wallpapers/thumbs/studying_desk.webp",
-    "recommendedDim": 0.4
-  },
-  {
     "id": "tokyo_mountain",
     "title": "Tokyo Mountain",
     "category": "Landscape",

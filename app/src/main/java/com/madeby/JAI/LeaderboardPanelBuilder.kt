@@ -330,6 +330,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
 
                     val emptyTitle = TextView(host).apply {
                         text = "No Sessions Yet"
+                        gravity = Gravity.CENTER
                         textSize = 16f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         setTextColor(host.themeCoordinator.textColor)
@@ -1850,7 +1851,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setTextColor(host.themeCoordinator.textColor)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             }
             nameRow.addView(myName)
 
@@ -1902,6 +1903,9 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 maxLines = 1
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setTextColor(host.themeCoordinator.primaryColor)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(dp(12), 0, 0, 0)
+                }
             }
             myCard.addView(myTime)
 

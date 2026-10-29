@@ -3,7 +3,9 @@ package com.madeby.JAI
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.net.Uri
 import android.view.View
 import android.widget.FrameLayout
@@ -39,6 +41,7 @@ object WallpaperManager {
     private const val KEY_USER_SET_DIM = "wallpaper_user_set_dim"
     private const val WALLPAPER_FILE_NAME = "custom_study_wallpaper.jpg"
     private const val LIVE_VIDEO_FILE_NAME = "custom_live_video.mp4"
+    private const val LIVE_VIDEO_THUMB_FILE_NAME = "custom_live_video_thumb.jpg"
 
     private val thumbCache = mutableMapOf<String, Bitmap>()
     private var cachedPresetBitmap: Pair<String, Bitmap>? = null
@@ -47,7 +50,6 @@ object WallpaperManager {
     private val DEFAULT_PRESETS = listOf(
         WallpaperPreset("cozy_cat", "Cozy Cat", "Lofi & Chill", "wallpapers/cozy_cat.webp", "wallpapers/thumbs/cozy_cat.webp", 0.40f),
         WallpaperPreset("dark_night", "Dark Night Sky", "Astronomy", "wallpapers/dark_night.webp", "wallpapers/thumbs/dark_night.webp", 0.35f),
-        WallpaperPreset("studying_desk", "Study Desk", "Lofi Study", "wallpapers/studying_desk.webp", "wallpapers/thumbs/studying_desk.webp", 0.40f),
         WallpaperPreset("tokyo_mountain", "Tokyo Mountain", "Landscape", "wallpapers/tokyo_mountain.webp", "wallpapers/thumbs/tokyo_mountain.webp", 0.40f),
         WallpaperPreset("dense_forest", "Dense Forest", "Nature", "wallpapers/dense_forest.webp", "wallpapers/thumbs/dense_forest.webp", 0.40f),
         WallpaperPreset("peaceful_field", "Peaceful Field", "Nature", "wallpapers/peaceful_field.webp", "wallpapers/thumbs/peaceful_field.webp", 0.45f),
@@ -85,8 +87,13 @@ object WallpaperManager {
     }
 
     fun getActivePresetId(context: Context): String {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val id = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getString(KEY_PRESET_ID, "cozy_cat") ?: "cozy_cat"
+        if (id == "studying_desk") {
+            setActivePreset(context, "cozy_cat")
+            return "cozy_cat"
+        }
+        return id
     }
 
     fun setActivePreset(context: Context, presetId: String) {
@@ -200,6 +207,10 @@ object WallpaperManager {
         return File(context.filesDir, LIVE_VIDEO_FILE_NAME)
     }
 
+    fun getCustomLiveVideoThumbFile(context: Context): File {
+        return File(context.filesDir, LIVE_VIDEO_THUMB_FILE_NAME)
+    }
+
     fun saveCustomWallpaperFromUri(context: Context, uri: Uri): Boolean {
         return try {
             val input = context.contentResolver.openInputStream(uri) ?: return false
@@ -268,11 +279,130 @@ object WallpaperManager {
                 }
                 tempFile.delete()
             }
+
+            // Extract & cache lightweight video frame thumbnail for immediate preview
+            extractAndCacheVideoThumb(destFile, getCustomLiveVideoThumbFile(context))
+
             setWallpaperType(context, TYPE_LIVE_VIDEO)
             VideoSaveResult.SUCCESS
         } catch (_: Exception) {
             VideoSaveResult.ERROR
         }
+    }
+
+    private fun extractAndCacheVideoThumb(videoFile: File, thumbFile: File) {
+        if (!videoFile.exists() || videoFile.length() <= 0) return
+        val retriever = android.media.MediaMetadataRetriever()
+        try {
+            retriever.setDataSource(videoFile.absolutePath)
+            val frame = retriever.getFrameAtTime(500_000, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                ?: retriever.frameAtTime
+            if (frame != null) {
+                val targetW = 240
+                val targetH = (frame.height.toFloat() / frame.width * targetW).toInt().coerceAtLeast(120)
+                val scaled = Bitmap.createScaledBitmap(frame, targetW, targetH, true)
+                FileOutputStream(thumbFile).use { out ->
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                }
+                thumbCache[TYPE_LIVE_VIDEO] = scaled
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("WallpaperManager", "Failed to extract video thumbnail", e)
+        } finally {
+            try { retriever.release() } catch (_: Exception) {}
+        }
+    }
+
+    fun getLiveWallpaperThumbnail(context: Context, type: String): Bitmap? {
+        val cached = thumbCache[type]
+        if (cached != null && !cached.isRecycled) return cached
+
+        if (type == TYPE_LIVE_VIDEO) {
+            val thumbFile = getCustomLiveVideoThumbFile(context)
+            if (thumbFile.exists()) {
+                val bm = BitmapFactory.decodeFile(thumbFile.absolutePath)
+                if (bm != null) {
+                    thumbCache[type] = bm
+                    return bm
+                }
+            }
+            // Generate on demand if video exists
+            val videoFile = getCustomLiveVideoFile(context)
+            if (videoFile.exists()) {
+                extractAndCacheVideoThumb(videoFile, thumbFile)
+                return thumbCache[type]
+            }
+            return null
+        }
+
+        // Generate high-fidelity mini previews for live shader presets
+        val w = 180
+        val h = 120
+        val bm = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bm)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+        when (type) {
+            TYPE_LIVE_AURORA -> {
+                canvas.drawColor(0xFF070B14.toInt())
+                val grad = android.graphics.LinearGradient(
+                    0f, 0f, w.toFloat(), h.toFloat(),
+                    intArrayOf(0xFF065F46.toInt(), 0xFF0D9488.toInt(), 0xFF4C1D95.toInt()),
+                    floatArrayOf(0f, 0.5f, 1f),
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                paint.shader = grad
+                paint.alpha = 200
+                canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
+            }
+            TYPE_LIVE_COSMIC -> {
+                canvas.drawColor(0xFF090D16.toInt())
+                val grad = android.graphics.LinearGradient(
+                    0f, 0f, w.toFloat(), h.toFloat(),
+                    intArrayOf(0xFF1E1B4B.toInt(), 0xFF312E81.toInt(), 0xFF4338CA.toInt()),
+                    null,
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                paint.shader = grad
+                canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
+                paint.shader = null
+                paint.color = Color.WHITE
+                val rng = java.util.Random(42)
+                for (i in 0 until 18) {
+                    val sx = rng.nextFloat() * w
+                    val sy = rng.nextFloat() * h
+                    paint.alpha = 140 + rng.nextInt(115)
+                    canvas.drawCircle(sx, sy, 1.2f + rng.nextFloat() * 1.5f, paint)
+                }
+            }
+            TYPE_LIVE_LOFI_RAIN -> {
+                canvas.drawColor(0xFF0F172A.toInt())
+                val grad = android.graphics.LinearGradient(
+                    0f, 0f, 0f, h.toFloat(),
+                    intArrayOf(0xFF1E293B.toInt(), 0xFF334155.toInt()),
+                    null,
+                    android.graphics.Shader.TileMode.CLAMP
+                )
+                paint.shader = grad
+                canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
+                paint.shader = null
+                paint.color = Color.WHITE
+                val rng = java.util.Random(99)
+                for (i in 0 until 14) {
+                    val rx = rng.nextFloat() * w
+                    val ry = rng.nextFloat() * h
+                    paint.alpha = 80 + rng.nextInt(100)
+                    paint.strokeWidth = 1.5f
+                    canvas.drawLine(rx, ry, rx - 3f, ry + 12f, paint)
+                }
+            }
+            else -> {
+                canvas.drawColor(0xFF1E293B.toInt())
+            }
+        }
+
+        thumbCache[type] = bm
+        return bm
     }
 
     fun clearWallpaper(context: Context) {
@@ -285,6 +415,11 @@ object WallpaperManager {
             val vf = getCustomLiveVideoFile(context)
             if (vf.exists()) vf.delete()
         } catch (_: Exception) {}
+        try {
+            val tf = getCustomLiveVideoThumbFile(context)
+            if (tf.exists()) tf.delete()
+        } catch (_: Exception) {}
+        thumbCache.clear()
     }
 
     /**

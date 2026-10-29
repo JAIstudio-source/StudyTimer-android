@@ -345,6 +345,7 @@ class MainActivity : AppCompatActivity() {
 
     private val pickLiveVideoLauncher = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
+            liveWallpaperView?.release()
             when (WallpaperManager.saveCustomLiveVideoFromUri(this, uri)) {
                 WallpaperManager.VideoSaveResult.SUCCESS -> {
                     AppToast.show(this, "Live video wallpaper applied!")
@@ -357,9 +358,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 WallpaperManager.VideoSaveResult.EXCEEDS_DURATION -> {
                     AppToast.show(this, "Video exceeds 20-second limit. Please pick a shorter clip.")
+                    updateWallpaperLayer()
                 }
                 WallpaperManager.VideoSaveResult.ERROR -> {
                     AppToast.show(this, "Failed to load video file")
+                    updateWallpaperLayer()
                 }
             }
         }
