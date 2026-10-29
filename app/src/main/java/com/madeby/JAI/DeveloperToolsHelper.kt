@@ -448,34 +448,36 @@ object DeveloperToolsHelper {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, dp(4))
         }
-        quickGrid3.addView(quickActionBtn("🏛️ Seed Rooms", Color.parseColor("#10B981")) {
-            StudyRoomManager.seedDevMockRooms(activity)
-            Toast.makeText(activity, "Seeded 4 mock study rooms with peers!", Toast.LENGTH_SHORT).show()
-            if (activity.currentPanel == AppPanel.COMMUNITY) {
-                activity.navigateToPanel(AppPanel.COMMUNITY)
-            }
-        })
-        quickGrid3.addView(quickActionBtn("🧹 Clear Rooms", Color.parseColor("#EF4444")) {
-            StudyRoomManager.clearDevMockRooms(activity)
-            Toast.makeText(activity, "Cleared mock study rooms", Toast.LENGTH_SHORT).show()
-            if (activity.currentPanel == AppPanel.COMMUNITY) {
-                activity.navigateToPanel(AppPanel.COMMUNITY)
-            }
-        })
-        quickGrid3.addView(quickActionBtn("👥 +Mock Peer", Color.parseColor("#38BDF8")) {
-            val active = StudyRoomManager.getActiveRoom(activity)
-            if (active != null) {
-                val peerNames = listOf("Aarav", "Elena", "Lucas", "Mei", "Liam", "Zainab", "Mateo", "Sophie")
-                val sampleSubjects = listOf("Math", "Physics", "Chemistry", "DSA", "Biology")
-                StudyRoomManager.injectDevMockPeer(activity, active.code, peerNames.random(), sampleSubjects.random(), true)
-                Toast.makeText(activity, "Injected peer into ${active.name}!", Toast.LENGTH_SHORT).show()
+        if (BuildConfig.STUDY_ROOM_ENABLED) {
+            quickGrid3.addView(quickActionBtn("🏛️ Seed Rooms", Color.parseColor("#10B981")) {
+                StudyRoomManager.seedDevMockRooms(activity)
+                Toast.makeText(activity, "Seeded 4 mock study rooms with peers!", Toast.LENGTH_SHORT).show()
                 if (activity.currentPanel == AppPanel.COMMUNITY) {
                     activity.navigateToPanel(AppPanel.COMMUNITY)
                 }
-            } else {
-                Toast.makeText(activity, "Please enter/join a room first", Toast.LENGTH_SHORT).show()
-            }
-        })
+            })
+            quickGrid3.addView(quickActionBtn("🧹 Clear Rooms", Color.parseColor("#EF4444")) {
+                StudyRoomManager.clearDevMockRooms(activity)
+                Toast.makeText(activity, "Cleared mock study rooms", Toast.LENGTH_SHORT).show()
+                if (activity.currentPanel == AppPanel.COMMUNITY) {
+                    activity.navigateToPanel(AppPanel.COMMUNITY)
+                }
+            })
+            quickGrid3.addView(quickActionBtn("👥 +Mock Peer", Color.parseColor("#38BDF8")) {
+                val active = StudyRoomManager.getActiveRoom(activity)
+                if (active != null) {
+                    val peerNames = listOf("Aarav", "Elena", "Lucas", "Mei", "Liam", "Zainab", "Mateo", "Sophie")
+                    val sampleSubjects = listOf("Math", "Physics", "Chemistry", "DSA", "Biology")
+                    StudyRoomManager.injectDevMockPeer(activity, active.code, peerNames.random(), sampleSubjects.random(), true)
+                    Toast.makeText(activity, "Injected peer into ${active.name}!", Toast.LENGTH_SHORT).show()
+                    if (activity.currentPanel == AppPanel.COMMUNITY) {
+                        activity.navigateToPanel(AppPanel.COMMUNITY)
+                    }
+                } else {
+                    Toast.makeText(activity, "Please enter/join a room first", Toast.LENGTH_SHORT).show()
+                }
+            })
+        }
 
         container.addView(quickGrid1)
         container.addView(quickGrid2)
@@ -872,47 +874,49 @@ object DeveloperToolsHelper {
         }
 
         // 3B. Study Rooms & Community Mock Suite
-        addSection("STUDY ROOMS & COMMUNITY MOCK SUITE", "🏛️") {
-            addView(devButton("Seed Mock Rooms & Peers (Public + Private)", "Populates Silent Library, STEM Sprint, Exam Prep, Pomodoro & Private Circle (PRIV88) with active peers", Color.parseColor("#10B981")) {
-                StudyRoomManager.seedDevMockRooms(activity)
-                Toast.makeText(activity, "Seeded mock rooms (including private circle PRIV88)!", Toast.LENGTH_SHORT).show()
-                if (activity.currentPanel == AppPanel.COMMUNITY) {
-                    activity.navigateToPanel(AppPanel.COMMUNITY)
-                }
-            })
-
-            addView(devButton("Enter Mock Private Room (PRIV88)", "Sets active room to private study room PRIV88 to test privacy badges & invite sharing", Color.parseColor("#8B5CF6")) {
-                StudyRoomManager.seedDevMockRooms(activity)
-                val priv = StudyRoom("PRIV88", "Private Study Circle", "Maya", 4, "General", isPrivate = true)
-                StudyRoomManager.setActiveRoom(activity, priv)
-                Toast.makeText(activity, "Entered private room PRIV88!", Toast.LENGTH_SHORT).show()
-                activity.navigateToPanel(AppPanel.COMMUNITY)
-            })
-
-            addView(devButton("Clear All Mock Study Rooms", "Flushes all mock data and resets rooms to clean state", Color.parseColor("#EF4444")) {
-                StudyRoomManager.clearDevMockRooms(activity)
-                Toast.makeText(activity, "Cleared mock study rooms", Toast.LENGTH_SHORT).show()
-                if (activity.currentPanel == AppPanel.COMMUNITY) {
-                    activity.navigateToPanel(AppPanel.COMMUNITY)
-                }
-            })
-
-            addView(devButton("Inject Live Peer to Active Room", "Adds a simulated studying student to the current room for live presence testing", Color.parseColor("#38BDF8")) {
-                val active = StudyRoomManager.getActiveRoom(activity)
-                if (active != null) {
-                    val peerNames = listOf("Aarav", "Elena", "Lucas", "Mei", "Liam", "Zainab", "Mateo", "Sophie")
-                    val sampleSubjects = listOf("Math", "Physics", "Chemistry", "DSA", "Biology")
-                    val name = peerNames.random()
-                    val subj = sampleSubjects.random()
-                    StudyRoomManager.injectDevMockPeer(activity, active.code, name, subj, isStudying = true)
-                    Toast.makeText(activity, "Injected $name ($subj) into ${active.name}!", Toast.LENGTH_SHORT).show()
+        if (BuildConfig.STUDY_ROOM_ENABLED) {
+            addSection("STUDY ROOMS & COMMUNITY MOCK SUITE", "🏛️") {
+                addView(devButton("Seed Mock Rooms & Peers (Public + Private)", "Populates Silent Library, STEM Sprint, Exam Prep, Pomodoro & Private Circle (PRIV88) with active peers", Color.parseColor("#10B981")) {
+                    StudyRoomManager.seedDevMockRooms(activity)
+                    Toast.makeText(activity, "Seeded mock rooms (including private circle PRIV88)!", Toast.LENGTH_SHORT).show()
                     if (activity.currentPanel == AppPanel.COMMUNITY) {
                         activity.navigateToPanel(AppPanel.COMMUNITY)
                     }
-                } else {
-                    Toast.makeText(activity, "Please enter or create an active study room first", Toast.LENGTH_SHORT).show()
-                }
-            })
+                })
+
+                addView(devButton("Enter Mock Private Room (PRIV88)", "Sets active room to private study room PRIV88 to test privacy badges & invite sharing", Color.parseColor("#8B5CF6")) {
+                    StudyRoomManager.seedDevMockRooms(activity)
+                    val priv = StudyRoom("PRIV88", "Private Study Circle", "Maya", 4, "General", isPrivate = true)
+                    StudyRoomManager.setActiveRoom(activity, priv)
+                    Toast.makeText(activity, "Entered private room PRIV88!", Toast.LENGTH_SHORT).show()
+                    activity.navigateToPanel(AppPanel.COMMUNITY)
+                })
+
+                addView(devButton("Clear All Mock Study Rooms", "Flushes all mock data and resets rooms to clean state", Color.parseColor("#EF4444")) {
+                    StudyRoomManager.clearDevMockRooms(activity)
+                    Toast.makeText(activity, "Cleared mock study rooms", Toast.LENGTH_SHORT).show()
+                    if (activity.currentPanel == AppPanel.COMMUNITY) {
+                        activity.navigateToPanel(AppPanel.COMMUNITY)
+                    }
+                })
+
+                addView(devButton("Inject Live Peer to Active Room", "Adds a simulated studying student to the current room for live presence testing", Color.parseColor("#38BDF8")) {
+                    val active = StudyRoomManager.getActiveRoom(activity)
+                    if (active != null) {
+                        val peerNames = listOf("Aarav", "Elena", "Lucas", "Mei", "Liam", "Zainab", "Mateo", "Sophie")
+                        val sampleSubjects = listOf("Math", "Physics", "Chemistry", "DSA", "Biology")
+                        val name = peerNames.random()
+                        val subj = sampleSubjects.random()
+                        StudyRoomManager.injectDevMockPeer(activity, active.code, name, subj, isStudying = true)
+                        Toast.makeText(activity, "Injected $name ($subj) into ${active.name}!", Toast.LENGTH_SHORT).show()
+                        if (activity.currentPanel == AppPanel.COMMUNITY) {
+                            activity.navigateToPanel(AppPanel.COMMUNITY)
+                        }
+                    } else {
+                        Toast.makeText(activity, "Please enter or create an active study room first", Toast.LENGTH_SHORT).show()
+                    }
+                })
+            }
         }
 
         // 4. Notifications & Celebration Triggers

@@ -67,11 +67,11 @@ class CommunityPanelBuilder(private val host: MainActivity) {
     fun switchSegment(segment: CommunitySegment) {
         roomPollingJob?.cancel()
         roomPollingJob = null
-        activeSegment = segment
+        activeSegment = if (BuildConfig.STUDY_ROOM_ENABLED) segment else CommunitySegment.LEADERBOARD
         updateSegmentStylesFunc?.invoke()
         val ch = rootContentHost ?: return
         ch.removeAllViews()
-        if (activeSegment == CommunitySegment.ROOMS) {
+        if (BuildConfig.STUDY_ROOM_ENABLED && activeSegment == CommunitySegment.ROOMS) {
             renderRoomsView(ch)
         } else {
             renderLeaderboardView(ch)
@@ -80,7 +80,8 @@ class CommunityPanelBuilder(private val host: MainActivity) {
     }
 
     fun build(target: ViewGroup = host.panelContainer, initialSegment: CommunitySegment = CommunitySegment.LEADERBOARD) {
-        activeSegment = initialSegment
+        host.recalculateStreak()
+        activeSegment = if (BuildConfig.STUDY_ROOM_ENABLED) initialSegment else CommunitySegment.LEADERBOARD
 
         val root = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -145,9 +146,11 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 null
             }
 
-            roomsTab.background = pillBg(activeSegment == CommunitySegment.ROOMS)
-            roomsTab.setTextColor(if (activeSegment == CommunitySegment.ROOMS) Color.WHITE else themeCoordinator.textColor)
-            roomsTab.alpha = if (activeSegment == CommunitySegment.ROOMS) 1.0f else 0.65f
+            if (BuildConfig.STUDY_ROOM_ENABLED) {
+                roomsTab.background = pillBg(activeSegment == CommunitySegment.ROOMS)
+                roomsTab.setTextColor(if (activeSegment == CommunitySegment.ROOMS) Color.WHITE else themeCoordinator.textColor)
+                roomsTab.alpha = if (activeSegment == CommunitySegment.ROOMS) 1.0f else 0.65f
+            }
 
             leaderboardTab.background = pillBg(activeSegment == CommunitySegment.LEADERBOARD)
             leaderboardTab.setTextColor(if (activeSegment == CommunitySegment.LEADERBOARD) Color.WHITE else themeCoordinator.textColor)
@@ -159,18 +162,20 @@ class CommunityPanelBuilder(private val host: MainActivity) {
         fun renderContent() {
             contentHost.removeAllViews()
             updateSegmentStyles()
-            if (activeSegment == CommunitySegment.ROOMS) {
+            if (BuildConfig.STUDY_ROOM_ENABLED && activeSegment == CommunitySegment.ROOMS) {
                 renderRoomsView(contentHost)
             } else {
                 renderLeaderboardView(contentHost)
             }
         }
 
-        roomsTab.setOnClickListener {
-            if (activeSegment != CommunitySegment.ROOMS) {
-                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                activeSegment = CommunitySegment.ROOMS
-                renderContent()
+        if (BuildConfig.STUDY_ROOM_ENABLED) {
+            roomsTab.setOnClickListener {
+                if (activeSegment != CommunitySegment.ROOMS) {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    activeSegment = CommunitySegment.ROOMS
+                    renderContent()
+                }
             }
         }
 
@@ -183,8 +188,10 @@ class CommunityPanelBuilder(private val host: MainActivity) {
         }
 
         switcherContainer.addView(leaderboardTab)
-        switcherContainer.addView(roomsTab)
-        root.addView(switcherContainer)
+        if (BuildConfig.STUDY_ROOM_ENABLED) {
+            switcherContainer.addView(roomsTab)
+            root.addView(switcherContainer)
+        }
         root.addView(contentHost)
 
         renderContent()
@@ -207,6 +214,10 @@ class CommunityPanelBuilder(private val host: MainActivity) {
     }
 
     private fun renderRoomsView(container: FrameLayout) {
+        if (!BuildConfig.STUDY_ROOM_ENABLED) {
+            renderLeaderboardView(container)
+            return
+        }
         val scroll = ScrollView(host).apply {
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -922,6 +933,8 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 val chip = TextView(host).apply {
                     text = cat
                     textSize = 12f
+                    gravity = Gravity.CENTER
+                    minHeight = dp(36)
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(if (isSelected) Color.WHITE else textColor)
                     background = if (isSelected) {
@@ -932,7 +945,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                     } else {
                         themeCoordinator.createGlassChip(host.tintedColor(textColor, 25), 14f)
                     }
-                    setPadding(dp(14), dp(7), dp(14), dp(7))
+                    setPadding(dp(14), dp(8), dp(14), dp(8))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1126,6 +1139,9 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 val enterBtn = TextView(host).apply {
                     text = if (isCurrentActive) "Entered ✓" else "Enter"
                     textSize = 12.5f
+                    gravity = Gravity.CENTER
+                    minHeight = dp(40)
+                    minWidth = dp(70)
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(if (isCurrentActive) primary else Color.WHITE)
                     background = if (isCurrentActive) {

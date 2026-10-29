@@ -7,16 +7,23 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.Window
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 /**
- * First-Time User Experience (FTUX) 3-Step Setup Wizard.
- * Guides new users through setting their study focus, daily goal, and preferred timer style.
- * Strictly adheres to clean typography with zero extra emojis.
+ * Premium Full-Screen FTUX Onboarding Wizard.
+ * 
+ * Replaces intrusive floating modals with a continuous, beautifully crafted
+ * 3-step setup screen that matches StudyTimer's brand aura, clean typography,
+ * high-contrast selection tiles, and zero cheesy emoji slop.
  */
 object OnboardingDialogHelper {
 
@@ -26,10 +33,13 @@ object OnboardingDialogHelper {
             return
         }
 
-        val dialog = Dialog(activity)
+        val dialog = Dialog(activity, R.style.FullScreenOnboardingDialogTheme)
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
-        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.setCancelable(false)
+
+        val window = dialog.window
+        window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        window?.setBackgroundDrawableResource(R.drawable.bg_login_gradient)
 
         val theme = activity.themeCoordinator
         val primary = theme.primaryColor
@@ -37,226 +47,360 @@ object OnboardingDialogHelper {
 
         fun dp(v: Int): Int = activity.dp(v)
 
-        val root = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            background = theme.createDialogBackground(28f)
-            setPadding(dp(22), dp(22), dp(22), dp(20))
-            layoutParams = LinearLayout.LayoutParams(
-                (activity.resources.displayMetrics.widthPixels * 0.92f).toInt().coerceAtMost(dp(420)),
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
         var currentStep = 1
         var selectedFocus = "Competitive Exams"
         var selectedDailyHours = 4
         var selectedTimerMode = "COUNTDOWN"
 
-        val stepContainer = FrameLayout(activity).apply {
+        // Root container matching LoginActivity full-bleed style
+        val rootLayout = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            background = null
+        }
+
+        // Top App Bar / Progress Navigation Bar
+        val topBar = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(24), dp(20), dp(24), dp(12))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
 
-        // Indicator Row: Step pills [ ━ ─ ─ ]
-        val indicatorRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(16))
-        }
-
-        fun updateIndicators() {
-            indicatorRow.removeAllViews()
-            for (step in 1..3) {
-                val dot = View(activity).apply {
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(3).toFloat()
-                        setColor(if (step == currentStep) primary else Color.argb(45, 255, 255, 255))
-                    }
-                    layoutParams = LinearLayout.LayoutParams(
-                        if (step == currentStep) dp(24) else dp(8),
-                        dp(5)
-                    ).apply {
-                        setMargins(dp(3), 0, dp(3), 0)
-                    }
-                }
-                indicatorRow.addView(dot)
-            }
-        }
-
-        // Action Buttons Row: [ Skip ] and [ Continue / Get Started ]
-        val buttonRow = LinearLayout(activity).apply {
+        // Brand mark in top bar
+        val brandRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(18), 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
+        val miniLogo = ImageView(activity).apply {
+            setImageResource(R.drawable.ic_logo_transparent)
+            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).apply {
+                setMargins(0, 0, dp(10), 0)
+            }
+            contentDescription = "StudyTimer Logo"
+        }
+        val brandName = TextView(activity).apply {
+            text = "StudyTimer"
+            textSize = 15f
+            typeface = theme.getAppTypeface(isBold = true)
+            setTextColor(Color.WHITE)
+            letterSpacing = -0.01f
+        }
+        brandRow.addView(miniLogo)
+        brandRow.addView(brandName)
 
-        val skipBtn = Button(activity).apply {
-            text = "Skip"
-            textSize = 13.5f
+        val stepCounter = TextView(activity).apply {
+            textSize = 12.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(tintedColor(textColor, 140))
-            background = null
-            setOnClickListener {
-                prefs.edit().putBoolean("has_completed_onboarding_v2", true).apply()
-                dialog.dismiss()
+            letterSpacing = 0.05f
+        }
+
+        topBar.addView(brandRow)
+        topBar.addView(stepCounter)
+
+        // Progress line track
+        val progressTrack = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(24), 0, dp(24), dp(16))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val stepPills = mutableListOf<View>()
+        for (i in 1..3) {
+            val pill = View(activity).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(3).toFloat()
+                    setColor(if (i == 1) primary else Color.argb(35, 255, 255, 255))
+                }
+                layoutParams = LinearLayout.LayoutParams(0, dp(4), 1f).apply {
+                    setMargins(if (i > 1) dp(6) else 0, 0, 0, 0)
+                }
+            }
+            stepPills.add(pill)
+            progressTrack.addView(pill)
+        }
+
+        fun updateProgress() {
+            stepCounter.text = "STEP $currentStep OF 3"
+            stepPills.forEachIndexed { index, pill ->
+                val stepNum = index + 1
+                (pill.background as? GradientDrawable)?.setColor(
+                    if (stepNum <= currentStep) primary else Color.argb(35, 255, 255, 255)
+                )
             }
         }
 
-        val nextBtn = Button(activity).apply {
-            text = "Continue"
+        // Scrollable content area
+        val scrollView = ScrollView(activity).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                0,
+                1f
+            )
+        }
+
+        val contentContainer = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), dp(20))
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        scrollView.addView(contentContainer)
+
+        // Bottom Action Bar [ Back / Skip ] and [ Continue / Get Started ]
+        val bottomBar = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(24), dp(12), dp(24), dp(24))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        var renderCurrentStepFn: (() -> Unit)? = null
+
+        val secondaryBtn = Button(activity).apply {
+            text = "Skip"
+            isAllCaps = false
             textSize = 14f
-            typeface = theme.getAppTypeface(isBold = true)
-            setTextColor(theme.bgColor)
-            background = activity.rippleBackground(primary)
-            setPadding(dp(18), dp(10), dp(18), dp(10))
-            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
-                setMargins(dp(10), 0, 0, 0)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(tintedColor(textColor, 150))
+            background = null
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(52)
+            ).apply {
+                setMargins(0, 0, dp(14), 0)
+            }
+            setOnClickListener {
+                if (currentStep > 1) {
+                    currentStep--
+                    renderCurrentStepFn?.invoke()
+                } else {
+                    prefs.edit().putBoolean("has_completed_onboarding_v2", true).apply()
+                    dialog.dismiss()
+                }
             }
         }
 
-        buttonRow.addView(skipBtn)
-        buttonRow.addView(nextBtn)
+        val primaryBtn = Button(activity).apply {
+            text = "Continue"
+            isAllCaps = false
+            textSize = 15f
+            typeface = theme.getAppTypeface(isBold = true)
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(primary)
+            }
+            layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f)
+        }
+
+        bottomBar.addView(secondaryBtn)
+        bottomBar.addView(primaryBtn)
+
+        fun createCardTile(
+            titleText: String,
+            captionText: String,
+            isSelected: Boolean,
+            onClick: () -> Unit
+        ): LinearLayout {
+            return LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                isClickable = true
+                isFocusable = true
+                setPadding(dp(18), dp(16), dp(18), dp(16))
+                
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    if (isSelected) {
+                        setColor(Color.argb(40, Color.red(primary), Color.green(primary), Color.blue(primary)))
+                        setStroke(dp(1.8f.toInt()), primary)
+                    } else {
+                        setColor(Color.argb(20, 255, 255, 255))
+                        setStroke(dp(1), Color.argb(25, 255, 255, 255))
+                    }
+                }
+
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(12))
+                }
+
+                val row = LinearLayout(activity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                }
+
+                val titleTv = TextView(activity).apply {
+                    text = titleText
+                    textSize = 15.5f
+                    typeface = theme.getAppTypeface(isBold = isSelected)
+                    setTextColor(if (isSelected) Color.WHITE else textColor)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+
+                val indicator = View(activity).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        if (isSelected) {
+                            setColor(primary)
+                        } else {
+                            setColor(Color.TRANSPARENT)
+                            setStroke(dp(1), Color.argb(60, 255, 255, 255))
+                        }
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(18), dp(18))
+                }
+
+                row.addView(titleTv)
+                row.addView(indicator)
+                addView(row)
+
+                if (captionText.isNotBlank()) {
+                    val capTv = TextView(activity).apply {
+                        text = captionText
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                        setTextColor(if (isSelected) tintedColor(textColor, 200) else tintedColor(textColor, 130))
+                        setPadding(0, dp(4), 0, 0)
+                    }
+                    addView(capTv)
+                }
+
+                setOnClickListener { onClick() }
+            }
+        }
 
         fun renderStep() {
-            updateIndicators()
-            stepContainer.removeAllViews()
+            updateProgress()
+            contentContainer.removeAllViews()
+
+            secondaryBtn.text = if (currentStep > 1) "Back" else "Skip"
 
             when (currentStep) {
                 1 -> {
-                    // Step 1: Study Focus
-                    val step1View = LinearLayout(activity).apply {
-                        orientation = LinearLayout.VERTICAL
-                    }
-
-                    val title = TextView(activity).apply {
-                        text = "Welcome to StudyTimer"
-                        textSize = 19f
+                    // Header
+                    val header = TextView(activity).apply {
+                        text = "What is your main focus area?"
+                        textSize = 24f
                         typeface = theme.getAppTypeface(isBold = true)
-                        setTextColor(textColor)
-                        gravity = Gravity.CENTER_HORIZONTAL
+                        setTextColor(Color.WHITE)
+                        letterSpacing = -0.02f
                     }
                     val subtitle = TextView(activity).apply {
-                        text = "What is your main focus area?"
-                        textSize = 13f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        text = "Choose your current learning priority. StudyTimer will tailor your initial sessions around this goal."
+                        textSize = 13.5f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
                         setTextColor(tintedColor(textColor, 170))
-                        gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(0, dp(4), 0, dp(14))
+                        setLineSpacing(dp(3).toFloat(), 1.0f)
+                        setPadding(0, dp(8), 0, dp(24))
                     }
-                    step1View.addView(title)
-                    step1View.addView(subtitle)
+                    contentContainer.addView(header)
+                    contentContainer.addView(subtitle)
 
                     val focusCategories = listOf(
-                        "Competitive Exams",
-                        "College / University",
-                        "School & Academics",
-                        "Programming & Tech",
-                        "Self-Improvement"
+                        "Competitive Exams" to "UPSC, GATE, GRE, USMLE, Bar & entrance tests",
+                        "College / University" to "Degree coursework, finals, thesis & research",
+                        "School & Academics" to "High school classes, daily homework & revision",
+                        "Programming & Tech" to "Coding practice, personal projects & software skills",
+                        "Self-Improvement" to "Reading, languages, writing & deep personal habits"
                     )
 
-                    val optionsContainer = LinearLayout(activity).apply {
-                        orientation = LinearLayout.VERTICAL
-                    }
-
-                    for (category in focusCategories) {
-                        val isSelected = category == selectedFocus
-                        val optBtn = Button(activity).apply {
-                            text = if (isSelected) "✓  $category" else category
-                            textSize = 13.5f
-                            typeface = theme.getAppTypeface(isBold = isSelected)
-                            setTextColor(if (isSelected) Color.WHITE else textColor)
-                            gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                            setPadding(dp(16), dp(11), dp(16), dp(11))
-                            background = if (isSelected) {
-                                GradientDrawable().apply {
-                                    cornerRadius = dp(14).toFloat()
-                                    setColor(primary)
-                                }
-                            } else {
-                                theme.createGlassChip(tintedColor(textColor, 22), 14f)
-                            }
-                            layoutParams = LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT
-                            ).apply {
-                                setMargins(0, dp(3), 0, dp(3))
-                            }
-                            setOnClickListener {
-                                selectedFocus = category
-                                renderStep()
-                            }
+                    for ((category, desc) in focusCategories) {
+                        val isSelected = (category == selectedFocus)
+                        val tile = createCardTile(category, desc, isSelected) {
+                            selectedFocus = category
+                            renderStep()
                         }
-                        optionsContainer.addView(optBtn)
+                        contentContainer.addView(tile)
                     }
 
-                    step1View.addView(optionsContainer)
-                    stepContainer.addView(step1View)
-                    nextBtn.text = "Continue"
+                    primaryBtn.text = "Continue"
                 }
                 2 -> {
-                    // Step 2: Daily Target & Timer Mode
-                    val step2View = LinearLayout(activity).apply {
-                        orientation = LinearLayout.VERTICAL
-                    }
-
-                    val title = TextView(activity).apply {
+                    val header = TextView(activity).apply {
                         text = "Target & Timer Mode"
-                        textSize = 19f
+                        textSize = 24f
                         typeface = theme.getAppTypeface(isBold = true)
-                        setTextColor(textColor)
-                        gravity = Gravity.CENTER_HORIZONTAL
+                        setTextColor(Color.WHITE)
+                        letterSpacing = -0.02f
                     }
                     val subtitle = TextView(activity).apply {
-                        text = "Choose your daily goal and study method:"
-                        textSize = 13f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        text = "Set a realistic daily goal and choose how you like your focus intervals timed."
+                        textSize = 13.5f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
                         setTextColor(tintedColor(textColor, 170))
-                        gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(0, dp(4), 0, dp(14))
+                        setLineSpacing(dp(3).toFloat(), 1.0f)
+                        setPadding(0, dp(8), 0, dp(20))
                     }
-                    step2View.addView(title)
-                    step2View.addView(subtitle)
+                    contentContainer.addView(header)
+                    contentContainer.addView(subtitle)
 
-                    val goalLabel = TextView(activity).apply {
-                        text = "DAILY STUDY TARGET"
+                    val goalSectionHeader = TextView(activity).apply {
+                        text = "DAILY STUDY GOAL"
                         textSize = 11.5f
                         letterSpacing = 0.08f
                         typeface = theme.getAppTypeface(isBold = true)
                         setTextColor(primary)
-                        setPadding(0, 0, 0, dp(8))
+                        setPadding(0, 0, 0, dp(10))
                     }
-                    step2View.addView(goalLabel)
+                    contentContainer.addView(goalSectionHeader)
 
-                    // Daily Target Options (2h, 4h, 6h, 8h)
-                    val targetRow = LinearLayout(activity).apply {
+                    // Target hours selector pills
+                    val targetHoursRow = LinearLayout(activity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
                         ).apply {
-                            setMargins(0, 0, 0, dp(16))
+                            setMargins(0, 0, 0, dp(24))
                         }
                     }
 
-                    val targetOptions = listOf(2, 4, 6, 8)
-                    for (hrs in targetOptions) {
+                    val targets = listOf(
+                        2 to "2 hrs",
+                        4 to "4 hrs",
+                        6 to "6 hrs",
+                        8 to "8 hrs"
+                    )
+
+                    for ((hrs, label) in targets) {
                         val isSelected = (hrs == selectedDailyHours)
-                        val tBtn = Button(activity).apply {
-                            text = "${hrs}h"
+                        val chip = Button(activity).apply {
+                            text = label
+                            isAllCaps = false
                             textSize = 13.5f
                             typeface = theme.getAppTypeface(isBold = isSelected)
                             setTextColor(if (isSelected) Color.WHITE else textColor)
-                            background = if (isSelected) {
-                                GradientDrawable().apply {
-                                    cornerRadius = dp(12).toFloat()
+                            background = GradientDrawable().apply {
+                                cornerRadius = dp(14).toFloat()
+                                if (isSelected) {
                                     setColor(primary)
+                                } else {
+                                    setColor(Color.argb(20, 255, 255, 255))
+                                    setStroke(dp(1), Color.argb(25, 255, 255, 255))
                                 }
-                            } else {
-                                theme.createGlassChip(tintedColor(textColor, 22), 12f)
                             }
-                            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                            layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply {
                                 setMargins(dp(3), 0, dp(3), 0)
                             }
                             setOnClickListener {
@@ -264,152 +408,170 @@ object OnboardingDialogHelper {
                                 renderStep()
                             }
                         }
-                        targetRow.addView(tBtn)
+                        targetHoursRow.addView(chip)
                     }
-                    step2View.addView(targetRow)
+                    contentContainer.addView(targetHoursRow)
 
-                    val timerModeLabel = TextView(activity).apply {
-                        text = "PREFERRED TIMER STYLE"
+                    val timerSectionHeader = TextView(activity).apply {
+                        text = "TIMER METHOD"
                         textSize = 11.5f
                         letterSpacing = 0.08f
                         typeface = theme.getAppTypeface(isBold = true)
                         setTextColor(primary)
-                        setPadding(0, 0, 0, dp(8))
+                        setPadding(0, 0, 0, dp(10))
                     }
-                    step2View.addView(timerModeLabel)
+                    contentContainer.addView(timerSectionHeader)
 
-                    val timerStyles = listOf(
-                        "COUNTDOWN" to "Pomodoro (25m Focus / 5m Break)",
-                        "SUBJECT" to "Stopwatch (Continuous Count Up)"
+                    val timerModes = listOf(
+                        Triple(
+                            "COUNTDOWN",
+                            "Pomodoro Technique",
+                            "25 minutes deep focus with 5 minutes resting intervals"
+                        ),
+                        Triple(
+                            "SUBJECT",
+                            "Stopwatch (Count-Up)",
+                            "Continuous uninterrupted flow timer for flexible deep work"
+                        )
                     )
 
-                    for ((modeKey, modeDesc) in timerStyles) {
+                    for ((modeKey, title, desc) in timerModes) {
                         val isSelected = (modeKey == selectedTimerMode)
-                        val modeBtn = Button(activity).apply {
-                            text = if (isSelected) "✓  $modeDesc" else modeDesc
-                            textSize = 12.5f
-                            typeface = theme.getAppTypeface(isBold = isSelected)
-                            setTextColor(if (isSelected) Color.WHITE else textColor)
-                            gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                            setPadding(dp(14), dp(10), dp(14), dp(10))
-                            background = if (isSelected) {
-                                GradientDrawable().apply {
-                                    cornerRadius = dp(12).toFloat()
-                                    setColor(primary)
-                                }
-                            } else {
-                                theme.createGlassChip(tintedColor(textColor, 22), 12f)
-                            }
-                            layoutParams = LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT
-                            ).apply {
-                                setMargins(0, dp(3), 0, dp(3))
-                            }
-                            setOnClickListener {
-                                selectedTimerMode = modeKey
-                                renderStep()
-                            }
+                        val tile = createCardTile(title, desc, isSelected) {
+                            selectedTimerMode = modeKey
+                            renderStep()
                         }
-                        step2View.addView(modeBtn)
+                        contentContainer.addView(tile)
                     }
 
-                    stepContainer.addView(step2View)
-                    nextBtn.text = "Continue"
+                    primaryBtn.text = "Continue"
                 }
                 3 -> {
-                    // Step 3: All Set Summary
-                    val step3View = LinearLayout(activity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        gravity = Gravity.CENTER_HORIZONTAL
-                    }
-
-                    val title = TextView(activity).apply {
+                    val header = TextView(activity).apply {
                         text = "You're Ready to Focus"
-                        textSize = 19f
+                        textSize = 24f
                         typeface = theme.getAppTypeface(isBold = true)
-                        setTextColor(textColor)
-                        gravity = Gravity.CENTER_HORIZONTAL
+                        setTextColor(Color.WHITE)
+                        letterSpacing = -0.02f
                     }
                     val subtitle = TextView(activity).apply {
-                        text = "Your personalized workspace is configured:"
-                        textSize = 13f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        text = "Your personalized workspace is configured and ready. You can modify these settings anytime in Preferences."
+                        textSize = 13.5f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
                         setTextColor(tintedColor(textColor, 170))
-                        gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(0, dp(4), 0, dp(14))
+                        setLineSpacing(dp(3).toFloat(), 1.0f)
+                        setPadding(0, dp(8), 0, dp(24))
                     }
-                    step3View.addView(title)
-                    step3View.addView(subtitle)
+                    contentContainer.addView(header)
+                    contentContainer.addView(subtitle)
 
-                    // Summary Bento Card
-                    val summaryCard = LinearLayout(activity).apply {
+                    // Minimalist Overview Bento Card
+                    val summaryBox = LinearLayout(activity).apply {
                         orientation = LinearLayout.VERTICAL
-                        background = theme.createGlassChip(tintedColor(textColor, 24), 16f)
-                        setPadding(dp(18), dp(14), dp(18), dp(14))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(20).toFloat()
+                            setColor(Color.argb(25, 255, 255, 255))
+                            setStroke(dp(1), Color.argb(35, 255, 255, 255))
+                        }
+                        setPadding(dp(22), dp(20), dp(22), dp(20))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, 0, dp(20))
+                        }
+                    }
+
+                    fun addSummaryRow(label: String, value: String, isLast: Boolean = false) {
+                        val row = LinearLayout(activity).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            setPadding(0, dp(6), 0, dp(6))
+                        }
+                        val lbl = TextView(activity).apply {
+                            text = label
+                            textSize = 14f
+                            setTextColor(tintedColor(textColor, 140))
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        }
+                        val v = TextView(activity).apply {
+                            text = value
+                            textSize = 14.5f
+                            typeface = theme.getAppTypeface(isBold = true)
+                            setTextColor(Color.WHITE)
+                        }
+                        row.addView(lbl)
+                        row.addView(v)
+                        summaryBox.addView(row)
+
+                        if (!isLast) {
+                            val divider = View(activity).apply {
+                                background = GradientDrawable().apply {
+                                    setColor(Color.argb(18, 255, 255, 255))
+                                }
+                                layoutParams = LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.MATCH_PARENT,
+                                    dp(1)
+                                ).apply {
+                                    setMargins(0, dp(4), 0, dp(4))
+                                }
+                            }
+                            summaryBox.addView(divider)
+                        }
+                    }
+
+                    addSummaryRow("Focus Area", selectedFocus)
+                    addSummaryRow("Daily Study Target", "$selectedDailyHours Hours")
+                    val modeDisplay = if (selectedTimerMode == "COUNTDOWN") "Pomodoro (25/5)" else "Stopwatch (Continuous)"
+                    addSummaryRow("Timer Style", modeDisplay, isLast = true)
+
+                    contentContainer.addView(summaryBox)
+
+                    // Value proposition tip card
+                    val tipBox = LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(14).toFloat()
+                            setColor(Color.argb(30, Color.red(primary), Color.green(primary), Color.blue(primary)))
+                            setStroke(dp(1), Color.argb(60, Color.red(primary), Color.green(primary), Color.blue(primary)))
+                        }
+                        setPadding(dp(16), dp(12), dp(16), dp(12))
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
                         )
                     }
 
-                    fun addSummaryRow(label: String, value: String) {
-                        val row = LinearLayout(activity).apply {
-                            orientation = LinearLayout.HORIZONTAL
-                            layoutParams = LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT
-                            ).apply {
-                                setMargins(0, dp(4), 0, dp(4))
-                            }
-                        }
-                        val lbl = TextView(activity).apply {
-                            text = label
-                            textSize = 13f
-                            setTextColor(tintedColor(textColor, 140))
-                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                        }
-                        val v = TextView(activity).apply {
-                            text = value
-                            textSize = 13.5f
-                            typeface = theme.getAppTypeface(isBold = true)
-                            setTextColor(primary)
-                        }
-                        row.addView(lbl)
-                        row.addView(v)
-                        summaryCard.addView(row)
+                    val tipText = TextView(activity).apply {
+                        text = "Tip: Your stats, streaks, and progress are stored privately on your device. Tap Start on the timer to log your first session."
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                        setTextColor(tintedColor(textColor, 210))
+                        setLineSpacing(dp(2).toFloat(), 1.0f)
                     }
+                    tipBox.addView(tipText)
+                    contentContainer.addView(tipBox)
 
-                    addSummaryRow("Focus Area", selectedFocus)
-                    addSummaryRow("Daily Goal", "${selectedDailyHours} Hours")
-                    addSummaryRow("Timer Style", if (selectedTimerMode == "COUNTDOWN") "Pomodoro (25/5)" else "Stopwatch")
-
-                    step3View.addView(summaryCard)
-                    stepContainer.addView(step3View)
-
-                    nextBtn.text = "Get Started"
+                    primaryBtn.text = "Get Started"
                 }
             }
         }
+        renderCurrentStepFn = { renderStep() }
 
-        nextBtn.setOnClickListener {
+        primaryBtn.setOnClickListener {
             if (currentStep < 3) {
                 currentStep++
                 renderStep()
             } else {
-                // Apply configurations and finish onboarding
                 val goalSecs = (selectedDailyHours * 3600L).coerceAtLeast(1800L)
-                val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                GoalHistoryManager.setDailyGoal(activity, goalSecs)
                 prefs.edit()
                     .putString("user_target_focus", selectedFocus)
                     .putString("target_exam", selectedFocus)
-                    .putInt("daily_goal_minutes", selectedDailyHours * 60)
-                    .putLong("daily_goal_secs", goalSecs)
-                    .putLong("${todayStr}_goal_secs", goalSecs)
                     .putString("timer_mode", selectedTimerMode)
                     .putBoolean("has_completed_onboarding_v2", true)
                     .apply()
-                GoalHistoryManager.recordGoalChange(activity, todayStr, goalSecs)
 
                 dialog.dismiss()
                 activity.buildCurrentPanel()
@@ -417,11 +579,21 @@ object OnboardingDialogHelper {
             }
         }
 
-        root.addView(indicatorRow)
-        root.addView(stepContainer)
-        root.addView(buttonRow)
+        rootLayout.addView(topBar)
+        rootLayout.addView(progressTrack)
+        rootLayout.addView(scrollView)
+        rootLayout.addView(bottomBar)
 
-        dialog.setContentView(root)
+        // Window Inset handling for edge-to-edge
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
+            val statusBars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
+            val navBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+            topBar.setPadding(dp(24), statusBars.top + dp(14), dp(24), dp(12))
+            bottomBar.setPadding(dp(24), dp(12), dp(24), navBars.bottom + dp(18))
+            insets
+        }
+
+        dialog.setContentView(rootLayout)
         renderStep()
         dialog.show()
     }

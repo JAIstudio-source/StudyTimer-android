@@ -177,8 +177,12 @@
     <string name="section_about">About</string>
     <string name="section_experimental">Experiments</string>
     <string name="section_developer">Advanced</string>
-    <string name="streak_uses_goal">Count streak only on goal hit</string>
+    <string name="streak_uses_goal">Streak requires full daily goal</string>
     <string name="streak_uses_goal_sub">Off = 45 min minimum, On = full daily goal</string>
+    <string name="streak_uses_goal_sub_off_format">45 min minimum. Days under 45 min do not count.</string>
+    <string name="streak_uses_goal_sub_on_format">Full goal of %1$s. Days under your goal do not count.</string>
+    <string name="streak_basis_45m">Streak based on: 45 min minimum</string>
+    <string name="streak_basis_goal_format">Streak based on: %1$s</string>
     <string name="mode_stopwatch">Stopwatch (Count Up)</string>
     <string name="mode_stopwatch_sub">Counts upward until you decide to finish</string>
     <string name="mode_pomodoro">Pomodoro (Countdown)</string>

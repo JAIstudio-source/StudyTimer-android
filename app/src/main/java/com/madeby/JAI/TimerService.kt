@@ -122,6 +122,49 @@ class TimerService : Service() {
         // If the gap since the last tick exceeds this, the process was almost
         // certainly killed and restarted by START_STICKY; don't count the dead time.
         private const val MAX_ACCEPTABLE_GAP_SECS = 600L
+
+        @JvmStatic
+        fun reconcileStartupState(context: Context): Boolean {
+            val sharedPrefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+            var lastTimestamp = sharedPrefs.safeLong("lastTimestamp", 0L)
+            if (lastTimestamp <= 0L) return false
+
+            // Auto-correct old backups/prefs that stored lastTimestamp in milliseconds
+            if (lastTimestamp > 100_000_000_000L) {
+                lastTimestamp /= 1000L
+                sharedPrefs.edit().putLong("lastTimestamp", lastTimestamp).apply()
+            }
+
+            val activeSessionDateStr = sharedPrefs.safeString("active_session_date_str", sharedPrefs.safeString("activeSessionDateStr", null))
+            val timerStateStr = sharedPrefs.safeString("timer_state", sharedPrefs.safeString("timerState", "IDLE")) ?: "IDLE"
+
+            if (timerStateStr == "STUDYING" || timerStateStr == "BREAK") {
+                val nowSecs = System.currentTimeMillis() / 1000L
+                val gapSecs = nowSecs - lastTimestamp
+                if (gapSecs <= MAX_ACCEPTABLE_GAP_SECS) {
+                    return false
+                }
+
+                val entries = TimelineLogger.load(context)
+                val lastEntry = entries.lastOrNull()
+                if (lastEntry != null && (lastEntry.state == "STUDYING" || lastEntry.state == "BREAK")) {
+                    val idleTimestamp = lastTimestamp * 1000L
+                    TimelineLogger.recordRaw(context, "IDLE", timestamp = idleTimestamp)
+                }
+                sharedPrefs.edit()
+                    .putString("timerState", "IDLE")
+                    .putString("timer_state", "IDLE")
+                    .putLong("accumulatedStudy", 0L)
+                    .putLong("currentBreakSeconds", 0L)
+                    .apply()
+
+                val targetDate = activeSessionDateStr?.takeIf { it.isNotBlank() }
+                    ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(lastTimestamp * 1000L))
+                StatsEngine(context).reconcileDayTotals(targetDate)
+                return true
+            }
+            return false
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -129,6 +172,7 @@ class TimerService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        reconcileStartupState(this)
         loadSavedState()
         startBackgroundLoop()
     }
@@ -149,6 +193,7 @@ class TimerService : Service() {
             }
             return START_NOT_STICKY
         }
+        reconcileStartupState(this)
         loadSavedState()
         when (action) {
             ACTION_START_LECTURE -> {
@@ -508,13 +553,15 @@ class TimerService : Service() {
     private fun syncPresence(isStudying: Boolean, subName: String = "", subColor: String = "#3b82f6") {
         serviceScope.launch {
             LeaderboardManager.updateStudyPresence(this@TimerService, isStudying, subName, subColor)
-            StudyRoomManager.updateRoomPresenceIfActive(
-                this@TimerService,
-                isStudying,
-                subName,
-                subColor,
-                accumulatedStudy.toInt()
-            )
+            if (BuildConfig.STUDY_ROOM_ENABLED) {
+                StudyRoomManager.updateRoomPresenceIfActive(
+                    this@TimerService,
+                    isStudying,
+                    subName,
+                    subColor,
+                    accumulatedStudy.toInt()
+                )
+            }
         }
     }
 
@@ -558,7 +605,9 @@ class TimerService : Service() {
             } else {
                 LeaderboardManager.updateStudyPresence(this@TimerService, false)
             }
-            StudyRoomManager.updateRoomPresenceIfActive(this@TimerService, false, currentSub.name, currentSub.colorHex, accumulatedStudy.toInt())
+            if (BuildConfig.STUDY_ROOM_ENABLED) {
+                StudyRoomManager.updateRoomPresenceIfActive(this@TimerService, false, currentSub.name, currentSub.colorHex, accumulatedStudy.toInt())
+            }
         }
 
         sharedPrefs.edit().apply {
@@ -567,7 +616,7 @@ class TimerService : Service() {
                 putLong("${todayStr}_break_total", savedBreak + currentBreakSeconds)
             }
             if (!sharedPrefs.contains("${todayStr}_goal_secs")) {
-                putLong("${todayStr}_goal_secs", StatsEngine.getDailyGoalSecs(sharedPrefs))
+                GoalHistoryManager.setDailyGoal(this@TimerService, StatsEngine.getDailyGoalSecs(sharedPrefs), forDateStr = todayStr)
             }
             putLong("focus_remaining_secs", 0L)
             putLong("break_countdown_secs", 0L)
@@ -602,7 +651,14 @@ class TimerService : Service() {
         cancelInactivityCheckNotification()
         TimelineLogger.record(this, TimerState.IDLE)
         val stopPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        stopPrefs.edit().putBoolean("pomo_overtime_alerted", false).apply()
+        stopPrefs.edit()
+            .putBoolean("pomo_overtime_alerted", false)
+            .remove("active_planner_goal_id")
+            .remove("active_planner_goal_title")
+            .remove("active_planner_goal_subject_id")
+            .remove("active_planner_goal_subtopic")
+            .remove("active_planner_goal_target_mins")
+            .apply()
         saveState()
 
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -1022,13 +1078,15 @@ class TimerService : Service() {
                                 }
                                 serviceScope.launch {
                                     LeaderboardManager.syncStudyProgress(this@TimerService, chunk, isStudying = true, sub.name, sub.colorHex)
-                                    StudyRoomManager.updateRoomPresenceIfActive(
-                                        this@TimerService,
-                                        isStudying = true,
-                                        subject = sub.name,
-                                        colorHex = sub.colorHex,
-                                        elapsedSeconds = accumulatedStudy.toInt()
-                                    )
+                                    if (BuildConfig.STUDY_ROOM_ENABLED) {
+                                        StudyRoomManager.updateRoomPresenceIfActive(
+                                            this@TimerService,
+                                            isStudying = true,
+                                            subject = sub.name,
+                                            colorHex = sub.colorHex,
+                                            elapsedSeconds = accumulatedStudy.toInt()
+                                        )
+                                    }
                                 }
                             }
                             if (timerMode == "COUNTDOWN" || (timerMode == "LECTURE" && lectureModeEnabled)) {
@@ -1422,8 +1480,7 @@ class TimerService : Service() {
         // 6. Ensure new day's goal exists preserving user settings
         val configuredGoal = StatsEngine.getDailyGoalSecs(sp)
         if (!sp.contains("${newDateStr}_goal_secs") || sp.getLong("${newDateStr}_goal_secs", 0L) <= 0L) {
-            sp.edit().putLong("${newDateStr}_goal_secs", configuredGoal).apply()
-            GoalHistoryManager.recordGoalChange(this, newDateStr, configuredGoal)
+            GoalHistoryManager.setDailyGoal(this, configuredGoal, forDateStr = newDateStr)
         }
 
         saveState()
@@ -1435,6 +1492,10 @@ class TimerService : Service() {
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         currentTimerState = runCatching { TimerState.valueOf(sharedPrefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
         lastTimestamp = sharedPrefs.safeLong("lastTimestamp", 0L)
+        if (lastTimestamp > 100_000_000_000L) {
+            lastTimestamp /= 1000L
+            sharedPrefs.edit().putLong("lastTimestamp", lastTimestamp).apply()
+        }
         accumulatedStudy = sharedPrefs.safeLong("accumulatedStudy", 0L)
         currentBreakSeconds = sharedPrefs.safeLong("currentBreakSeconds", 0L)
         activeSessionDateStr = sharedPrefs.safeString("active_session_date_str", SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))

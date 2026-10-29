@@ -136,6 +136,11 @@ class StatsPanelBuilder(private val host: MainActivity) {
         renderStatsContent(statsRoot, snap, renderTab)
         FontStyleManager.applyRecursively(statsRoot)
         target.addView(statsRoot)
+        host.window.decorView.postDelayed({
+            if (!host.isFinishing && !host.isDestroyed) {
+                StreakRescueDialog.maybeShow(host)
+            }
+        }, 300L)
     }
 
     private fun buildHeatmapData(): Map<String, Long> = statsEngine.buildHeatmapData()
@@ -252,7 +257,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 val isSel = activeHeatmapSubjectId == sub.id
                 val subCol = try { Color.parseColor(sub.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
                 val chip = TextView(host).apply {
-                    text = "${sub.iconEmoji} ${sub.name}"
+                    text = sub.name
                     textSize = 11.5f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(if (isSel) Color.WHITE else themeCoordinator.textColor)
@@ -319,7 +324,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             setPadding(0, 0, 0, dp(4))
         }
         headerRow.addView(TextView(host).apply {
-            text = "❄️ BURNOUT PREVENTION"
+            text = "â„ï¸ BURNOUT PREVENTION"
             textSize = 11.5f
             letterSpacing = 0.12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -386,7 +391,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             val yesterdayFrozen = frozenDates.contains(yesterdayStr)
             if (!yesterdayFrozen) {
                 val freezeYesterdayBtn = TextView(host).apply {
-                    text = "❄️ Protect Yesterday ($yesterdayStr)"
+                    text = "â„ï¸ Protect Yesterday ($yesterdayStr)"
                     textSize = 13f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(Color.WHITE)
@@ -403,7 +408,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         StreakCalculator.applyStreakFreeze(host, yesterdayStr)
                         host.statsEngine.recalculateStreak()
-                        AppToast.show(host, "❄️ Yesterday protected! Streak preserved.")
+                        AppToast.show(host, "â„ï¸ Yesterday protected! Streak preserved.")
                         dialog.dismiss()
                         host.navigateToPanel(AppPanel.STATS)
                     }
@@ -414,7 +419,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             val todayFrozen = frozenDates.contains(todayStr)
             if (!todayFrozen) {
                 val freezeTodayBtn = TextView(host).apply {
-                    text = "❄️ Freeze Today as Rest Day"
+                    text = "â„ï¸ Freeze Today as Rest Day"
                     textSize = 13f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
@@ -436,7 +441,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         StreakCalculator.applyStreakFreeze(host, todayStr)
                         host.statsEngine.recalculateStreak()
-                        AppToast.show(host, "❄️ Today set as rest day! Streak preserved.")
+                        AppToast.show(host, "â„ï¸ Today set as rest day! Streak preserved.")
                         dialog.dismiss()
                         host.navigateToPanel(AppPanel.STATS)
                     }
@@ -629,9 +634,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val avgH = avg7 / 3600
         val avgM = (avg7 % 3600) / 60
 
-        var syncPieFromBar: ((Int) -> Unit)? = null
-        var syncBarFromPie: ((SubjectTagManager.SubjectStatsPeriod) -> Unit)? = null
-
         val chartCard = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             background = themeCoordinator.createCardBackground()
@@ -702,34 +704,8 @@ class StatsPanelBuilder(private val host: MainActivity) {
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(dp(4), 0, 0, 0)
         })
-        heroTopRow.addView(streakChip)
 
-        val availableFreezes = StreakCalculator.getAvailableFreezesThisMonth(host)
-        val freezeChip = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setColor(if (themeCoordinator.isDarkMode()) 0x2238BDF8.toInt() else 0x1A0284C7.toInt())
-                setStroke(dp(1), if (themeCoordinator.isDarkMode()) 0x6638BDF8.toInt() else 0x4D0284C7.toInt())
-            }
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(dp(6), 0, 0, 0)
-            }
-            isClickable = true
-            setOnClickListener {
-                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                showStreakFreezeDialog()
-            }
-        }
-        freezeChip.addView(TextView(host).apply {
-            text = "❄️ $availableFreezes/2"
-            setTextColor(if (themeCoordinator.isDarkMode()) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt())
-            textSize = 11.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
-        heroTopRow.addView(freezeChip)
+        heroTopRow.addView(streakChip)
         heroCard.addView(heroTopRow)
 
         // Main Counter paired with Circular Progress Ring
@@ -754,41 +730,19 @@ class StatsPanelBuilder(private val host: MainActivity) {
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         })
 
-        val yesterdaySecs = snap.yesterdaySecs
-        val trendPct = if (yesterdaySecs > 0L) {
-            (((todayFocus - yesterdaySecs).toFloat() / yesterdaySecs.toFloat()) * 100f).toInt()
-        } else if (todayFocus > 0L) {
-            100
-        } else {
-            0
-        }
-
         val trendChip = TextView(host).apply {
             tag = "overview_trend_chip"
             textSize = 11.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(7), dp(2), dp(7), dp(2))
-            when {
-                yesterdaySecs == 0L && todayFocus == 0L -> {
-                    text = "0%"
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.55f
-                }
-                trendPct > 0 -> {
-                    text = "+${trendPct}%"
-                    setTextColor(0xFF43D36E.toInt())
-                    background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(0x2243D36E.toInt()) }
-                }
-                trendPct < 0 -> {
-                    text = "${trendPct}%"
-                    setTextColor(0xFFFF5252.toInt())
-                    background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(0x22FF5252.toInt()) }
-                }
-                else -> {
-                    text = "0%"
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.6f
-                }
+            setPadding(dp(8), dp(3), dp(8), dp(3))
+            val overM = ((todayFocus - heroGoalSecs) / 60L)
+            if (goalReached && overM > 0L) {
+                text = "+${overM}m over goal"
+                setTextColor(0xFF43D36E.toInt())
+                background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(0x2243D36E.toInt()) }
+                visibility = View.VISIBLE
+            } else {
+                visibility = View.GONE
             }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(dp(8), 0, 0, dp(4))
@@ -799,7 +753,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
         val targetSubtext = TextView(host).apply {
             tag = "overview_target_subtext"
-            text = "Target: ${formatGoalLabel(heroGoalSecs)} · ${(heroGoalPctRaw).toInt()}% completed"
+            text = "Target: ${formatGoalLabel(heroGoalSecs)} \u00B7 ${(heroGoalPctRaw).toInt()}% completed"
             setTextColor(themeCoordinator.textColor)
             alpha = 0.7f
             textSize = 12f
@@ -820,10 +774,12 @@ class StatsPanelBuilder(private val host: MainActivity) {
             dp(7),
             Pair(goalRingColor, lightenColor(goalRingColor, 0.25f)),
             animate = !hasPlayedStatsEntranceAnimation
-        ), FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+        ).apply {
+            tag = "overview_segment_ring"
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         goalRingWrap.addView(TextView(host).apply {
             tag = "overview_ring_center_text"
-            text = if (goalReached) "✓" else "${heroGoalPctRaw.toInt()}%"
+            text = if (goalReached) "\u2713" else "${heroGoalPctRaw.toInt()}%"
             gravity = Gravity.CENTER
             setTextColor(goalRingColor)
             textSize = if (goalReached) 18f else 13f
@@ -833,7 +789,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         heroCenterRow.addView(goalRingWrap)
         heroCard.addView(heroCenterRow)
 
-        // Inline Badges Row: [🎯 Goal Reached!] | [☕ 0m break] | [📊 7D Avg: ...]
+        // Inline Badges Row: [ðŸŽ¯ Goal Reached!] | [â˜• 0m break] | [ðŸ“Š 7D Avg: ...]
         val inlineBadgesRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -888,12 +844,12 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val breakLabel = if (todayBH > 0) "${todayBH}h ${todayBM}m break" else "${todayBM}m break"
         inlineBadgesRow.addView(createPillBadge("", remainingLabel, isGreenAccent = goalReached, viewTag = "overview_remaining_badge"))
         inlineBadgesRow.addView(createPillBadge("", breakLabel, viewTag = "overview_break_badge"))
-        inlineBadgesRow.addView(createPillBadge("", "${avgH}h ${avgM}m 7d avg"))
+        inlineBadgesRow.addView(createPillBadge("", "${avgH}h ${avgM}m daily avg"))
         heroCard.addView(inlineBadgesRow)
 
         val chipRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, dp(10))
+            setPadding(0, 0, 0, 0)
         }
         val filterLabels = listOf(host.getString(R.string.filter_7d), host.getString(R.string.filter_30d), host.getString(R.string.filter_all))
         val filterValues = listOf(7, 30, -1)
@@ -930,7 +886,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         sharedPrefs.edit().putInt("selected_days_filter", selectedDaysFilter).apply()
                         refreshChipStyles()
                         buildChartFn(selectedDaysFilter)
-                        syncPieFromBar?.invoke(selectedDaysFilter)
                     }
                 }
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, dp(6), 0) }
@@ -938,22 +893,35 @@ class StatsPanelBuilder(private val host: MainActivity) {
             chipViews.add(chip)
             chipRow.addView(chip)
         }
-        chartCard.addView(chipRow)
+        val chartHeaderRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(8))
+        }
+        chartHeaderRow.addView(TextView(host).apply {
+            text = "FOCUS TREND"
+            setTextColor(themeCoordinator.primaryColor)
+            textSize = 11f
+            letterSpacing = 0.18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        chartHeaderRow.addView(chipRow)
+        chartCard.addView(chartHeaderRow)
 
         chartCard.addView(TextView(host).apply {
-            text = host.getString(R.string.goal_mark, formatGoalLabel(dailyGoalSecs()))
+            text = "Daily target: ${formatGoalLabel(dailyGoalSecs())} \u00B7 Tap any day to inspect"
             setTextColor(themeCoordinator.textColor)
-            alpha = 0.5f
+            alpha = 0.55f
             textSize = 11.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setPadding(dp(4), 0, dp(4), dp(8))
+            setPadding(dp(2), 0, dp(2), dp(10))
         })
 
         chartCard.addView(chartContainer)
 
         fun buildChart(daysLimit: Int) {
             chartContainer.removeAllViews()
-            var maxDayFocusFound = 1L
 
             if (daysLimit == 7) {
                 val displaySdf = SimpleDateFormat("dd MMM", Locale.getDefault())
@@ -961,15 +929,18 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 val cal = Calendar.getInstance()
                 val mondayOffset = WeekHelper.mondayOffset(cal)
                 val weekData = ArrayList<Pair<String, String>>()
+                var maxScaleFound = 1L
 
                 for (i in 0..6) {
                     val c = Calendar.getInstance(); c.add(Calendar.DAY_OF_YEAR, -mondayOffset + i)
                     val dStr = sdf.format(c.time)
                     weekData.add(Pair(dStr, "${weekdayNames[i]} ${displaySdf.format(c.time)}"))
                     val f = snap.dayFocus[dStr] ?: 0L
-                    if (f > maxDayFocusFound) maxDayFocusFound = f
+                    val g = resolveGoalFor(dStr)
+                    if (f > maxScaleFound) maxScaleFound = f
+                    if (g > maxScaleFound) maxScaleFound = g
                 }
-                val scale = if (maxDayFocusFound <= 0L) 3600L else Math.ceil(maxDayFocusFound.toDouble() / 3600.0).toLong() * 3600L
+                val scale = if (maxScaleFound <= 0L) 3600L else Math.ceil(maxScaleFound.toDouble() / 3600.0).toLong() * 3600L
 
                 for ((dStr, label) in weekData) {
                     val f = snap.dayFocus[dStr] ?: 0L
@@ -1005,13 +976,16 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 }
             } else if (daysLimit == 30) {
                 val labelSdf = SimpleDateFormat("d MMM", Locale.getDefault())
+                var maxScaleFound = 1L
                 for (i in 0 until 30) {
                     val c = Calendar.getInstance(); c.add(Calendar.DAY_OF_YEAR, -i)
                     val dStr = sdf.format(c.time)
                     val f = snap.dayFocus[dStr] ?: 0L
-                    if (f > maxDayFocusFound) maxDayFocusFound = f
+                    val g = resolveGoalFor(dStr)
+                    if (f > maxScaleFound) maxScaleFound = f
+                    if (g > maxScaleFound) maxScaleFound = g
                 }
-                val scale = if (maxDayFocusFound <= 0L) 3600L else Math.ceil(maxDayFocusFound.toDouble() / 3600.0).toLong() * 3600L
+                val scale = if (maxScaleFound <= 0L) 3600L else Math.ceil(maxScaleFound.toDouble() / 3600.0).toLong() * 3600L
 
                 for (i in 29 downTo 0) {
                     val c = Calendar.getInstance(); c.add(Calendar.DAY_OF_YEAR, -i)
@@ -1099,11 +1073,13 @@ class StatsPanelBuilder(private val host: MainActivity) {
         })
 
         val tapDetailsBtn = TextView(host).apply {
-            text = "View Details ›"
+            text = "View Details >"
             setTextColor(if (themeCoordinator.isDarkMode()) Color.WHITE else 0xFF0F172A.toInt())
             textSize = 11.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(12), dp(5), dp(12), dp(5))
+            gravity = Gravity.CENTER
+            minHeight = 0
+            setPadding(dp(12), dp(6), dp(12), dp(6))
             background = if (themeCoordinator.isDarkMode()) {
                 themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 14f)
             } else {
@@ -1118,23 +1094,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
         pieHeaderRow.addView(tapDetailsBtn)
         pieCard.addView(pieHeaderRow)
-
-        // Sleek horizontal period switcher [ Today | This Week | This Month | All Time ]
-        val periodTabsScroll = HorizontalScrollView(host).apply {
-            isFillViewport = true
-            isHorizontalScrollBarEnabled = false
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, 0, 0, dp(12)) }
-        }
-
-        val periodTabsRow = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        periodTabsScroll.addView(periodTabsRow)
-        pieCard.addView(periodTabsScroll)
 
         val pieContentContainer = LinearLayout(host).apply { orientation = LinearLayout.VERTICAL }
 
@@ -1172,9 +1131,16 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     val sumRecorded = map.values.sumOf { it.second }
                     if (todayFocusSecs > sumRecorded) {
                         val diff = todayFocusSecs - sumRecorded
-                        val genSub = SubjectTagManager.resolveSubject(host, "general", "General Study", "#6366F1")
-                        val curr = map[genSub.id]?.second ?: 0L
-                        map[genSub.id] = genSub to (curr + diff)
+                        val isRunning = (timerState == "STUDYING" || timerState == "PAUSED" || timerState == "BREAK")
+                        if (isRunning) {
+                            val activeSub = SubjectTagManager.getSelectedSubject(host)
+                            val currentSecs = map[activeSub.id]?.second ?: 0L
+                            map[activeSub.id] = activeSub to (currentSecs + diff)
+                        } else if (diff >= 60L) {
+                            val genSub = SubjectTagManager.resolveSubject(host, "general", "General Study", "#6366F1")
+                            val curr = map[genSub.id]?.second ?: 0L
+                            map[genSub.id] = genSub to (curr + diff)
+                        }
                     }
                     map
                 }
@@ -1239,74 +1205,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
             }
         }
 
-        fun renderPeriodTabs() {
-            periodTabsRow.removeAllViews()
-            val periods = SubjectTagManager.SubjectStatsPeriod.values()
-            for (p in periods) {
-                val isSelected = (p == activePiePeriod)
-                val tabBtn = TextView(host).apply {
-                    text = p.displayName
-                    textSize = 12f
-                    typeface = Typeface.create("sans-serif-medium", if (isSelected) Typeface.BOLD else Typeface.NORMAL)
-                    setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
-                    setPadding(dp(14), dp(7), dp(14), dp(7))
-                    background = if (isSelected) {
-                        GradientDrawable().apply {
-                            cornerRadius = dp(16).toFloat()
-                            setColor(themeCoordinator.primaryColor)
-                        }
-                    } else {
-                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 16f)
-                    }
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { setMargins(0, 0, dp(8), 0) }
-                    setOnClickListener {
-                        if (activePiePeriod != p) {
-                            HapticFeedbackHelper.performMicroHapticTick(host, this)
-                            activePiePeriod = p
-                            renderPeriodTabs()
-                            updatePieChartContent(pieContentContainer)
-                            syncBarFromPie?.invoke(p)
-                        }
-                    }
-                }
-                periodTabsRow.addView(tabBtn)
-            }
-        }
-
-        syncPieFromBar = { days ->
-            val targetPeriod = when (days) {
-                7 -> SubjectTagManager.SubjectStatsPeriod.WEEK
-                30 -> SubjectTagManager.SubjectStatsPeriod.MONTH
-                -1 -> SubjectTagManager.SubjectStatsPeriod.ALL_TIME
-                else -> null
-            }
-            if (targetPeriod != null && activePiePeriod != targetPeriod) {
-                activePiePeriod = targetPeriod
-                renderPeriodTabs()
-                updatePieChartContent(pieContentContainer)
-            }
-        }
-
-        syncBarFromPie = { period ->
-            val targetDays = when (period) {
-                SubjectTagManager.SubjectStatsPeriod.WEEK -> 7
-                SubjectTagManager.SubjectStatsPeriod.MONTH -> 30
-                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> -1
-                else -> null
-            }
-            if (targetDays != null && selectedDaysFilter != targetDays) {
-                selectedDaysFilter = targetDays
-                sharedPrefs.edit().putInt("selected_days_filter", targetDays).apply()
-                refreshChipStyles()
-                buildChartFn(targetDays)
-            }
-        }
-
-        renderPeriodTabs()
-
         pieCard.addView(pieContentContainer)
         updatePieChartContent(pieContentContainer)
         val totalLifeFocus = snap.totalLifeFocus
@@ -1340,7 +1238,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             text = host.getString(R.string.duration_h_m, totalLifeFocus / 3600, (totalLifeFocus % 3600) / 60)
             setTextColor(themeCoordinator.primaryColor)
             textSize = 24f
-            typeface = Typeface.MONOSPACE
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(0, dp(2), 0, 0)
         }
         focusCol.addView(lifetimeFocusLabel)
@@ -1362,7 +1260,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             text = host.getString(R.string.duration_h_m, totalLifeBreak / 3600, (totalLifeBreak % 3600) / 60)
             setTextColor(themeCoordinator.secondaryColor)
             textSize = 24f
-            typeface = Typeface.MONOSPACE
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(0, dp(2), 0, 0)
         }
         breakCol.addView(lifetimeBreakLabel)
@@ -1643,59 +1541,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
             content.addView(heroCard)
 
-            // Export Study Scorecard Banner
-            val exportBanner = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                background = themeCoordinator.createCardBackground()
-                setPadding(dp(14), dp(11), dp(14), dp(11))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(8))
-                }
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    host.showStudyScorecardExportDialog()
-                }
-            }
-
-            exportBanner.addView(ImageView(host).apply {
-                setImageResource(R.drawable.ic_book)
-                setColorFilter(themeCoordinator.primaryColor)
-                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
-                    setMargins(0, 0, dp(10), 0)
-                }
-            })
-
-            val exportTextCol = LinearLayout(host).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            exportTextCol.addView(TextView(host).apply {
-                text = "Study Report Card"
-                setTextColor(themeCoordinator.textColor)
-                textSize = 13.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            })
-            exportTextCol.addView(TextView(host).apply {
-                text = "Save or share your study summary"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.55f
-                textSize = 11f
-                setPadding(0, dp(1), 0, 0)
-            })
-            exportBanner.addView(exportTextCol)
-
-            exportBanner.addView(TextView(host).apply {
-                text = "Export ↗"
-                textSize = 11.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 14f)
-                setPadding(dp(10), dp(5), dp(10), dp(5))
-            })
-
             if (snap.showPieChart) {
                 content.addView(pieCard)
             }
@@ -1723,16 +1568,16 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 heatmapHeaderCol.addView(TextView(host).apply {
-                    text = host.getString(R.string.focus_heatmap)
+                    text = "CONSISTENCY"
                     setTextColor(themeCoordinator.primaryColor)
                     textSize = 11f
                     letterSpacing = 0.18f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 })
                 heatmapHeaderCol.addView(TextView(host).apply {
-                    text = host.getString(R.string.heatmap_hint)
+                    text = "Past 6 months activity \u00B7 Tap any day for details"
                     setTextColor(themeCoordinator.textColor)
-                    alpha = 0.45f
+                    alpha = 0.55f
                     textSize = 11f
                     setPadding(0, dp(2), 0, 0)
                 })
@@ -1809,315 +1654,66 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 content.addView(heatmapCard)
             }
 
-            // Detailed History Calendar Banner (directly above Study Report Card)
-            val historyCalendarBanner = LinearLayout(host).apply {
+            // Study Report Card placed directly below Consistency Heatmap
+            val exportCard = LinearLayout(host).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = themeCoordinator.createCardBackground()
-                setPadding(dp(14), dp(11), dp(14), dp(11))
+                setPadding(dp(16), dp(13), dp(16), dp(13))
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(8))
+                    setMargins(0, dp(4), 0, dp(10))
                 }
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    onNavigateToTimeline?.invoke()
+                    host.showStudyScorecardExportDialog()
                 }
             }
-
-            historyCalendarBanner.addView(ImageView(host).apply {
-                setImageResource(R.drawable.ic_calendar)
+            exportCard.addView(ImageView(host).apply {
+                setImageResource(R.drawable.ic_book)
                 setColorFilter(themeCoordinator.primaryColor)
-                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
-                    setMargins(0, 0, dp(10), 0)
+                layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply {
+                    setMargins(0, 0, dp(12), 0)
                 }
             })
-
-            val historyTextCol = LinearLayout(host).apply {
+            val exportTextCol = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            historyTextCol.addView(TextView(host).apply {
-                text = "Detailed History Calendar"
+            exportTextCol.addView(TextView(host).apply {
+                text = "Study Report Card"
                 setTextColor(themeCoordinator.textColor)
                 textSize = 13.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             })
-            historyTextCol.addView(TextView(host).apply {
-                text = "View past sessions, day logs & timeline"
+            exportTextCol.addView(TextView(host).apply {
+                text = "Export study certificate & scorecard"
                 setTextColor(themeCoordinator.textColor)
                 alpha = 0.55f
                 textSize = 11f
                 setPadding(0, dp(1), 0, 0)
             })
-            historyCalendarBanner.addView(historyTextCol)
-
-            historyCalendarBanner.addView(TextView(host).apply {
-                text = "View →"
+            exportCard.addView(exportTextCol)
+            exportCard.addView(TextView(host).apply {
+                text = "Export \u2197"
                 textSize = 11.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setTextColor(Color.WHITE)
-                background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 14f)
+                background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
                 setPadding(dp(10), dp(5), dp(10), dp(5))
             })
+            content.addView(exportCard)
 
-            content.addView(historyCalendarBanner)
-            content.addView(exportBanner)
-
-            var using7 = true
-
-            val patternCard = LinearLayout(host).apply {
+            // Collapsible container for Highlights and All-Time Study
+            val moreStatsContainer = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
-                background = themeCoordinator.createCardBackground()
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) }
-            }
-            val patternHeader = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-            }
-            patternHeader.addView(TextView(host).apply {
-                text = host.getString(R.string.focus_pattern)
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 11f
-                letterSpacing = 0.18f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            val segWrap = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(tintedColor(themeCoordinator.textColor, 16)) }
-                setPadding(dp(3), dp(2), dp(3), dp(2))
-            }
-            val seg7 = TextView(host).apply {
-                text = host.getString(R.string.week_7d)
-                textSize = 11f
-                gravity = Gravity.CENTER
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(dp(10), dp(3), dp(10), dp(3))
-            }
-            val seg30 = TextView(host).apply {
-                text = host.getString(R.string.week_30d)
-                textSize = 11f
-                gravity = Gravity.CENTER
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(dp(10), dp(3), dp(10), dp(3))
-            }
-            fun styleSeg(btn: TextView, selected: Boolean) {
-                val isDark = themeCoordinator.isDarkMode()
-                btn.setTextColor(if (selected) (if (isDark) themeCoordinator.bgColor else 0xFFFFFFFF.toInt()) else (if (isDark) themeCoordinator.textColor else 0xFF64748B.toInt()))
-                btn.alpha = if (selected) 1f else 0.7f
-                btn.background = if (selected) GradientDrawable().apply {
-                    cornerRadius = dp(11).toFloat()
-                    setColor(if (isDark) themeCoordinator.primaryColor else 0xFF0F172A.toInt())
-                } else null
-            }
-            segWrap.addView(seg7); segWrap.addView(seg30)
-            patternHeader.addView(segWrap)
-
-            val hidePatternBtn = TextView(host).apply {
-                text = "✕"
-                textSize = 13f
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.45f
-                setPadding(dp(10), dp(4), dp(4), dp(4))
-                setOnClickListener {
-                    sharedPrefs.edit().putBoolean("show_focus_pattern", false).apply()
-                    invalidateStatsCache()
-                    (patternCard.parent as? android.view.ViewGroup)?.removeView(patternCard)
-                    AppToast.show(host, "Daily Study Rhythm hidden (re-enable in Settings)")
-                }
-            }
-            patternHeader.addView(hidePatternBtn)
-            patternCard.addView(patternHeader)
-
-            val blockLabels = focusBlockLabels()
-            val startLabels = focusBlockStartLabels()
-            val cellsRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
-            val cellsScroll = HorizontalScrollView(host).apply {
-                isHorizontalScrollBarEnabled = false
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            }
-            cellsScroll.addView(cellsRow)
-            patternCard.addView(cellsScroll)
-
-            val footerText = TextView(host).apply {
-                setTextColor(themeCoordinator.textColor)
-                textSize = 12f
-                setPadding(0, dp(10), 0, 0)
-            }
-            patternCard.addView(footerText)
-
-            fun showBlockDialog(b: Int, secs: Long, total: Long, winLabel: String) {
-                val pct = if (total > 0L) (secs * 100.0 / total) else 0.0
-                val dialog = android.app.Dialog(host)
-                dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-                val dialogContent = LinearLayout(host).apply {
-                    orientation = LinearLayout.VERTICAL
-                    background = themeCoordinator.createDialogBackground(28f)
-                    setPadding(dp(20), dp(20), dp(20), dp(18))
-                }
-                dialogContent.addView(TextView(host).apply {
-                    text = focusBlockRangeLabel(b)
-                    setTextColor(themeCoordinator.primaryColor)
-                    textSize = 11f
-                    letterSpacing = 0.18f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                })
-                dialogContent.addView(TextView(host).apply {
-                    text = host.getString(R.string.block_focus_total, formatDuration(secs))
-                    setTextColor(themeCoordinator.textColor)
-                    textSize = 15f
-                    typeface = Typeface.MONOSPACE
-                    setPadding(0, dp(8), 0, 0)
-                })
-                dialogContent.addView(TextView(host).apply {
-                    text = host.getString(R.string.block_fraction, String.format(java.util.Locale.getDefault(), "%.0f%%", pct), winLabel)
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.6f
-                    textSize = 12f
-                    setPadding(0, dp(4), 0, 0)
-                })
-                dialogContent.addView(TextView(host).apply {
-                    text = host.getString(R.string.btn_close)
-                    gravity = Gravity.CENTER
-                    setTextColor(themeCoordinator.primaryColor)
-                    textSize = 12f
-                    letterSpacing = 0.18f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    background = GradientDrawable().apply { cornerRadius = 20f; setColor(tintedColor(themeCoordinator.primaryColor, 26)) }
-                    setPadding(dp(16), dp(10), dp(16), dp(10))
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(14), 0, 0) }
-                    setOnClickListener { dialog.dismiss() }
-                })
-                dialog.setContentView(dialogContent)
-                dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
-                dialog.window?.setLayout((host.resources.displayMetrics.widthPixels * 0.85f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
-                dialog.show()
-            }
-
-            fun rebuildCells() {
-                val blockSecs = if (using7) snap.blockSecs7 else snap.blockSecs30
-                val maxBlock = if (using7) snap.maxBlock7 else snap.maxBlock30
-                val total = if (using7) snap.patternTotal7 else snap.patternTotal30
-                val winLabel = if (using7) "7-day" else "30-day"
-                cellsRow.removeAllViews()
-                for (b in 0 until 12) {
-                    val v = blockSecs[b]
-                    val intensity = if (maxBlock > 0L) v.toFloat() / maxBlock.toFloat() else 0f
-                    val col = LinearLayout(host).apply {
-                        orientation = LinearLayout.VERTICAL
-                        gravity = Gravity.CENTER_HORIZONTAL
-                        setPadding(0, dp(8), 0, 0)
-                    }
-                    val tile = FrameLayout(host).apply {
-                        background = if (v > 0L) GradientDrawable().apply {
-                            cornerRadius = dp(8).toFloat()
-                            val isDark = themeCoordinator.isDarkMode()
-                            val alpha = if (isDark) (40 + (185 * intensity).toInt()) else (75 + (180 * intensity).toInt())
-                            setColor(tintedColor(themeCoordinator.primaryColor, alpha))
-                        } else GradientDrawable().apply {
-                            cornerRadius = dp(8).toFloat()
-                            if (themeCoordinator.isDarkMode()) {
-                                setColor(tintedColor(themeCoordinator.textColor, 16))
-                            } else {
-                                setColor(0xFFF1F5F9.toInt())
-                                setStroke(dp(1), 0xFFE2E8F0.toInt())
-                            }
-                        }
-                        layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
-                        setOnClickListener {
-                            showBlockDialog(b, v, total, winLabel)
-                        }
-                    }
-                    col.addView(tile)
-                    col.addView(TextView(host).apply {
-                        text = startLabels[b]
-                        setTextColor(themeCoordinator.textColor)
-                        alpha = 0.45f
-                        textSize = 8f
-                        gravity = Gravity.CENTER
-                        layoutParams = LinearLayout.LayoutParams(dp(42), LinearLayout.LayoutParams.WRAP_CONTENT)
-                        setPadding(0, dp(4), 0, 0)
-                    })
-                    col.addView(TextView(host).apply {
-                        text = if (v > 0L && total > 0L) "${(v * 100.0 / total).toInt()}%" else ""
-                        setTextColor(themeCoordinator.primaryColor)
-                        alpha = if (v > 0L) 0.85f else 0.3f
-                        textSize = 9f
-                        typeface = Typeface.MONOSPACE
-                        gravity = Gravity.CENTER
-                        layoutParams = LinearLayout.LayoutParams(dp(42), LinearLayout.LayoutParams.WRAP_CONTENT)
-                    })
-                    col.setOnClickListener {
-                        showBlockDialog(b, v, total, winLabel)
-                    }
-                    cellsRow.addView(col)
-                }
-                if (total > 0L) {
-                    var maxBlockVal = 0L
-                    for (b in 0 until 12) if (blockSecs[b] > maxBlockVal) maxBlockVal = blockSecs[b]
-
-                    val peakBlocks = mutableListOf<Int>()
-                    if (maxBlockVal > 0L) {
-                        for (b in 0 until 12) {
-                            if (blockSecs[b] >= (maxBlockVal * 0.70f).toLong()) {
-                                peakBlocks.add(b)
-                            }
-                        }
-                    }
-
-                    val ranges = mutableListOf<String>()
-                    var idx = 0
-                    while (idx < peakBlocks.size) {
-                        val start = peakBlocks[idx]
-                        var end = start
-                        while (idx + 1 < peakBlocks.size && peakBlocks[idx + 1] == end + 1) {
-                            end = peakBlocks[idx + 1]
-                            idx++
-                        }
-                        val startLabel = blockLabels[start].split("-", "\u2013").first().trim()
-                        val endLabel = blockLabels[end].split("-", "\u2013").last().trim()
-                        ranges.add("$startLabel \u2013 $endLabel")
-                        idx++
-                    }
-
-                    val rangeStr = if (ranges.isNotEmpty()) ranges.joinToString(" & ") else blockLabels[0].replace("-", " \u2013 ")
-                    footerText.text = host.getString(R.string.most_focused, rangeStr)
-                    footerText.setAlpha(0.7f)
-                    cellsScroll.post {
-                        val colW = dp(42)
-                        val firstPeak = peakBlocks.firstOrNull() ?: 0
-                        val target = (firstPeak * colW - (cellsScroll.width - colW) / 2).coerceAtLeast(0)
-                        cellsScroll.smoothScrollTo(target, 0)
-                    }
-                } else {
-                    footerText.text = host.getString(R.string.no_focus_recent, if (using7) "7" else "30")
-                    footerText.setAlpha(0.5f)
+                visibility = View.GONE
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, dp(16))
                 }
             }
 
-            styleSeg(seg7, true); styleSeg(seg30, false)
-            seg7.setOnClickListener {
-                using7 = true
-                styleSeg(seg7, true); styleSeg(seg30, false)
-                rebuildCells()
-            }
-            seg30.setOnClickListener {
-                using7 = false
-                styleSeg(seg7, false); styleSeg(seg30, true)
-                rebuildCells()
-            }
-            rebuildCells()
-            val isPatternVisible = sharedPrefs.getBoolean("show_focus_pattern", true) && snap.showPattern
-            if (isPatternVisible) {
-                (patternCard.parent as? android.view.ViewGroup)?.removeView(patternCard)
-                content.addView(patternCard)
-            }
-            }
-
-            content.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(6)) })
             val highlightsHeaderRow = LinearLayout(host).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -2132,7 +1728,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             val customizeBtn = TextView(host).apply {
-                text = "Customize ›"
+                text = "Customize >"
                 setTextColor(themeCoordinator.primaryColor)
                 alpha = 0.85f
                 textSize = 11.5f
@@ -2143,10 +1739,61 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 }
             }
             highlightsHeaderRow.addView(customizeBtn)
-            content.addView(highlightsHeaderRow)
-            content.addView(highlightsGrid)
-            content.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(10)) })
-            content.addView(lifetimeCard)
+
+            moreStatsContainer.addView(highlightsHeaderRow)
+            moreStatsContainer.addView(highlightsGrid)
+            moreStatsContainer.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(10)) })
+            moreStatsContainer.addView(lifetimeCard)
+
+            // Interactive "View Highlights" button
+            val viewMoreContainer = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, dp(4), 0, dp(14))
+                }
+            }
+
+            val viewMoreBtn = TextView(host).apply {
+                text = "View Highlights  \u25BE"
+                setTextColor(themeCoordinator.primaryColor)
+                textSize = 12.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                gravity = Gravity.CENTER
+                minHeight = dp(40)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(20).toFloat()
+                    if (themeCoordinator.isDarkMode()) {
+                        val chipBg = if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF181A24.toInt()
+                        setColor(chipBg)
+                        setStroke(dp(1), tintedColor(themeCoordinator.primaryColor, 120))
+                    } else {
+                        setColor(0xFFF1F5F9.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                    }
+                }
+                setPadding(dp(22), dp(9), dp(22), dp(9))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    if (moreStatsContainer.visibility == View.VISIBLE) {
+                        moreStatsContainer.visibility = View.GONE
+                        text = "View Highlights  \u25BE"
+                    } else {
+                        moreStatsContainer.visibility = View.VISIBLE
+                        text = "Hide Highlights  \u25B4"
+                    }
+                }
+            }
+            viewMoreContainer.addView(viewMoreBtn)
+
+            content.addView(viewMoreContainer)
+            content.addView(moreStatsContainer)
+        }
     }
 
     internal fun invalidateStatsCache() {

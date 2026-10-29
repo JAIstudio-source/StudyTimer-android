@@ -18,4 +18,7 @@
 *debug*.apk
 StudyTimer-debug.apk
 /extras/
+/tools/testing_tool/reports/
+/tools/testing_tool/.venv/
+/tools/testing_tool/**/__pycache__/
 

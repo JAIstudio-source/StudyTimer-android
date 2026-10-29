@@ -99,12 +99,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 text = when (currentSettingsTab) {
                     AppSettingsTab.HUB -> getString(R.string.settings_title)
                     AppSettingsTab.TIMER -> "Timer & Focus"
-                    AppSettingsTab.PLANNER -> "Planner & Goals"
+                    AppSettingsTab.PLANNER -> "Goal and Reminder"
                     AppSettingsTab.ANALYTICS -> "Insights & Stats"
                     AppSettingsTab.THEME -> "Theme & Appearance"
                     AppSettingsTab.CLOUD -> "Cloud & Backups"
-                    AppSettingsTab.PROFILE -> "Profile Settings"
-                    AppSettingsTab.COMMUNITY -> "Community Settings"
+                    AppSettingsTab.PROFILE -> "Student Profile"
+                    AppSettingsTab.COMMUNITY -> "Leaderboard"
                     AppSettingsTab.DEVELOPER -> "Developer Tools"
                 }
                 setTextColor(themeCoordinator.textColor)
@@ -123,6 +123,10 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val allSettingsBtn = TextView(this).apply {
                     text = "All Settings ▾"
                     textSize = 12f
+                    gravity = Gravity.CENTER
+                    minHeight = dp(36)
+                    minWidth = dp(48)
+                    contentDescription = "Return to All Settings Hub"
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.primaryColor)
                     background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 14f)
@@ -142,14 +146,14 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
             val subtitleText = TextView(this).apply {
                 text = when (currentSettingsTab) {
-                    AppSettingsTab.HUB -> "Customize your timer, goals, charts & backups"
+                    AppSettingsTab.HUB -> ""
                     AppSettingsTab.TIMER -> "Focus durations, break times & timer mode"
-                    AppSettingsTab.PLANNER -> "Daily targets, goal reminders & weekly history"
+                    AppSettingsTab.PLANNER -> "Daily targets & goal reminders"
                     AppSettingsTab.ANALYTICS -> "Heatmap, subject breakdown & chart display"
-                    AppSettingsTab.THEME -> "OLED black, light mode, styles & colors"
+                    AppSettingsTab.THEME -> "Personalize your background, colors & look"
                     AppSettingsTab.CLOUD -> "Google account sync, auto-backup & restore"
-                    AppSettingsTab.PROFILE -> "Personal student identity, avatar, display name & bio"
-                    AppSettingsTab.COMMUNITY -> "Leaderboard visibility, study room presence & alerts"
+                    AppSettingsTab.PROFILE -> ""
+                    AppSettingsTab.COMMUNITY -> "Rankings & live study presence"
                     AppSettingsTab.DEVELOPER -> "Diagnostic tools & debug settings"
                 }
                 setTextColor(themeCoordinator.textColor)
@@ -157,7 +161,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 textSize = 13f
                 setPadding(dp(6), 0, dp(6), dp(14))
             }
-            settingsRootLayout.addView(subtitleText)
+            if (subtitleText.text.isNotBlank()) {
+                settingsRootLayout.addView(subtitleText)
+            }
 
             val existingScrollView = if (captureScrollRef) settingsScrollViewRef else null
             val settingsScrollView: ScrollView
@@ -252,18 +258,51 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     textSize = 15f
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 })
-                textCol.addView(TextView(this).apply {
-                    text = subtitle
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.70f
-                    textSize = 12f
-                    setPadding(0, 3, 0, 0)
-                })
+                if (subtitle.isNotBlank()) {
+                    textCol.addView(TextView(this).apply {
+                        text = subtitle
+                        setTextColor(themeCoordinator.textColor)
+                        alpha = 0.65f
+                        textSize = 12f
+                        setPadding(0, dp(2), 0, 0)
+                    })
+                }
                 row.addView(textCol)
                 if (trailingView != null) {
+                    if (trailingView is SwitchMaterial) {
+                        trailingView.background = null
+                        trailingView.isFocusable = false
+                        trailingView.defaultFocusHighlightEnabled = false
+                        if (trailingView.contentDescription.isNullOrEmpty()) {
+                            trailingView.contentDescription = "$title toggle"
+                        }
+                        row.background = null
+                        row.isFocusable = false
+                        row.defaultFocusHighlightEnabled = false
+                        row.setOnClickListener {
+                            trailingView.toggle()
+                        }
+                    }
                     row.addView(trailingView)
                 }
                 return row
+            }
+
+            fun createActionChip(text: String): TextView {
+                return TextView(this).apply {
+                    this.text = text
+                    setTextColor(themeCoordinator.primaryColor)
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 38), 12f)
+                    setPadding(dp(11), dp(5), dp(11), dp(5))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(dp(10), 0, 0, 0)
+                    }
+                }
             }
 
             fun createCategoryVectorIcon(tab: AppSettingsTab): View {
@@ -474,15 +513,31 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     textSize = 15f
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 })
-                textCol.addView(TextView(this).apply {
-                    text = subtitle
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.70f
-                    textSize = 12f
-                    setPadding(0, 3, 0, 0)
-                })
+                if (subtitle.isNotBlank()) {
+                    textCol.addView(TextView(this).apply {
+                        text = subtitle
+                        setTextColor(themeCoordinator.textColor)
+                        alpha = 0.65f
+                        textSize = 12f
+                        setPadding(0, dp(2), 0, 0)
+                    })
+                }
                 row.addView(textCol)
                 if (trailingView != null) {
+                    if (trailingView is SwitchMaterial) {
+                        trailingView.background = null
+                        trailingView.isFocusable = false
+                        trailingView.defaultFocusHighlightEnabled = false
+                        if (trailingView.contentDescription.isNullOrEmpty()) {
+                            trailingView.contentDescription = "$title toggle"
+                        }
+                        row.background = null
+                        row.isFocusable = false
+                        row.defaultFocusHighlightEnabled = false
+                        row.setOnClickListener {
+                            trailingView.toggle()
+                        }
+                    }
                     row.addView(trailingView)
                 }
                 return row
@@ -604,10 +659,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 }
                 authStatusRow.addView(statusDot)
                 authStatusRow.addView(TextView(this).apply {
-                    text = if (isGoogleAuth) "${userEmail ?: "Connected"} • Cloud Sync Active" else "Guest / Offline Mode — Tap to Sign In"
+                    text = if (isGoogleAuth) (userEmail ?: "Connected · Cloud Sync") else "Guest Mode · Tap to Sign In"
                     setTextColor(themeCoordinator.textColor)
                     alpha = 0.65f
                     textSize = 12f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
                 })
                 profileTextCol.addView(authStatusRow)
                 profileRow.addView(profileTextCol)
@@ -647,28 +704,22 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     card.addView(row)
                 }
 
-                val focusMins = sharedPrefs.safeLong("study_interval_minutes", 25L)
-                val breakMins = sharedPrefs.safeLong("break_interval_minutes", 5L)
-                val timerSub = "Focus: ${focusMins}m  •  Break: ${breakMins}m  •  ${timerMode.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }} Mode"
-
+                val timerSub = "Timer mode & app blocker"
                 val dailyGoalSecs = StatsEngine.getDailyGoalSecs(sharedPrefs)
-                val plannerSub = "Target: ${formatGoalLabel(dailyGoalSecs)} • Goal Reminders & Habits"
-                val analyticsSub = "Heatmap, Subject Breakdown & Charts"
-
-                val themeSub = "${themeCoordinator.activeBgMode.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.ROOT) else it.toString() }} Palette • ${if (themeCoordinator.isGlassStyle()) "Glass" else "Standard"} Style"
-
-                val cloudSub = if (isGoogleAuth) "Connected: $userEmail • Auto Backup Active" else "Sign In, Backup & Cloud Restore"
+                val plannerSub = "Daily goal: ${formatGoalLabel(dailyGoalSecs)}"
+                val themeSub = "Wallpaper, colors & card look"
+                val cloudSub = if (isGoogleAuth) "Google Cloud backup" else "Sign In & Cloud Restore"
 
                 // 1. UNIFIED PREFERENCES CARD GROUP
                 layout.addView(createSectionLabel("PREFERENCES"))
                 val prefsCard = createSettingsCard()
                 addHubRowToCard(prefsCard, "Timer & Focus", timerSub, AppSettingsTab.TIMER)
                 prefsCard.addView(createDivider())
-                addHubRowToCard(prefsCard, "Planner & Goals", plannerSub, AppSettingsTab.PLANNER)
+                addHubRowToCard(prefsCard, "Goal and Reminder", plannerSub, AppSettingsTab.PLANNER)
                 prefsCard.addView(createDivider())
-                addHubRowToCard(prefsCard, "Insights & Stats", analyticsSub, AppSettingsTab.ANALYTICS)
+                addHubRowToCard(prefsCard, "Insights & Stats", "Heatmap & pie chart", AppSettingsTab.ANALYTICS)
                 prefsCard.addView(createDivider())
-                addHubRowToCard(prefsCard, "Community & Leaderboard", "Public rankings, live presence & room alerts", AppSettingsTab.COMMUNITY)
+                addHubRowToCard(prefsCard, "Leaderboard", "Rankings & live presence", AppSettingsTab.COMMUNITY)
                 prefsCard.addView(createDivider())
                 addHubRowToCard(prefsCard, "Theme & Appearance", themeSub, AppSettingsTab.THEME)
                 prefsCard.addView(createDivider())
@@ -684,14 +735,14 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 layout.addView(createSectionLabel("HELP & SUPPORT"))
                 val helpCard = createSettingsCard()
 
-                val guideRow = createSettingsRow("", "How to Use & App Guide", "User manual, timer modes & feature walkthrough")
+                val guideRow = createSettingsRow("", "How to Use & App Guide", "")
                 guideRow.setOnClickListener {
                     showAppGuideDialog()
                 }
                 helpCard.addView(guideRow)
                 helpCard.addView(createDivider())
 
-                val feedbackRow = createSettingsRow("", "Feedback & Bug Reports", "Send feature suggestions, questions or issues")
+                val feedbackRow = createSettingsRow("", "Feedback & Bug Reports", "")
                 feedbackRow.setOnClickListener {
                     showFeedbackReportDialog()
                 }
@@ -712,7 +763,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val versionRow = createSettingsRow(
                     "",
                     "StudyTimer v${currentVersionName()}",
-                    if (AppConfig.ENABLE_GITHUB_UPDATE_CHECK) "Check for latest release & updates" else "StudyTimer for Android",
+                    if (AppConfig.ENABLE_GITHUB_UPDATE_CHECK) "Check for latest release & updates" else "",
                     updateChip
                 )
                 versionRow.setOnClickListener {
@@ -729,7 +780,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 layout.addView(createSectionLabel("LEGAL & PRIVACY"))
                 val legalCard = createSettingsCard()
 
-                val privacyRow = createSettingsRow("", "Privacy Policy", "Read our data collection, analytics & privacy practices")
+                val privacyRow = createSettingsRow("", "Privacy Policy", "")
                 privacyRow.setOnClickListener {
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://get-studytimer.vercel.app/privacy.html")))
@@ -740,7 +791,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 legalCard.addView(privacyRow)
                 legalCard.addView(createDivider())
 
-                val termsRow = createSettingsRow("", "Terms of Service", "Review our terms, usage guidelines & licensing")
+                val termsRow = createSettingsRow("", "Terms of Service", "")
                 termsRow.setOnClickListener {
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://get-studytimer.vercel.app/terms.html")))
@@ -751,7 +802,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 legalCard.addView(termsRow)
                 legalCard.addView(createDivider())
 
-                val deleteWebRow = createSettingsRow("", "Account Deletion Web Portal", "Request permanent deletion of data online (Play Store policy)")
+                val deleteWebRow = createSettingsRow("", "Delete Account Portal", "")
                 deleteWebRow.setOnClickListener {
                     try {
                         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://get-studytimer.vercel.app/delete-account.html")))
@@ -802,28 +853,48 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             // 2. USER PROFILE MANAGEMENT SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.PROFILE) {
-                layout.addView(createSectionLabel("STUDENT IDENTITY & PROFILE"))
-                val profileCard = createSettingsCard()
                 val isGoogleAuth = AuthManager.isLoggedIn(this)
                 val userName = ProfileManager.getEffectiveDisplayName(this).ifBlank { AuthManager.getUserName(this) ?: if (isGoogleAuth) "Google Account User" else "Guest Learner" }
                 val userEmail = AuthManager.getUserEmail(this) ?: "Offline / Not Signed In"
                 val avatarInitials = userName.take(1).uppercase(Locale.ROOT).ifEmpty { "G" }
+                val currentProfile = ProfileManager.getProfile(this)
 
-                val profileContent = LinearLayout(this).apply {
+                val draftName = ProfileManager.getDraftName(this)
+                val draftBio = ProfileManager.getDraftBio(this)
+                val draftExam = ProfileManager.getDraftExam(this)
+                var selectedExam = draftExam ?: currentProfile.targetExam.ifBlank { "Self-Study" }
+
+                // Hold references to fields so avatar click can save draft without losing typed edits
+                var editNameFieldRef: EditText? = null
+                var editBioFieldRef: EditText? = null
+
+                // ----------------------------------------------------
+                // CARD 1: PUBLIC IDENTITY SUMMARY
+                // ----------------------------------------------------
+                layout.addView(createSectionLabel("PUBLIC IDENTITY"))
+                val identityCard = createSettingsCard()
+                val identityContent = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_HORIZONTAL
-                    setPadding(dp(20), dp(24), dp(20), dp(20))
+                    setPadding(dp(20), dp(22), dp(20), dp(20))
                 }
 
                 // Centered Avatar Frame with Camera Edit Badge
                 val avatarWrapper = FrameLayout(this).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(88), dp(88)).apply {
                         gravity = Gravity.CENTER_HORIZONTAL
-                        setMargins(0, 0, 0, dp(14))
+                        setMargins(0, 0, 0, dp(12))
                     }
                     isClickable = true
                     isFocusable = true
                     setOnClickListener {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        ProfileManager.saveDraftForm(
+                            this@with,
+                            editNameFieldRef?.text?.toString(),
+                            editBioFieldRef?.text?.toString(),
+                            selectedExam
+                        )
                         host.pickProfileAvatar()
                     }
                 }
@@ -876,7 +947,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 // Edit Camera Badge
                 val cameraBadge = TextView(this).apply {
-                    text = "📷"
+                    text = "\uD83D\uDCF7"
                     textSize = 12f
                     gravity = Gravity.CENTER
                     background = GradientDrawable().apply {
@@ -887,51 +958,75 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     layoutParams = FrameLayout.LayoutParams(dp(28), dp(28), Gravity.BOTTOM or Gravity.END)
                 }
                 avatarWrapper.addView(cameraBadge)
-                profileContent.addView(avatarWrapper)
+                identityContent.addView(avatarWrapper)
 
                 // User Display Name
                 val nameText = TextView(this).apply {
                     text = userName
                     setTextColor(themeCoordinator.textColor)
-                    textSize = 19f
+                    textSize = 20f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     gravity = Gravity.CENTER
                 }
-                profileContent.addView(nameText)
+                identityContent.addView(nameText)
 
                 // User Email
                 val emailText = TextView(this).apply {
                     text = userEmail
                     setTextColor(themeCoordinator.textColor)
-                    alpha = 0.65f
+                    alpha = 0.60f
                     textSize = 13f
                     gravity = Gravity.CENTER
-                    setPadding(0, dp(3), 0, dp(8))
+                    setPadding(0, dp(2), 0, dp(10))
                 }
-                profileContent.addView(emailText)
+                identityContent.addView(emailText)
 
                 // Account Badge Chip
                 val accountBadge = TextView(this).apply {
-                    text = if (isGoogleAuth) "✓ Google Account" else "👤 Guest Session"
+                    text = if (isGoogleAuth) "Google Account" else "Guest Session"
                     setTextColor(if (isGoogleAuth) Color.parseColor("#10B981") else Color.parseColor("#F59E0B"))
                     textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    background = themeCoordinator.createGlassChip(tintedColor(if (isGoogleAuth) Color.parseColor("#10B981") else Color.parseColor("#F59E0B"), 35), 14f)
+                    background = themeCoordinator.createGlassChip(tintedColor(if (isGoogleAuth) Color.parseColor("#10B981") else Color.parseColor("#F59E0B"), 30), 12f)
                     setPadding(dp(12), dp(5), dp(12), dp(5))
                     gravity = Gravity.CENTER
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                        setMargins(0, 0, 0, dp(14))
+                        setMargins(0, 0, 0, if (currentProfile.bio.isNotBlank()) dp(12) else 0)
                     }
                 }
-                profileContent.addView(accountBadge)
+                identityContent.addView(accountBadge)
 
+                // Bio / Motto Quote (if present)
+                if (currentProfile.bio.isNotBlank()) {
+                    val mottoView = TextView(this).apply {
+                        text = "\u201C${currentProfile.bio}\u201D"
+                        setTextColor(themeCoordinator.textColor)
+                        alpha = 0.75f
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.ITALIC)
+                        gravity = Gravity.CENTER
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 18), 10f)
+                        setPadding(dp(14), dp(7), dp(14), dp(7))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(dp(12), 0, dp(12), 0)
+                        }
+                    }
+                    identityContent.addView(mottoView)
+                }
+
+                identityCard.addView(identityContent)
+                layout.addView(identityCard)
+
+                // ----------------------------------------------------
+                // NON-GOOGLE SIGN IN CALLOUT
+                // ----------------------------------------------------
                 if (!isGoogleAuth) {
                     val signInCard = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL
-                        background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#4285F4"), 40), 16f)
+                        background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#4285F4"), 35), 16f)
                         setPadding(dp(18), dp(16), dp(18), dp(16))
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, dp(4), 0, dp(10))
+                            setMargins(0, dp(12), 0, dp(4))
                         }
                     }
                     signInCard.addView(TextView(this).apply {
@@ -943,7 +1038,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     signInCard.addView(TextView(this).apply {
                         text = "Sign in to save your study logs to cloud, preserve your streaks, and join the global student leaderboard."
                         setTextColor(themeCoordinator.textColor)
-                        alpha = 0.7f
+                        alpha = 0.70f
                         textSize = 12.5f
                         setPadding(0, dp(4), 0, dp(14))
                     })
@@ -963,89 +1058,113 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         }
                     }
                     signInCard.addView(googleBtn)
-                    profileContent.addView(signInCard)
+                    layout.addView(signInCard)
                 } else {
-                    val currentProfile = ProfileManager.getProfile(this)
+                    // ----------------------------------------------------
+                    // MODERATION STATUS BANNERS (DISMISSIBLE / TRANSIENT)
+                    // ----------------------------------------------------
+                    if (currentProfile.moderationStatus == ModerationStatus.REJECTED && !ProfileManager.isRejectionAcknowledged(this)) {
+                        val rejectedCard = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#EF4444"), 35), 14f)
+                            setPadding(dp(14), dp(12), dp(14), dp(12))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                setMargins(0, dp(12), 0, 0)
+                            }
+                        }
+                        val bannerHeader = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+                        val bannerTitle = TextView(this).apply {
+                            text = "\uD83D\uDEE1\uFE0F Profile Edit Rejected"
+                            setTextColor(Color.parseColor("#EF4444"))
+                            textSize = 13.5f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        }
+                        bannerHeader.addView(bannerTitle)
 
-                    // --- MODERATION STATUS BANNER ---
-                    when (currentProfile.moderationStatus) {
-                        ModerationStatus.PENDING_APPROVAL -> {
-                            val pendingCard = LinearLayout(this).apply {
-                                orientation = LinearLayout.VERTICAL
-                                background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#F59E0B"), 45), 14f)
-                                setPadding(dp(14), dp(12), dp(14), dp(12))
-                                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                                    setMargins(0, 0, 0, dp(14))
-                                }
+                        val dismissBtn = TextView(this).apply {
+                            text = "Dismiss \u2715"
+                            setTextColor(Color.parseColor("#EF4444"))
+                            textSize = 11.5f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#EF4444"), 45), 10f)
+                            setPadding(dp(10), dp(4), dp(10), dp(4))
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener {
+                                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                ProfileManager.acknowledgeRejection(this@with)
+                                rejectedCard.visibility = View.GONE
                             }
-                            val reqName = currentProfile.pendingDisplayName
-                            val hasNameReview = !reqName.isNullOrBlank() && reqName != currentProfile.displayName
-                            val bannerTitle = if (hasNameReview) "⏳ Display Name Pending Approval" else "⏳ Profile Edit Under Review"
-                            val bannerMsg = if (hasNameReview) {
-                                "Your requested name \"$reqName\" is being reviewed by moderators. Leaderboards will display \"${currentProfile.displayName}\" until approved."
-                            } else {
-                                "Your profile changes are being reviewed by moderators. Public leaderboards will show your currently approved details until reviewed."
+                        }
+                        bannerHeader.addView(dismissBtn)
+                        rejectedCard.addView(bannerHeader)
+
+                        val bannerMsg = currentProfile.rejectionReason ?: "Your previous requested name was not approved by moderators. Your profile has been reset to safe defaults. You can choose a new display name below."
+                        rejectedCard.addView(TextView(this).apply {
+                            text = bannerMsg
+                            setTextColor(themeCoordinator.textColor)
+                            alpha = 0.85f
+                            textSize = 12f
+                            setPadding(0, dp(4), 0, 0)
+                        })
+                        layout.addView(rejectedCard)
+                    } else if (currentProfile.moderationStatus == ModerationStatus.PENDING_APPROVAL) {
+                        val pendingCard = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#F59E0B"), 35), 14f)
+                            setPadding(dp(14), dp(12), dp(14), dp(12))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                setMargins(0, dp(12), 0, 0)
                             }
-                            pendingCard.addView(TextView(this).apply {
-                                text = bannerTitle
-                                setTextColor(Color.parseColor("#F59E0B"))
-                                textSize = 13f
-                                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                            })
-                            pendingCard.addView(TextView(this).apply {
-                                text = bannerMsg
-                                setTextColor(themeCoordinator.textColor)
-                                alpha = 0.75f
-                                textSize = 11.5f
-                                setPadding(0, dp(4), 0, 0)
-                            })
-                            profileContent.addView(pendingCard)
                         }
-                        ModerationStatus.REJECTED -> {
-                            val rejectedCard = LinearLayout(this).apply {
-                                orientation = LinearLayout.VERTICAL
-                                background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#EF4444"), 45), 14f)
-                                setPadding(dp(14), dp(12), dp(14), dp(12))
-                                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                                    setMargins(0, 0, 0, dp(14))
-                                }
-                            }
-                            rejectedCard.addView(TextView(this).apply {
-                                text = "❌ Profile Edit Rejected by Moderators"
-                                setTextColor(Color.parseColor("#EF4444"))
-                                textSize = 13f
-                                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                            })
-                            rejectedCard.addView(TextView(this).apply {
-                                text = "Your previous requested name or photo was rejected for not meeting community standards. Your profile has been reset to safe defaults. Please choose a respectful display name below."
-                                setTextColor(themeCoordinator.textColor)
-                                alpha = 0.85f
-                                textSize = 11.5f
-                                setPadding(0, dp(4), 0, 0)
-                            })
-                            profileContent.addView(rejectedCard)
+                        val reqName = currentProfile.pendingDisplayName
+                        val hasNameReview = !reqName.isNullOrBlank() && reqName != currentProfile.displayName
+                        val bannerTitle = if (hasNameReview) "\u23F3 Display Name Pending Approval" else "\u23F3 Profile Edit Under Review"
+                        val bannerMsg = if (hasNameReview) {
+                            "Your requested name \"$reqName\" is being reviewed by moderators. Public leaderboards will display \"${currentProfile.displayName}\" until approved."
+                        } else {
+                            "Your profile changes are being reviewed by moderators. Public leaderboards will show your currently approved details until reviewed."
                         }
-                        else -> {
-                            // Approved status
-                        }
+                        pendingCard.addView(TextView(this).apply {
+                            text = bannerTitle
+                            setTextColor(Color.parseColor("#F59E0B"))
+                            textSize = 13.5f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        })
+                        pendingCard.addView(TextView(this).apply {
+                            text = bannerMsg
+                            setTextColor(themeCoordinator.textColor)
+                            alpha = 0.80f
+                            textSize = 12f
+                            setPadding(0, dp(4), 0, 0)
+                        })
+                        layout.addView(pendingCard)
                     }
 
-                    var selectedAvatarId = ""
+                    // ----------------------------------------------------
+                    // CARD 2: EDIT DETAILS
+                    // ----------------------------------------------------
+                    layout.addView(createSectionLabel("EDIT DETAILS"))
+                    val editDetailsCard = createSettingsCard()
+                    val editContent = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dp(18), dp(18), dp(18), dp(18))
+                    }
 
-                    val draftName = ProfileManager.getDraftName(this)
-                    val draftBio = ProfileManager.getDraftBio(this)
-                    val draftExam = ProfileManager.getDraftExam(this)
-
-                    // --- DISPLAY NAME INPUT ---
+                    // Field 1: Display Name
                     val nameLabel = TextView(this).apply {
-                        text = "DISPLAY NAME (PUBLIC)"
+                        text = "Display Name"
                         setTextColor(themeCoordinator.textColor)
-                        alpha = 0.6f
-                        textSize = 11f
+                        alpha = 0.75f
+                        textSize = 12f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        setPadding(dp(2), 0, 0, dp(4))
+                        setPadding(dp(2), 0, 0, dp(6))
                     }
-                    profileContent.addView(nameLabel)
+                    editContent.addView(nameLabel)
 
                     val editNameField = EditText(this).apply {
                         hint = "e.g. Alex_Studies"
@@ -1056,7 +1175,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
                         setPadding(dp(14), dp(11), dp(14), dp(11))
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 0, 0, dp(12))
+                            setMargins(0, 0, 0, dp(14))
                         }
                         setSingleLine(true)
                         addTextChangedListener(object : android.text.TextWatcher {
@@ -1067,37 +1186,25 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             }
                         })
                     }
-                    profileContent.addView(editNameField)
+                    editNameFieldRef = editNameField
+                    editContent.addView(editNameField)
 
-                    // Save draft on avatar click so any current focus text is saved
-                    avatarWrapper.setOnClickListener {
-                        ProfileManager.saveDraftForm(
-                            this@with,
-                            editNameField.text.toString(),
-                            null,
-                            null
-                        )
-                        host.pickProfileAvatar()
-                    }
-
-                    // --- TARGET EXAM / GOAL SELECTOR ---
+                    // Field 2: Focus Track
                     val examLabel = TextView(this).apply {
-                        text = "TARGET EXAM / FOCUS TRACK"
+                        text = "Focus Track"
                         setTextColor(themeCoordinator.textColor)
-                        alpha = 0.6f
-                        textSize = 11f
+                        alpha = 0.75f
+                        textSize = 12f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         setPadding(dp(2), 0, 0, dp(6))
                     }
-                    profileContent.addView(examLabel)
+                    editContent.addView(examLabel)
 
                     val examTracks = listOf("JEE / NEET", "UPSC / Govt", "Board Exams", "College / Uni", "Self-Study", "Programming")
-                    var selectedExam = draftExam ?: currentProfile.targetExam.ifBlank { "Self-Study" }
-
-                    val chipsScroll = android.widget.HorizontalScrollView(this).apply {
+                    val chipsScroll = HorizontalScrollView(this).apply {
                         isHorizontalScrollBarEnabled = false
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 0, 0, dp(12))
+                            setMargins(0, 0, 0, dp(14))
                         }
                     }
                     val chipsLayout = LinearLayout(this).apply {
@@ -1110,7 +1217,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         val chip = TextView(this).apply {
                             text = track
                             textSize = 12f
-                            typeface = Typeface.create("sans-serif-medium", if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+                            typeface = themeCoordinator.getAppTypeface(isBold = isSelected)
                             setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
                             background = if (isSelected) {
                                 themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
@@ -1122,6 +1229,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                 setMargins(0, 0, dp(8), 0)
                             }
                             setOnClickListener {
+                                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                 selectedExam = track
                                 ProfileManager.saveDraftForm(this@with, null, null, track)
                                 for (c in chipViews) {
@@ -1140,29 +1248,29 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         chipsLayout.addView(chip)
                     }
                     chipsScroll.addView(chipsLayout)
-                    profileContent.addView(chipsScroll)
+                    editContent.addView(chipsScroll)
 
-                    // --- STUDENT BIO / MOTTO ---
+                    // Field 3: Bio & Motto
                     val bioLabel = TextView(this).apply {
-                        text = "STUDENT BIO & MOTTO"
+                        text = "Bio & Motto"
                         setTextColor(themeCoordinator.textColor)
-                        alpha = 0.6f
-                        textSize = 11f
+                        alpha = 0.75f
+                        textSize = 12f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        setPadding(dp(2), 0, 0, dp(4))
+                        setPadding(dp(2), 0, 0, dp(6))
                     }
-                    profileContent.addView(bioLabel)
+                    editContent.addView(bioLabel)
 
                     val editBioField = EditText(this).apply {
-                        hint = "e.g. Focused on daily consistency • Consistency is key"
+                        hint = "Add a brief bio or study goal..."
                         setText(draftBio ?: currentProfile.bio)
                         setTextColor(themeCoordinator.textColor)
                         setHintTextColor(tintedColor(themeCoordinator.textColor, 100))
-                        textSize = 13f
+                        textSize = 13.5f
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
                         setPadding(dp(14), dp(10), dp(14), dp(10))
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 0, 0, dp(14))
+                            setMargins(0, 0, 0, dp(16))
                         }
                         maxLines = 2
                         addTextChangedListener(object : android.text.TextWatcher {
@@ -1173,19 +1281,19 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             }
                         })
                     }
-                    profileContent.addView(editBioField)
+                    editBioFieldRef = editBioField
+                    editContent.addView(editBioField)
 
-                    // --- SAVE PROFILE ACTION BUTTON ---
+                    // Save Changes Button
                     val saveProfileBtn = Button(this).apply {
-                        text = "Save Profile Changes"
+                        text = "Save Changes"
                         setTextColor(Color.WHITE)
-                        textSize = 13.5f
+                        textSize = 14f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         background = themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46)).apply {
-                            setMargins(0, dp(4), 0, 0)
-                        }
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46))
                         setOnClickListener {
+                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             val inputName = editNameField.text.toString().trim()
                             val inputBio = editBioField.text.toString().trim()
 
@@ -1220,7 +1328,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                             // Title & Icon
                             val titleView = TextView(this@with).apply {
-                                text = "🛡️ Profile Verification"
+                                text = "\uD83D\uDEE1\uFE0F Profile Verification"
                                 setTextColor(themeCoordinator.textColor)
                                 textSize = 17.5f
                                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1248,7 +1356,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             }
 
                             val rowName = TextView(this@with).apply {
-                                text = "👤 Display Name: $inputName"
+                                text = "Display Name: $inputName"
                                 setTextColor(themeCoordinator.textColor)
                                 textSize = 13f
                                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1267,7 +1375,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                             if (inputBio.isNotBlank()) {
                                 val rowBio = TextView(this@with).apply {
-                                    text = "💬 Motto: \"$inputBio\""
+                                    text = "Motto: \"$inputBio\""
                                     setTextColor(themeCoordinator.textColor)
                                     alpha = 0.85f
                                     textSize = 12f
@@ -1308,7 +1416,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             btnRow.addView(cancelBtn)
 
                             val confirmSubmitBtn = Button(this@with).apply {
-                                text = "✓ Submit Profile"
+                                text = "\u2713 Submit Profile"
                                 setTextColor(Color.WHITE)
                                 textSize = 12.5f
                                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1330,17 +1438,18 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                             bio = inputBio,
                                             targetExam = selectedExam,
                                             dailyGoalMinutes = currentProfile.dailyGoalMinutes,
-                                            avatarPresetId = selectedAvatarId,
+                                            avatarPresetId = "",
                                             avatarUrl = currentProfile.avatarUrl
                                         )
 
                                         parentSaveBtn.isEnabled = true
-                                        parentSaveBtn.text = "Save Profile Changes"
+                                        parentSaveBtn.text = "Save Changes"
 
                                         when (result) {
                                             is ProfileSyncService.SubmissionResult.Success -> {
                                                 ProfileManager.clearDraftForm(this@with)
                                                 AppToast.show(this@with, result.message, Toast.LENGTH_LONG)
+                                                host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
                                                 navigateToPanel(AppPanel.SETTINGS)
                                             }
                                             is ProfileSyncService.SubmissionResult.RejectedLocally -> {
@@ -1353,6 +1462,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                             }
                                             is ProfileSyncService.SubmissionResult.NetworkError -> {
                                                 AppToast.show(this@with, result.message, Toast.LENGTH_LONG)
+                                                host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
                                                 navigateToPanel(AppPanel.SETTINGS)
                                             }
                                         }
@@ -1371,13 +1481,14 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             confirmDialog.show()
                         }
                     }
-                    profileContent.addView(saveProfileBtn)
+                    editContent.addView(saveProfileBtn)
+                    editDetailsCard.addView(editContent)
+                    layout.addView(editDetailsCard)
                 }
 
-                profileCard.addView(profileContent)
-                layout.addView(profileCard)
-
-                // --- ACCOUNT ACTIONS CARD ---
+                // ----------------------------------------------------
+                // CARD 3: ACCOUNT & DATA ACTIONS
+                // ----------------------------------------------------
                 layout.addView(createSectionLabel("ACCOUNT & DATA"))
                 val accountActionsCard = createSettingsCard().apply {
                     val actionsLayout = LinearLayout(this@with).apply {
@@ -1385,7 +1496,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         setPadding(dp(16), dp(14), dp(16), dp(14))
                     }
 
-                    // Navigation to Cloud & Backup settings (single source of truth)
+                    // Navigation to Cloud & Backup settings
                     val cloudNavRow = LinearLayout(this@with).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
@@ -1402,7 +1513,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         }
                     }
                     val syncIcon = TextView(this@with).apply {
-                        text = "☁"
+                        text = "\u2601"
                         textSize = 20f
                         setTextColor(themeCoordinator.primaryColor)
                         setPadding(0, 0, dp(12), 0)
@@ -1421,19 +1532,19 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     })
                     syncCol.addView(TextView(this@with).apply {
                         text = if (isGoogleAuth) {
-                            "Connected • Tap to manage backups, export & import"
+                            "Connected \u00B7 Manage backups, export & import"
                         } else {
-                            "Offline • Tap to sign in and back up study sessions"
+                            "Offline \u00B7 Sign in to back up study sessions"
                         }
                         setTextColor(themeCoordinator.textColor)
-                        alpha = 0.6f
+                        alpha = 0.60f
                         textSize = 11.5f
                         setPadding(0, dp(2), 0, 0)
                     })
                     cloudNavRow.addView(syncCol)
 
                     val chevron = TextView(this@with).apply {
-                        text = "Manage ›"
+                        text = "Manage \u203A"
                         setTextColor(themeCoordinator.primaryColor)
                         textSize = 12.5f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1451,11 +1562,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             setTextColor(Color.parseColor("#EF4444"))
                             textSize = 13.5f
                             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                            background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#EF4444"), 40), 12f)
+                            background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#EF4444"), 35), 12f)
                             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
                                 setMargins(0, dp(10), 0, dp(8))
                             }
                             setOnClickListener {
+                                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                                 host.showSignOutConfirmDialog()
                             }
                         }
@@ -1476,6 +1588,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         isClickable = true
                         isFocusable = true
                         setOnClickListener {
+                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             showDeleteAccountDialog()
                         }
                     }
@@ -1487,38 +1600,35 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             }
 
             // ==========================================
-            // 2b. COMMUNITY & LEADERBOARD SUB-SCREEN
+            // 2b. LEADERBOARD SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.COMMUNITY) {
-                // CARD 1: PUBLIC PROFILE & ROOMS
-                layout.addView(createSectionLabel("PUBLIC PROFILE & ROOMS"))
-                val publicRoomsCard = createSettingsCard()
                 val isGoogleAuth = AuthManager.isLoggedIn(this)
-                val userName = ProfileManager.getEffectiveDisplayName(this).ifBlank { AuthManager.getUserName(this) ?: if (isGoogleAuth) "Google Account User" else "Guest Learner" }
-                val currentProfile = ProfileManager.getProfile(this)
-                val targetExam = currentProfile.targetExam.ifBlank { "Self-Study" }
+                val userName = ProfileManager.getEffectiveDisplayName(this).ifBlank {
+                    AuthManager.getUserName(this) ?: if (isGoogleAuth) "Google User" else "Guest Learner"
+                }
                 val avatarInitials = userName.take(1).uppercase(Locale.ROOT).ifEmpty { "G" }
 
-                val previewContent = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(18), dp(18), dp(18), dp(18))
-                }
+                // CARD 1: PUBLIC IDENTITY
+                layout.addView(createSectionLabel("PUBLIC IDENTITY"))
+                val identityCard = createSettingsCard()
 
-                val previewRow = LinearLayout(this).apply {
+                val profileRow = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(18), dp(14), dp(18), dp(14))
                 }
 
-                // Avatar Frame (Read-Only: No camera badge, No click-to-edit)
-                val previewAvatarWrapper = FrameLayout(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(dp(64), dp(64)).apply {
+                // Avatar Frame (44dp - sleek & compact)
+                val avatarWrapper = FrameLayout(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
                         setMargins(0, 0, dp(14), 0)
                     }
                 }
 
-                val previewAvatarCircle = TextView(this).apply {
+                val avatarCircle = TextView(this).apply {
                     text = avatarInitials
-                    textSize = 24f
+                    textSize = 18f
                     gravity = Gravity.CENTER
                     setTextColor(Color.WHITE)
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1526,43 +1636,43 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         shape = GradientDrawable.OVAL
                         setColor(LocalAvatarManager.getGoogleAvatarColor(userName))
                     }
-                    layoutParams = FrameLayout.LayoutParams(dp(64), dp(64), Gravity.CENTER)
+                    layoutParams = FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER)
                 }
-                previewAvatarWrapper.addView(previewAvatarCircle)
+                avatarWrapper.addView(avatarCircle)
 
-                val previewAvatarImg = ImageView(this).apply {
-                    layoutParams = FrameLayout.LayoutParams(dp(64), dp(64), Gravity.CENTER)
+                val avatarImg = ImageView(this).apply {
+                    layoutParams = FrameLayout.LayoutParams(dp(44), dp(44), Gravity.CENTER)
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setStroke(dp(2), themeCoordinator.primaryColor)
+                        setStroke(dp(1.5f), themeCoordinator.primaryColor)
                     }
                     visibility = View.GONE
                 }
-                previewAvatarWrapper.addView(previewAvatarImg)
+                avatarWrapper.addView(avatarImg)
 
-                val customAvatar = LocalAvatarManager.getCircularAvatarBitmap(this, dp(64))
+                val customAvatar = LocalAvatarManager.getCircularAvatarBitmap(this, dp(44))
                 if (customAvatar != null) {
-                    previewAvatarImg.setImageBitmap(customAvatar)
-                    previewAvatarImg.visibility = View.VISIBLE
-                    previewAvatarCircle.visibility = View.GONE
+                    avatarImg.setImageBitmap(customAvatar)
+                    avatarImg.visibility = View.VISIBLE
+                    avatarCircle.visibility = View.GONE
                 } else {
                     val remoteUrl = ProfileManager.getEffectiveAvatarUrl(this)
                     if (remoteUrl.startsWith("http://") || remoteUrl.startsWith("https://")) {
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                            val bitmap = LocalAvatarManager.getCircularBitmapFromUrl(this@SettingsPanelBuilder.host, remoteUrl, dp(64))
+                            val bitmap = LocalAvatarManager.getCircularBitmapFromUrl(this@SettingsPanelBuilder.host, remoteUrl, dp(44))
                             if (bitmap != null) {
                                 withContext(kotlinx.coroutines.Dispatchers.Main) {
-                                    previewAvatarImg.setImageBitmap(bitmap)
-                                    previewAvatarImg.visibility = View.VISIBLE
-                                    previewAvatarCircle.visibility = View.GONE
+                                    avatarImg.setImageBitmap(bitmap)
+                                    avatarImg.visibility = View.VISIBLE
+                                    avatarCircle.visibility = View.GONE
                                 }
                             }
                         }
                     }
                 }
-                previewRow.addView(previewAvatarWrapper)
+                profileRow.addView(avatarWrapper)
 
-                // Info Column: Name + Badges + Bio
+                // Info: Name + Auth Badge
                 val infoCol = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -1571,129 +1681,41 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 infoCol.addView(TextView(this).apply {
                     text = userName
                     setTextColor(themeCoordinator.textColor)
-                    textSize = 17f
+                    textSize = 15.5f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 })
 
-                val badgesRow = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    setPadding(0, dp(4), 0, dp(4))
-                }
-                badgesRow.addView(TextView(this).apply {
+                val authBadge = TextView(this).apply {
                     text = if (isGoogleAuth) "✓ Google Account" else "👤 Guest"
                     setTextColor(if (isGoogleAuth) Color.parseColor("#10B981") else Color.parseColor("#F59E0B"))
-                    textSize = 10.5f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    background = themeCoordinator.createGlassChip(tintedColor(if (isGoogleAuth) Color.parseColor("#10B981") else Color.parseColor("#F59E0B"), 35), 10f)
-                    setPadding(dp(8), dp(2), dp(8), dp(2))
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                        rightMargin = dp(6)
-                    }
-                })
-                badgesRow.addView(TextView(this).apply {
-                    text = targetExam
-                    setTextColor(themeCoordinator.primaryColor)
-                    textSize = 10.5f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 10f)
-                    setPadding(dp(8), dp(2), dp(8), dp(2))
-                })
-                infoCol.addView(badgesRow)
-
-                val bioStr = currentProfile.bio.trim()
-                if (bioStr.isNotEmpty()) {
-                    infoCol.addView(TextView(this).apply {
-                        text = "“$bioStr”"
-                        setTextColor(themeCoordinator.textColor)
-                        alpha = 0.65f
-                        textSize = 12f
-                        setPadding(0, dp(2), 0, 0)
-                        maxLines = 2
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                    })
+                    textSize = 11f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    setPadding(0, dp(2), 0, 0)
                 }
+                infoCol.addView(authBadge)
+                profileRow.addView(infoCol)
 
-                previewRow.addView(infoCol)
-                previewContent.addView(previewRow)
-
-                previewContent.addView(createDivider().apply {
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
-                        setMargins(0, dp(14), 0, dp(10))
-                    }
-                })
-
-                val previewFooter = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                }
-
-                previewFooter.addView(TextView(this).apply {
-                    text = "This preview is visible to peers in rooms."
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.5f
-                    textSize = 11.5f
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                })
-
-                val editInProfileBtn = TextView(this).apply {
-                    text = "Edit Profile →"
-                    textSize = 12f
+                // Edit Profile Button
+                val editBtn = TextView(this).apply {
+                    text = "Edit ›"
+                    textSize = 12.5f
+                    gravity = Gravity.CENTER
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.primaryColor)
                     background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 10f)
-                    setPadding(dp(12), dp(5), dp(12), dp(5))
+                    setPadding(dp(12), dp(6), dp(12), dp(6))
                     setOnClickListener {
-                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        HapticFeedbackHelper.performMicroHaptic(host, it)
                         currentSettingsTab = AppSettingsTab.PROFILE
                         navigateToPanel(AppPanel.SETTINGS)
                     }
                 }
-                previewFooter.addView(editInProfileBtn)
-                previewContent.addView(previewFooter)
+                profileRow.addView(editBtn)
+                identityCard.addView(profileRow)
+                layout.addView(identityCard)
 
-                publicRoomsCard.addView(previewContent)
-                publicRoomsCard.addView(createDivider())
-
-                val isRoomSound = sharedPrefs.getBoolean("study_room_sound_enabled", true)
-                val roomSoundSwitch = SwitchMaterial(this).apply {
-                    isChecked = isRoomSound
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("study_room_sound_enabled", isChecked).apply()
-                    }
-                }
-                publicRoomsCard.addView(createSettingsRow(
-                    "",
-                    "Room Audio Alerts",
-                    "Play chimes when students join or complete milestone focus sessions",
-                    roomSoundSwitch
-                ))
-                publicRoomsCard.addView(createDivider())
-
-                val isRoomPresence = sharedPrefs.getBoolean("study_room_auto_presence", true)
-                val roomPresenceSwitch = SwitchMaterial(this).apply {
-                    isChecked = isRoomPresence
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("study_room_auto_presence", isChecked).apply()
-                    }
-                }
-                publicRoomsCard.addView(createSettingsRow(
-                    "",
-                    "Study Room Presence",
-                    "Show your avatar and study tag in active study rooms when connected",
-                    roomPresenceSwitch
-                ))
-                publicRoomsCard.addView(createDivider())
-
-                val privatePrivacyRow = createSettingsRow(
-                    "",
-                    "Private Room Isolation",
-                    "Private room codes and participants are shielded from the public directory. Your hours safely sync to your daily total."
-                )
-                publicRoomsCard.addView(privatePrivacyRow)
-                layout.addView(publicRoomsCard)
-
-                // CARD 2: LEADERBOARD & RANKINGS
-                layout.addView(createSectionLabel("LEADERBOARD & RANKINGS"))
+                // CARD 2: PREFERENCES
+                layout.addView(createSectionLabel("LEADERBOARD"))
                 val leaderboardSettingsCard = createSettingsCard()
 
                 val isParticipating = LeaderboardManager.isParticipating(this)
@@ -1709,9 +1731,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     DeveloperToolsHelper.showThemedConfirmDialog(
                         activity = host,
                         themeCoordinator = themeCoordinator,
-                        title = "Pause Leaderboard Participation?",
-                        message = "Turning this off stops your focus sessions from syncing to global student rankings and removes your live study presence.\n\nYour personal statistics, study logs, and streaks remain completely safe on your device.\n\nAre you sure you want to stop participating?",
-                        confirmText = "Pause Participation",
+                        title = "Pause Leaderboard?",
+                        message = "You will be hidden from rankings. Your personal stats and streaks remain safe.",
+                        confirmText = "Pause",
                         isDestructive = true,
                         onCancel = {
                             participateSwitchRef?.isChecked = true
@@ -1723,7 +1745,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                             LeaderboardManager.removeTodayLeaderboardEntry(this@with)
                         }
-                        AppToast.show(this@with, "Leaderboard participation paused")
+                        AppToast.show(this@with, "Leaderboard paused")
                     }
                 }
 
@@ -1731,7 +1753,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     LeaderboardManager.setParticipating(this@with, true)
                     participateSwitchRef?.isChecked = true
                     leaderboardSubOptions.visibility = View.VISIBLE
-                    AppToast.show(this@with, "Participating in Leaderboard")
+                    AppToast.show(this@with, "Leaderboard active")
                     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                         val todayKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
                         val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(this@with, todayKeyFmt).toInt()
@@ -1742,6 +1764,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val partSwitch = SwitchMaterial(this).apply {
                     isChecked = isParticipating
                     setOnClickListener {
+                        HapticFeedbackHelper.performMicroHaptic(host, it)
                         if (!isChecked) {
                             isChecked = true
                             promptTurnOffLeaderboard()
@@ -1753,12 +1776,13 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 participateSwitchRef = partSwitch
 
                 val partRow = createSettingsRow(
-                    "🏆",
-                    "Participate in Leaderboard",
-                    "Sync focus hours and appear on global rankings (On by default)",
+                    "",
+                    "Show on Leaderboard",
+                    "Share your daily study hours on global rankings",
                     partSwitch
                 )
                 partRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
                     val cur = LeaderboardManager.isParticipating(this)
                     if (cur) {
                         promptTurnOffLeaderboard()
@@ -1774,26 +1798,25 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val liveSwitch = SwitchMaterial(this).apply {
                     isChecked = isShareLive
                     setOnClickListener {
+                        HapticFeedbackHelper.performMicroHaptic(host, it)
                         val newState = isChecked
                         LeaderboardManager.setLiveStatusSharingEnabled(this@with, newState)
                         if (!newState) {
                             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                                 LeaderboardManager.updateStudyPresence(this@with, false)
                             }
-                            AppToast.show(this@with, "Live study status hidden")
-                        } else {
-                            AppToast.show(this@with, "Live study status visible")
                         }
                     }
                 }
 
                 val liveRow = createSettingsRow(
-                    "🟢",
+                    "",
                     "Share Live Study Status",
-                    "Show green live indicator & active subject to others in study rooms & leaderboard",
+                    "Show when you're actively studying",
                     liveSwitch
                 )
                 liveRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
                     val cur = LeaderboardManager.isLiveStatusSharingEnabled(this)
                     val next = !cur
                     LeaderboardManager.setLiveStatusSharingEnabled(this, next)
@@ -1802,23 +1825,23 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                             LeaderboardManager.updateStudyPresence(this@with, false)
                         }
-                        AppToast.show(this@with, "Live study status hidden")
-                    } else {
-                        AppToast.show(this@with, "Live study status visible")
                     }
                 }
                 leaderboardSubOptions.addView(liveRow)
-                leaderboardSubOptions.addView(createDivider())
-
-                val examInfoRow = createSettingsRow(
-                    "🎯",
-                    "Leaderboard Focus Track",
-                    "Your global ranking is categorized under \"$targetExam\" (configured in Profile Settings)"
-                )
-                leaderboardSubOptions.addView(examInfoRow)
 
                 leaderboardSettingsCard.addView(leaderboardSubOptions)
                 layout.addView(leaderboardSettingsCard)
+
+                // Subtle Privacy Note
+                val privacyNote = TextView(this).apply {
+                    text = "Only your display name and study hours are shared."
+                    setTextColor(themeCoordinator.textColor)
+                    alpha = 0.45f
+                    textSize = 12f
+                    gravity = Gravity.CENTER
+                    setPadding(dp(16), dp(16), dp(16), dp(8))
+                }
+                layout.addView(privacyNote)
             }
 
             // ==========================================
@@ -1826,7 +1849,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.TIMER) {
                 // CARD 1: TIMER MODE & DURATIONS
-                layout.addView(createSectionLabel("TIMER MODE & DURATIONS"))
+                layout.addView(createSectionLabel("TIMER MODE"))
                 val timerModeCard = createSettingsCard()
                 val isLecture = timerMode == "LECTURE"
                 val isStopwatch = timerMode == "STOPWATCH"
@@ -1859,7 +1882,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     return false
                 }
 
-                val countdownRow = createSettingsRow("", getString(R.string.mode_pomodoro), "Structured study & break interval cycles with progress ring", modeRadio(isCountdown))
+                val countdownRow = createSettingsRow("", getString(R.string.mode_pomodoro), "Cycles with focus & rest intervals", modeRadio(isCountdown))
                 countdownRow.setOnClickListener {
                     if (checkTimerRunningBeforeModeChange()) return@setOnClickListener
                     val pomoMins = sharedPrefs.safeLong("study_interval_minutes", 25L)
@@ -1879,7 +1902,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 timerModeCard.addView(countdownRow)
                 timerModeCard.addView(createDivider())
 
-                val stopwatchRow = createSettingsRow("", getString(R.string.mode_stopwatch), getString(R.string.mode_stopwatch_sub), modeRadio(isStopwatch))
+                val stopwatchRow = createSettingsRow("", getString(R.string.mode_stopwatch), "Open-ended focus tracking", modeRadio(isStopwatch))
                 stopwatchRow.setOnClickListener {
                     if (checkTimerRunningBeforeModeChange()) return@setOnClickListener
                     sharedPrefs.edit().putString("timer_mode", "STOPWATCH").putBoolean("lecture_mode_enabled", false).apply()
@@ -1892,7 +1915,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 timerModeCard.addView(stopwatchRow)
                 timerModeCard.addView(createDivider())
 
-                val lectureRow = createSettingsRow("", "Class Schedule", "Follow your custom class timetable", modeRadio(isLecture))
+                val lectureRow = createSettingsRow("", "Class Schedule", "Follow custom timetable", modeRadio(isLecture))
                 lectureRow.setOnClickListener {
                     if (checkTimerRunningBeforeModeChange()) return@setOnClickListener
                     val isConfigured = !sharedPrefs.getString("lecture_schedules_json", "").isNullOrEmpty() && sharedPrefs.getString("lecture_schedules_json", "[]") != "[]"
@@ -2099,10 +2122,10 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                     val isFreedomMode = sharedPrefs.getBoolean("pomodoro_freedom_mode", false)
                     val maxFocus = if (isFreedomMode) 1440L else 120L
-                    val focusSubtitle = if (isFreedomMode) "Extended continuous focus (up to 24h / 1440m)" else "How long each study session lasts"
+                    val focusSubtitle = if (isFreedomMode) "Extended continuous focus (up to 24h)" else "Focus session length"
                     timerModeCard.addView(makeIntervalStepper("Study Duration", focusSubtitle, "study_interval_minutes", 25L, 5L, maxFocus, 5L, "min"))
                     timerModeCard.addView(createDivider())
-                    timerModeCard.addView(makeIntervalStepper("Short Break", if (isFreedomMode) "Standard break (bypassed in Freedom Mode)" else "Quick break between study sessions", "break_interval_minutes", 5L, 1L, 30L, 1L, "min"))
+                    timerModeCard.addView(makeIntervalStepper("Short Break", if (isFreedomMode) "Standard break (bypassed in Freedom Mode)" else "Rest between sessions", "break_interval_minutes", 5L, 1L, 30L, 1L, "min"))
                     timerModeCard.addView(createDivider())
 
                     // Advanced Break & Automation Options (Conditional: only shown when Freedom Mode is OFF)
@@ -2111,9 +2134,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         visibility = if (isFreedomMode) View.GONE else View.VISIBLE
                     }
 
-                    advancedIntervalsLayout.addView(makeIntervalStepper("Long Break", "Longer rest after completing multiple sessions", "long_break_minutes", 15L, 5L, 60L, 5L, "min"))
+                    advancedIntervalsLayout.addView(makeIntervalStepper("Long Break", "Rest after multiple sessions", "long_break_minutes", 15L, 5L, 60L, 5L, "min"))
                     advancedIntervalsLayout.addView(createDivider())
-                    advancedIntervalsLayout.addView(makeIntervalStepper("Sessions Until Long Break", "Number of study sessions before a longer rest", "long_break_interval", 4L, 2L, 10L, 1L, "sessions"))
+                    advancedIntervalsLayout.addView(makeIntervalStepper("Sessions Until Long Break", "Sessions before long rest", "long_break_interval", 4L, 2L, 10L, 1L, "sessions"))
                     advancedIntervalsLayout.addView(createDivider())
 
                     val isOvertime = sharedPrefs.getBoolean("pomodoro_overtime_enabled", true)
@@ -2123,7 +2146,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             sharedPrefs.edit().putBoolean("pomodoro_overtime_enabled", isChecked).apply()
                         }
                     }
-                    advancedIntervalsLayout.addView(createSettingsRow("", "Overtime Flow", "Keep timer running past zero so your flow state is never interrupted", overtimeSwitch))
+                    advancedIntervalsLayout.addView(createSettingsRow("", "Overtime Flow", "Keep counting past zero to preserve flow", overtimeSwitch))
                     advancedIntervalsLayout.addView(createDivider())
 
                     val isAutoBreak = sharedPrefs.getBoolean("pomodoro_auto_break", true)
@@ -2133,7 +2156,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             sharedPrefs.edit().putBoolean("pomodoro_auto_break", isChecked).apply()
                         }
                     }
-                    advancedIntervalsLayout.addView(createSettingsRow("", "Auto-Start Breaks", "Automatically start rest countdown when focus session finishes", autoBreakSwitch))
+                    advancedIntervalsLayout.addView(createSettingsRow("", "Auto-Start Breaks", "Start break when focus finishes", autoBreakSwitch))
                     advancedIntervalsLayout.addView(createDivider())
 
                     val isAutoFocus = sharedPrefs.getBoolean("pomo_auto_start_focus", true)
@@ -2143,7 +2166,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             sharedPrefs.edit().putBoolean("pomo_auto_start_focus", isChecked).apply()
                         }
                     }
-                    advancedIntervalsLayout.addView(createSettingsRow("", "Auto-Start Next Focus", "Automatically start next study interval when break ends", autoFocusSwitch))
+                    advancedIntervalsLayout.addView(createSettingsRow("", "Auto-Start Next Focus", "Start next focus when break ends", autoFocusSwitch))
                     timerModeCard.addView(advancedIntervalsLayout)
 
                     val freedomSwitch = SwitchMaterial(this).apply {
@@ -2154,13 +2177,44 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         }
                     }
                     timerModeCard.addView(createDivider())
-                    timerModeCard.addView(createSettingsRow("", "Extended Study (Freedom Mode)", "Allows study sessions up to 24 hours without forced rest intervals", freedomSwitch))
+                    timerModeCard.addView(createSettingsRow("", "Extended Study (Freedom Mode)", "Allow sessions up to 24 hours", freedomSwitch))
                 }
                 layout.addView(timerModeCard)
 
-                // CARD 2: DISPLAY & GESTURES
-                layout.addView(createSectionLabel("DISPLAY & GESTURES"))
-                val displayGestureCard = createSettingsCard()
+                // CARD 2: APP BLOCKER
+                layout.addView(createSectionLabel("APP BLOCKER"))
+                val shieldCard = createSettingsCard()
+                val isBlockerActive = AppBlockerManager.isEnabled(this)
+                val blockerDesc = if (isBlockerActive) {
+                    val count = AppBlockerManager.getBlockedPackages(this).size
+                    "$count apps blocked while studying"
+                } else {
+                    "Block distracting apps while studying"
+                }
+                val shieldStatusBadge = TextView(this).apply {
+                    text = if (isBlockerActive) "Active" else "Enable ›"
+                    setTextColor(if (isBlockerActive) Color.parseColor("#10B981") else themeCoordinator.primaryColor)
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    background = themeCoordinator.createGlassChip(
+                        tintedColor(if (isBlockerActive) Color.parseColor("#10B981") else themeCoordinator.primaryColor, 35),
+                        12f
+                    )
+                    setPadding(dp(10), dp(5), dp(10), dp(5))
+                }
+                val blockerRow = createSettingsRow("", "App Blocker", blockerDesc, shieldStatusBadge)
+                blockerRow.setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    AppBlockerSettingsSheet.show(host) {
+                        this@with.buildCurrentPanel()
+                    }
+                }
+                shieldCard.addView(blockerRow)
+                layout.addView(shieldCard)
+
+                // CARD 3: CONTROLS & GESTURES
+                layout.addView(createSectionLabel("CONTROLS & GESTURES"))
+                val controlsCard = createSettingsCard()
 
                 val isLandscapeStopwatchEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
                 val landscapeSwitch = SwitchMaterial(this).apply {
@@ -2176,8 +2230,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         }
                     }
                 }
-                displayGestureCard.addView(createSettingsRow("", "Landscape Fullscreen", "Sideways fullscreen distraction-free clock", landscapeSwitch))
-                displayGestureCard.addView(createDivider())
+                controlsCard.addView(createSettingsRow("", "Landscape Fullscreen", "Horizontal distraction-free clock", landscapeSwitch))
+                controlsCard.addView(createDivider())
 
                 val isPauseButtonEnabled = sharedPrefs.getBoolean("show_pause_button", true)
                 val pauseButtonSwitch = SwitchMaterial(this).apply {
@@ -2187,20 +2241,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         if (currentPanel == AppPanel.FOCUS) updateVisualStyles()
                     }
                 }
-                displayGestureCard.addView(createSettingsRow("", getString(R.string.pause_button), getString(R.string.pause_button_sub), pauseButtonSwitch))
-                displayGestureCard.addView(createDivider())
-
-                val isPureWhite = sharedPrefs.getBoolean("pureWhiteTimer", true)
-                val pureWhiteSwitch = SwitchMaterial(this).apply {
-                    isChecked = isPureWhite
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("pureWhiteTimer", isChecked).apply()
-                        updateVisualStyles()
-                        tabPageCache.clear()
-                    }
-                }
-                displayGestureCard.addView(createSettingsRow("", "Pure White Digits", "Keep clock numbers white regardless of accent color", pureWhiteSwitch))
-                displayGestureCard.addView(createDivider())
+                controlsCard.addView(createSettingsRow("", getString(R.string.pause_button), "Display pause control on active timer", pauseButtonSwitch))
+                controlsCard.addView(createDivider())
 
                 // Physical Gestures (Flip to Focus + Conditional Auto-Pause on Face Up)
                 val isFlipEnabled = FlipToFocusManager.isEnabled(this)
@@ -2217,7 +2259,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                 }
                 pauseFaceUpContainer.addView(createDivider())
-                pauseFaceUpContainer.addView(createSettingsRow("", "Auto-Pause on Face Up", "Pause the timer when picking up or turning the phone face up", pauseFaceUpSwitch))
+                pauseFaceUpContainer.addView(createSettingsRow("", "Auto-Pause on Face Up", "Pause when picking up or turning phone face up", pauseFaceUpSwitch))
 
                 val flipSwitch = SwitchMaterial(this).apply {
                     isChecked = isFlipEnabled
@@ -2227,39 +2269,28 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         pauseFaceUpContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
                     }
                 }
-                displayGestureCard.addView(createSettingsRow("", "Flip to Focus", "Turn phone face down on your desk to automatically start focusing", flipSwitch))
-                displayGestureCard.addView(pauseFaceUpContainer)
-                displayGestureCard.addView(createDivider())
+                controlsCard.addView(createSettingsRow("", "Flip to Focus", "Turn phone face down to start timer", flipSwitch))
+                controlsCard.addView(pauseFaceUpContainer)
+                controlsCard.addView(createDivider())
 
-                // App Blocker (Focus Shield)
-                val isBlockerActive = AppBlockerManager.isEnabled(this)
-                val blockerDesc = if (isBlockerActive) {
-                    val count = AppBlockerManager.getBlockedPackages(this).size
-                    "Shield active • $count apps blocked"
-                } else {
-                    "Block distracting apps during study sessions"
-                }
-                val blockerChevron = TextView(this).apply {
-                    text = "›"
-                    textSize = 18f
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.65f
-                }
-                val blockerRow = createSettingsRow("", "App Blocker (Focus Shield)", blockerDesc, blockerChevron)
-                blockerRow.setOnClickListener {
-                    AppBlockerSettingsSheet.show(host) {
-                        this@with.buildCurrentPanel()
+                // Tactile Haptics (Moved here from Theme)
+                val isHapticsEnabled = sharedPrefs.getBoolean("haptics_enabled", true)
+                val hapticsSwitch = SwitchMaterial(this).apply {
+                    isChecked = isHapticsEnabled
+                    setOnCheckedChangeListener { _, isChecked ->
+                        sharedPrefs.edit().putBoolean("haptics_enabled", isChecked).apply()
+                        if (isChecked) performMicroHaptic(this)
                     }
                 }
-                displayGestureCard.addView(blockerRow)
-                layout.addView(displayGestureCard)
+                controlsCard.addView(createSettingsRow("", "Tactile Haptics", "Subtle vibration on button taps & steppers", hapticsSwitch))
+                layout.addView(controlsCard)
             }
 
             // ==========================================
             // 4. INSIGHTS & STATS SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.ANALYTICS) {
-                layout.addView(createSectionLabel("STATS & CHARTS"))
+                layout.addView(createSectionLabel("CHART DISPLAY"))
                 val chartsCard = createSettingsCard()
                 val isHeatmapEnabled = sharedPrefs.getBoolean("show_focus_heatmap", true)
                 val heatmapSwitch = SwitchMaterial(this).apply {
@@ -2270,7 +2301,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         tabPageCache.clear()
                     }
                 }
-                chartsCard.addView(createSettingsRow("", getString(R.string.focus_heatmap_setting), getString(R.string.focus_heatmap_setting_sub), heatmapSwitch))
+                chartsCard.addView(createSettingsRow("", getString(R.string.focus_heatmap_setting), "Annual consistency matrix in Stats", heatmapSwitch))
                 chartsCard.addView(createDivider())
 
                 val isPieChartEnabled = sharedPrefs.safeBoolean("show_subject_pie_chart", true)
@@ -2282,7 +2313,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         tabPageCache.clear()
                     }
                 }
-                chartsCard.addView(createSettingsRow("", "Subject Breakdown Chart", "Show subject distribution chart in Stats", pieChartSwitch))
+                chartsCard.addView(createSettingsRow("", "Subject Breakdown Chart", "Subject distribution in Stats", pieChartSwitch))
                 chartsCard.addView(createDivider())
 
                 val isDonutEnabled = sharedPrefs.safeBoolean("use_donut_chart", true)
@@ -2294,25 +2325,14 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         tabPageCache.clear()
                     }
                 }
-                chartsCard.addView(createSettingsRowWithView(createCustomDonutIcon(), "Donut Chart Style", "Modern ring chart with quick stats in center", donutChartSwitch))
-                chartsCard.addView(createDivider())
-
-                val isPatternEnabled = sharedPrefs.getBoolean("show_focus_pattern", true)
-                val patternSwitch = SwitchMaterial(this).apply {
-                    isChecked = isPatternEnabled
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("show_focus_pattern", isChecked).apply()
-                        statsDirty = true
-                        tabPageCache.clear()
-                    }
-                }
-                chartsCard.addView(createSettingsRow("", getString(R.string.focus_pattern_setting), getString(R.string.focus_pattern_setting_sub), patternSwitch))
+                chartsCard.addView(createSettingsRowWithView(createCustomDonutIcon(), "Donut Chart Style", "Modern ring chart with center stats", donutChartSwitch))
                 layout.addView(chartsCard)
 
-                layout.addView(createSectionLabel("DATA CORRECTIONS & HISTORY"))
+                layout.addView(createSectionLabel("DATA CORRECTIONS"))
                 val dataCard = createSettingsCard()
-                val adjustRow = createSettingsRow("", "Adjust Today's Study Time", "Add missed study minutes or correct today's total")
+                val adjustRow = createSettingsRow("", "Adjust Today's Study Time", "Add missed minutes or correct today's total", createActionChip("Adjust ›"))
                 adjustRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
                     DeveloperToolsHelper.showAdjustTodayTimeDialog(host, themeCoordinator, isDeveloperExtended = false)
                 }
                 dataCard.addView(adjustRow)
@@ -2320,80 +2340,160 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             }
 
             // ==========================================
-            // 5. PLANNER & GOALS SUB-SCREEN
+            // 5. GOAL AND REMINDER SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.PLANNER) {
-                // CARD 1: DAILY GOALS & REMINDERS
-                layout.addView(createSectionLabel("DAILY GOALS & REMINDERS"))
-                val goalReminderCard = createSettingsCard()
+                // CARD 1: DAILY GOALS
+                layout.addView(createSectionLabel("DAILY GOALS"))
+                val goalCard = createSettingsCard()
+                var currentGoalSecs = StatsEngine.getDailyGoalSecs(sharedPrefs)
                 val goalValueText = TextView(this).apply {
+                    text = formatGoalLabel(currentGoalSecs)
                     textSize = 15f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.primaryColor)
-                    setPadding(dp(8), 0, dp(8), 0)
+                    gravity = Gravity.CENTER
+                    textAlignment = View.TEXT_ALIGNMENT_CENTER
+                    layoutParams = LinearLayout.LayoutParams(dp(72), LinearLayout.LayoutParams.WRAP_CONTENT)
                 }
+                var updateStreakSubtitle: (() -> Unit)? = null
+
+                val repeatHandler = Handler(Looper.getMainLooper())
+                var holdTicks = 0
+
+                fun commitGoal() {
+                    GoalHistoryManager.setDailyGoal(host, currentGoalSecs)
+                    host.invalidateStatsCache()
+                    host.recalculateStreak()
+                    StudyWidgetProvider.refresh(host)
+                }
+
                 fun makeGoalStepBtn(symbol: String, stepSecs: Long): TextView {
-                    return TextView(this).apply {
+                    val btn = TextView(this).apply {
                         text = symbol
                         textSize = 20f
                         gravity = Gravity.CENTER
-                        minimumWidth = dp(44)
-                        minimumHeight = dp(44)
+                        layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
                         typeface = Typeface.DEFAULT_BOLD
                         setTextColor(themeCoordinator.textColor)
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 10f)
-                        setPadding(dp(14), dp(8), dp(14), dp(8))
-                        setOnClickListener {
-                            val current = StatsEngine.getDailyGoalSecs(sharedPrefs)
-                            val next = max(900L, current + stepSecs)
-                            val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                            sharedPrefs.edit()
-                                .putLong("daily_goal_secs", next)
-                                .putInt("daily_goal_minutes", (next / 60).toInt())
-                                .putLong("${todayStr}_goal_secs", next)
-                                .apply()
-                            GoalHistoryManager.recordGoalChange(host, todayStr, next)
+                    }
+
+                    fun performStep(): Boolean {
+                        val current = currentGoalSecs
+                        val multiplier = when {
+                            holdTicks > 30 -> 4L
+                            holdTicks > 15 -> 2L
+                            else -> 1L
+                        }
+                        val effectiveDelta = stepSecs * multiplier
+                        val next = (current + effectiveDelta).coerceIn(900L, 86400L)
+                        if (next != current) {
+                            currentGoalSecs = next
                             goalValueText.text = formatGoalLabel(next)
+                            updateStreakSubtitle?.invoke()
+                            HapticFeedbackHelper.performMicroHaptic(host, btn)
+                            return true
+                        }
+                        return false
+                    }
+
+                    val repeatRunnable: Runnable = object : Runnable {
+                        override fun run() {
+                            holdTicks++
+                            val changed = performStep()
+                            if (changed) {
+                                val nextDelay = when {
+                                    holdTicks > 30 -> 60L
+                                    holdTicks > 15 -> 100L
+                                    holdTicks > 6 -> 180L
+                                    else -> 260L
+                                }
+                                repeatHandler.postDelayed(this, nextDelay)
+                            }
                         }
                     }
+
+                    btn.setOnTouchListener { v, event ->
+                        when (event.action) {
+                            MotionEvent.ACTION_DOWN -> {
+                                holdTicks = 0
+                                performStep()
+                                v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(80).start()
+                                repeatHandler.postDelayed(repeatRunnable, 350L)
+                            }
+                            MotionEvent.ACTION_MOVE -> {
+                                if (event.x < 0 || event.x > v.width || event.y < 0 || event.y > v.height) {
+                                    repeatHandler.removeCallbacks(repeatRunnable)
+                                    v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
+                                    commitGoal()
+                                }
+                            }
+                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                repeatHandler.removeCallbacks(repeatRunnable)
+                                v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start()
+                                commitGoal()
+                            }
+                        }
+                        true
+                    }
+
+                    return btn
                 }
-                goalValueText.text = formatGoalLabel(StatsEngine.getDailyGoalSecs(sharedPrefs))
+
                 val goalRow = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(18), dp(14), dp(18), dp(14))
                 }
-                goalRow.addView(ImageView(this).apply {
-                    setImageResource(R.drawable.ic_target)
-                    setColorFilter(themeCoordinator.primaryColor)
-                    layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
-                        setMargins(0, 0, dp(14), 0)
-                    }
-                })
                 val goalTextCol = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 goalTextCol.addView(TextView(this).apply { text = getString(R.string.daily_goal); setTextColor(themeCoordinator.textColor); textSize = 15f; typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL) })
-                goalTextCol.addView(TextView(this).apply { text = getString(R.string.daily_goal_sub); setTextColor(themeCoordinator.textColor); alpha = 0.5f; textSize = 12f; setPadding(0, 3, 0, 0) })
+                goalTextCol.addView(TextView(this).apply { text = "Target daily study time"; setTextColor(themeCoordinator.textColor); alpha = 0.5f; textSize = 12f; setPadding(0, 3, 0, 0) })
                 goalRow.addView(goalTextCol)
                 val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
                 controls.addView(makeGoalStepBtn("−", -900L))
                 controls.addView(goalValueText)
                 controls.addView(makeGoalStepBtn("+", 900L))
                 goalRow.addView(controls)
-                goalReminderCard.addView(goalRow)
-                goalReminderCard.addView(createDivider())
+                goalCard.addView(goalRow)
+                goalCard.addView(createDivider())
 
-                val isStreakGoalBased = sharedPrefs.getBoolean("streak_uses_daily_goal", false)
+                val isStreakGoalBased = sharedPrefs.getBoolean("streak_uses_daily_goal", true)
                 val streakGoalSwitch = SwitchMaterial(this).apply {
                     isChecked = isStreakGoalBased
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("streak_uses_daily_goal", isChecked).apply()
+                }
+                fun getStreakSubtitle(isGoalBased: Boolean): String {
+                    return if (isGoalBased) {
+                        val goalLabel = formatGoalLabel(currentGoalSecs)
+                        "Reach $goalLabel daily to maintain streak"
+                    } else {
+                        "Any focus session maintains streak"
                     }
                 }
-                goalReminderCard.addView(createSettingsRow("", getString(R.string.streak_uses_goal), getString(R.string.streak_uses_goal_sub), streakGoalSwitch))
-                goalReminderCard.addView(createDivider())
+                val streakRow = createSettingsRow("", getString(R.string.streak_uses_goal), getStreakSubtitle(isStreakGoalBased), streakGoalSwitch)
+                val streakSubtitleView = (streakRow.getChildAt(0) as? LinearLayout)?.let { col ->
+                    col.getChildAt(1) as? TextView
+                }
+                updateStreakSubtitle = {
+                    streakSubtitleView?.text = getStreakSubtitle(streakGoalSwitch.isChecked)
+                }
+                streakGoalSwitch.setOnCheckedChangeListener { _, isChecked ->
+                    HapticFeedbackHelper.performMicroHaptic(host)
+                    sharedPrefs.edit().putBoolean("streak_uses_daily_goal", isChecked).apply()
+                    updateStreakSubtitle?.invoke()
+                    host.invalidateStatsCache()
+                    host.recalculateStreak()
+                    StudyWidgetProvider.refresh(host)
+                }
+                goalCard.addView(streakRow)
+                layout.addView(goalCard)
+
+                // CARD 2: REMINDERS
+                layout.addView(createSectionLabel("REMINDERS"))
+                val reminderCard = createSettingsCard()
 
                 val reminderEnabled = sharedPrefs.getBoolean("reminder_enabled", true)
                 val reminderTimeContainer = LinearLayout(this).apply {
@@ -2404,6 +2504,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val reminderSwitch = SwitchMaterial(this).apply {
                     isChecked = reminderEnabled
                     setOnCheckedChangeListener { _, isChecked ->
+                        HapticFeedbackHelper.performMicroHaptic(host)
                         sharedPrefs.edit().putBoolean("reminder_enabled", isChecked).apply()
                         if (isChecked) {
                             GoalReminderScheduler.schedule(context)
@@ -2413,7 +2514,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         reminderTimeContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
                     }
                 }
-                goalReminderCard.addView(createSettingsRow("", "Daily Goal Reminder", "Evening notification if daily goal is not reached", reminderSwitch))
+                reminderCard.addView(createSettingsRow("", "Daily Goal Reminder", "Evening notification if goal is not reached", reminderSwitch))
 
                 val remHour = sharedPrefs.safeInt("reminder_hour", 20)
                 val remMinute = sharedPrefs.safeInt("reminder_minute", 0)
@@ -2430,6 +2531,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(18), dp(14), dp(18), dp(14))
                     setOnClickListener {
+                        HapticFeedbackHelper.performMicroHaptic(host, it)
                         val curH = sharedPrefs.safeInt("reminder_hour", 20)
                         val curM = sharedPrefs.safeInt("reminder_minute", 0)
                         val is24H = TimeFormat.is24Hour(context)
@@ -2443,7 +2545,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         }, curH, curM, is24H).show()
                     }
                 }
-                timeRow.addView(TextView(this).apply { text = "⏰"; textSize = 22f; setPadding(0, 0, dp(14), 0) })
                 val timeTextCol = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -2455,7 +2556,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
                 })
                 timeTextCol.addView(TextView(this).apply {
-                    text = "Time to receive your daily reminder"
+                    text = "Evening reminder alert time"
                     setTextColor(themeCoordinator.textColor)
                     alpha = 0.5f
                     textSize = 12f
@@ -2466,33 +2567,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 reminderTimeContainer.addView(createDivider())
                 reminderTimeContainer.addView(timeRow)
-                goalReminderCard.addView(reminderTimeContainer)
-
-                layout.addView(goalReminderCard)
-
-                // CARD 2: HABITS & TOOLS
-                layout.addView(createSectionLabel("HABITS & TOOLS"))
-                val habitsToolsCard = createSettingsCard()
-                val matrixRow = createSettingsRow("", "Weekly Goal Tracker", "See which goals you finished each day this week")
-                matrixRow.setOnClickListener {
-                    showPlannerMatrixDialog()
-                }
-                habitsToolsCard.addView(matrixRow)
-                habitsToolsCard.addView(createDivider())
-
-                val yesterdayRow = createSettingsRow("", "Yesterday's Goals", "Review or adjust previous day's completed goals")
-                yesterdayRow.setOnClickListener {
-                    showEditYesterdayGoalsDialog()
-                }
-                habitsToolsCard.addView(yesterdayRow)
-                habitsToolsCard.addView(createDivider())
-
-                val plannerThemeRow = createSettingsRow("", "Goal Colors", "Choose custom colors for your daily study goals")
-                plannerThemeRow.setOnClickListener {
-                    showPlannerThemePickerDialog()
-                }
-                habitsToolsCard.addView(plannerThemeRow)
-                layout.addView(habitsToolsCard)
+                reminderCard.addView(reminderTimeContainer)
+                layout.addView(reminderCard)
             }
 
             // ==========================================
@@ -2571,8 +2647,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 layout.addView(createSectionLabel("LOCAL DATA & BACKUPS"))
                 val dataCard = createSettingsCard()
-                val exportRow = createSettingsRow("", getString(R.string.export_logs), getString(R.string.export_logs_sub))
+                val exportRow = createSettingsRow("", getString(R.string.export_logs), getString(R.string.export_logs_sub), createActionChip("Export ›"))
                 exportRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
                     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
                         type = "application/json"
@@ -2584,8 +2661,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 dataCard.addView(exportRow)
                 dataCard.addView(createDivider())
 
-                val importRow = createSettingsRow("", getString(R.string.import_data), getString(R.string.import_data_sub))
+                val importRow = createSettingsRow("", getString(R.string.import_data), getString(R.string.import_data_sub), createActionChip("Restore ›"))
                 importRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
                     val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
                         type = "application/json"
                         addCategory(Intent.CATEGORY_OPENABLE)
@@ -2600,265 +2678,396 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             // 7. THEME & APPEARANCE SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.THEME) {
-                layout.addView(createSectionLabel("APP THEME"))
-                val modeCard = createSettingsCard()
-                val isEclipse = themeCoordinator.activeBgMode == "ECLIPSE"
-                val isLight = themeCoordinator.activeBgMode == "LIGHT"
+                var isStudySelected = true // true = Study ring, false = Break ring
 
-                fun modeRadio(selected: Boolean): View {
-                    return View(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(dp(18), dp(18))
-                        background = GradientDrawable().apply {
-                            shape = GradientDrawable.OVAL
-                            setColor(if (selected) themeCoordinator.primaryColor else Color.TRANSPARENT)
-                            setStroke(dp(2), if (selected) themeCoordinator.primaryColor else themeCoordinator.textColor)
-                        }
-                    }
-                }
-
-                val oledRow = createSettingsRow("", getString(R.string.theme_amoled), "Pure pitch black background for OLED screens", modeRadio(!isEclipse && !isLight))
-                oledRow.setOnClickListener {
-                    pendingSettingsScrollY = settingsScrollView.scrollY
-                    sharedPrefs.edit().putString("activeBgMode", "OLED").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                modeCard.addView(oledRow)
-                modeCard.addView(createDivider())
-
-                val eclipseRow = createSettingsRow("", getString(R.string.theme_slate), getString(R.string.theme_slate_sub), modeRadio(isEclipse))
-                eclipseRow.setOnClickListener {
-                    pendingSettingsScrollY = settingsScrollView.scrollY
-                    sharedPrefs.edit().putString("activeBgMode", "ECLIPSE").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                modeCard.addView(eclipseRow)
-                modeCard.addView(createDivider())
-
-                val lightRow = createSettingsRow("", getString(R.string.theme_light), getString(R.string.theme_light_sub), modeRadio(isLight))
-                lightRow.setOnClickListener {
-                    pendingSettingsScrollY = settingsScrollView.scrollY
-                    sharedPrefs.edit().putString("activeBgMode", "LIGHT").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                modeCard.addView(lightRow)
-                layout.addView(modeCard)
+                var updateHeroRingAndPills: (() -> Unit)? = null
+                var updateColorStudioDisplays: (() -> Unit)? = null
+                var updateRingSegmentPills: (() -> Unit)? = null
 
                 // ==========================================
-                // 2. CARD STYLES
+                // 1. LIVE INTERACTIVE THEME PREVIEW (Hero Card)
                 // ==========================================
-                layout.addView(createSectionLabel("CARD STYLES"))
-                val styleCard = createSettingsCard()
-                val isBubble = themeCoordinator.isBubbleStyle()
-                val isGlass = themeCoordinator.isGlassStyle()
-
-                val glassRow = createSettingsRow("", getString(R.string.style_glass), getString(R.string.style_glass_sub), modeRadio(isGlass))
-                glassRow.setOnClickListener {
-                    pendingSettingsScrollY = settingsScrollView.scrollY
-                    sharedPrefs.edit().putString("ui_style", "GLASS").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                styleCard.addView(glassRow)
-                styleCard.addView(createDivider())
-
-                val bubbleRow = createSettingsRow("", "3D Soft Depth", "Soft elevated cards with smooth depth", modeRadio(isBubble))
-                bubbleRow.setOnClickListener {
-                    pendingSettingsScrollY = settingsScrollView.scrollY
-                    sharedPrefs.edit().putString("ui_style", "BUBBLE").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                styleCard.addView(bubbleRow)
-                styleCard.addView(createDivider())
-
-                val classicRow = createSettingsRow("", getString(R.string.style_classic), getString(R.string.style_classic_sub), modeRadio(!isGlass && !isBubble))
-                classicRow.setOnClickListener {
-                    pendingSettingsScrollY = settingsScrollView.scrollY
-                    sharedPrefs.edit().putString("ui_style", "CLASSIC").apply()
-                    themeCoordinator.applyThemeCoordinates()
-                    navigateToPanel(AppPanel.SETTINGS)
-                }
-                styleCard.addView(classicRow)
-                styleCard.addView(createDivider())
-
-                val isPureWhitePomo = sharedPrefs.getBoolean("pomodoro_pure_white_theme", true)
-                val pureWhitePomoSwitch = SwitchMaterial(this).apply {
-                    isChecked = isPureWhitePomo
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("pomodoro_pure_white_theme", isChecked).apply()
-                        tabPageCache.clear()
-                        if (currentPanel == AppPanel.FOCUS) {
-                            updateVisualStyles()
-                        }
-                    }
-                }
-                styleCard.addView(createSettingsRow("", "Minimal Pure White Focus Theme", "Pure white timer clock & ring during focus sessions (no wallpaper)", pureWhitePomoSwitch))
-                layout.addView(styleCard)
-
-                // ==========================================
-                // 3. WALLPAPER & TYPOGRAPHY (CONSOLIDATED CARD)
-                // ==========================================
-                layout.addView(createSectionLabel("WALLPAPER & TYPOGRAPHY"))
-                val mediaFontCard = createSettingsCard()
-
-                // Row 1: Wallpaper
-                val wallpaperType = WallpaperManager.getWallpaperType(this)
-                val activePresetId = WallpaperManager.getActivePresetId(this)
-
-                val currentTitle = when (wallpaperType) {
-                    WallpaperManager.TYPE_PRESET -> WallpaperManager.getPresetById(this, activePresetId)?.title ?: "Preset Wallpaper"
-                    WallpaperManager.TYPE_STATIC -> "Custom Photo"
-                    WallpaperManager.TYPE_LIVE_AURORA -> "Aurora Wave (Live)"
-                    WallpaperManager.TYPE_LIVE_COSMIC -> "Cosmic Stars (Live)"
-                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> "Lofi Rain (Live)"
-                    WallpaperManager.TYPE_LIVE_VIDEO -> "Custom Video Loop"
-                    else -> "Solid Theme Background"
-                }
-
-                val wallpaperRow = LinearLayout(this).apply {
+                val heroPreviewCard = createSettingsCard()
+                val heroContent = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(16), dp(14), dp(16), dp(14))
-                    val outVal = android.util.TypedValue()
-                    theme.resolveAttribute(android.R.attr.selectableItemBackground, outVal, true)
-                    setBackgroundResource(outVal.resourceId)
-                    isClickable = true
-                    isFocusable = true
+                    setPadding(dp(18), dp(16), dp(18), dp(16))
                 }
 
-                val heroPreviewContainer = FrameLayout(this).apply {
-                    clipToOutline = true
-                    outlineProvider = object : android.view.ViewOutlineProvider() {
-                        override fun getOutline(view: View, outline: android.graphics.Outline) {
-                            outline.setRoundRect(0, 0, view.width, view.height, dp(10).toFloat())
-                        }
+                val liveRingView = object : View(this) {
+                    private val trackPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeWidth = dpF(5.5f)
                     }
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(10).toFloat()
-                        setColor(0xFF1E293B.toInt())
-                        setStroke(dp(1), 0x22FFFFFF)
+                    private val progressPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeWidth = dpF(5.5f)
+                        strokeCap = android.graphics.Paint.Cap.ROUND
                     }
-                    layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
-                        rightMargin = dp(14)
+                    private val timeTextPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        textAlign = android.graphics.Paint.Align.CENTER
+                        isFakeBoldText = true
+                    }
+                    private val tagTextPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        textAlign = android.graphics.Paint.Align.CENTER
+                        textSize = dpF(9f)
+                        isFakeBoldText = true
+                        letterSpacing = 0.10f
+                    }
+                    private val ringBounds = android.graphics.RectF()
+
+                    override fun onDraw(canvas: android.graphics.Canvas) {
+                        super.onDraw(canvas)
+                        val w = width.toFloat()
+                        val h = height.toFloat()
+                        val pad = dpF(6f)
+                        ringBounds.set(pad, pad, w - pad, h - pad)
+
+                        val ringColor = if (isStudySelected) themeCoordinator.primaryColor else themeCoordinator.secondaryColor
+
+                        // Outer track
+                        trackPaint.color = tintedColor(ringColor, 40)
+                        canvas.drawOval(ringBounds, trackPaint)
+
+                        // Progress arc (~72%)
+                        progressPaint.color = ringColor
+                        canvas.drawArc(ringBounds, -90f, 260f, false, progressPaint)
+
+                        // Center countdown time
+                        timeTextPaint.color = themeCoordinator.textColor
+                        timeTextPaint.textSize = dpF(14.5f)
+                        timeTextPaint.typeface = FontStyleManager.getTypeface(this@with, FontStyleManager.getSelectedFontId(this@with))
+                        val textY = (h / 2f) + dpF(1.5f)
+                        canvas.drawText(if (isStudySelected) "25:00" else "05:00", w / 2f, textY, timeTextPaint)
+
+                        // Mode label
+                        tagTextPaint.color = tintedColor(themeCoordinator.textColor, 150)
+                        canvas.drawText(if (isStudySelected) "FOCUS" else "BREAK", w / 2f, textY + dpF(11.5f), tagTextPaint)
+                    }
+                }.apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(84), dp(84)).apply {
+                        rightMargin = dp(16)
                     }
                 }
+                heroContent.addView(liveRingView)
 
-                val heroPreviewImg = ImageView(this).apply {
-                    scaleType = ImageView.ScaleType.CENTER_CROP
-                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                }
-
-                when (wallpaperType) {
-                    WallpaperManager.TYPE_PRESET -> {
-                        val preset = WallpaperManager.getPresetById(this, activePresetId)
-                        val thumb = if (preset != null) WallpaperManager.loadPresetThumbnail(this, preset) else null
-                        if (thumb != null) {
-                            heroPreviewImg.setImageBitmap(thumb)
-                        } else {
-                            heroPreviewImg.setBackgroundColor(0xFF334155.toInt())
-                        }
-                    }
-                    WallpaperManager.TYPE_STATIC -> {
-                        val file = WallpaperManager.getCustomWallpaperFile(this)
-                        if (file.exists()) {
-                            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
-                            val bm = android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
-                            if (bm != null) heroPreviewImg.setImageBitmap(bm)
-                        }
-                    }
-                    WallpaperManager.TYPE_LIVE_AURORA -> heroPreviewImg.setBackgroundColor(0xFF065F46.toInt())
-                    WallpaperManager.TYPE_LIVE_COSMIC -> heroPreviewImg.setBackgroundColor(0xFF1E1B4B.toInt())
-                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> heroPreviewImg.setBackgroundColor(0xFF1E293B.toInt())
-                    WallpaperManager.TYPE_LIVE_VIDEO -> heroPreviewImg.setBackgroundColor(0xFF1E1E2E.toInt())
-                    else -> heroPreviewImg.setBackgroundColor(if (themeCoordinator.isDarkMode()) 0xFF000000.toInt() else 0xFFF1F5F9.toInt())
-                }
-                heroPreviewContainer.addView(heroPreviewImg)
-                wallpaperRow.addView(heroPreviewContainer)
-
-                val heroTextLayout = LinearLayout(this).apply {
+                val heroInfoCol = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
 
-                val heroTitle = TextView(this).apply {
-                    text = "Select Wallpaper"
-                    textSize = 15f
+                val liveBadgeRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, 0, 0, dp(5))
+                }
+                val liveDot = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(7), dp(7)).apply {
+                        rightMargin = dp(6)
+                    }
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.parseColor("#10B981"))
+                    }
+                }
+                val liveTitle = TextView(this).apply {
+                    text = "LIVE PREVIEW"
+                    textSize = 11.5f
+                    letterSpacing = 0.08f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(tintedColor(themeCoordinator.textColor, 175))
+                }
+                liveBadgeRow.addView(liveDot)
+                liveBadgeRow.addView(liveTitle)
+                heroInfoCol.addView(liveBadgeRow)
+
+                val heroThemeDesc = TextView(this).apply {
+                    val modeStr = when (themeCoordinator.activeBgMode) {
+                        "LIGHT" -> "Light"
+                        "ECLIPSE" -> "Midnight"
+                        else -> "OLED"
+                    }
+                    val styleStr = if (themeCoordinator.isGlassStyle()) "Glass" else "Flat"
+                    text = "$modeStr \u2022 $styleStr"
+                    textSize = 13.5f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.textColor)
                 }
-                heroTextLayout.addView(heroTitle)
+                heroInfoCol.addView(heroThemeDesc)
 
-                val heroSub = TextView(this).apply {
-                    text = "Active: $currentTitle • Tap to change"
-                    textSize = 12f
-                    setTextColor(tintedColor(themeCoordinator.textColor, 140))
-                    setPadding(0, dp(2), 0, 0)
+                val colorPillsRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(7), 0, 0)
                 }
-                heroTextLayout.addView(heroSub)
-                wallpaperRow.addView(heroTextLayout)
 
-                val browseArrow = TextView(this).apply {
-                    text = "Choose ›"
-                    textSize = 13f
+                val studyPillDot = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply { rightMargin = dp(5) }
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(themeCoordinator.primaryColor)
+                    }
+                }
+                val studyPillTxt = TextView(this).apply {
+                    text = "Study"
+                    textSize = 11f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.primaryColor)
+                }
+                val studyPill = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 60), 10f)
                     setPadding(dp(8), dp(4), dp(8), dp(4))
-                }
-                wallpaperRow.addView(browseArrow)
-
-                wallpaperRow.setOnClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    showWallpaperGalleryDialog()
-                }
-                mediaFontCard.addView(wallpaperRow)
-                mediaFontCard.addView(createDivider())
-
-                // Row 2: Font & Typography
-                val currentFontId = FontStyleManager.getSelectedFontId(this)
-                val currentFontItem = FontStyleManager.FONT_OPTIONS.find { it.id == currentFontId } ?: FontStyleManager.FONT_OPTIONS[0]
-
-                val fontBadge = TextView(this).apply {
-                    text = currentFontItem.displayName
-                    textSize = 13f
-                    typeface = FontStyleManager.getTypeface(this@with, currentFontItem.id)
-                    setTextColor(themeCoordinator.primaryColor)
-                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 12f)
-                    setPadding(dp(12), dp(6), dp(12), dp(6))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        rightMargin = dp(8)
+                    }
+                    addView(studyPillDot)
+                    addView(studyPillTxt)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        if (!isStudySelected) {
+                            HapticFeedbackHelper.performMicroHaptic(host, it)
+                            isStudySelected = true
+                            updateHeroRingAndPills?.invoke()
+                            updateRingSegmentPills?.invoke()
+                            updateColorStudioDisplays?.invoke()
+                        }
+                    }
                 }
 
-                val fontRow = createSettingsRow(
-                    "",
-                    "Timer & App Font Style",
-                    "${currentFontItem.category} • ${currentFontItem.displayName}",
-                    fontBadge
+                val breakPillDot = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply { rightMargin = dp(5) }
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(themeCoordinator.secondaryColor)
+                    }
+                }
+                val breakPillTxt = TextView(this).apply {
+                    text = "Break"
+                    textSize = 11f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.secondaryColor)
+                }
+                val breakPill = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.secondaryColor, 30), 10f)
+                    setPadding(dp(8), dp(4), dp(8), dp(4))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                    addView(breakPillDot)
+                    addView(breakPillTxt)
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        if (isStudySelected) {
+                            HapticFeedbackHelper.performMicroHaptic(host, it)
+                            isStudySelected = false
+                            updateHeroRingAndPills?.invoke()
+                            updateRingSegmentPills?.invoke()
+                            updateColorStudioDisplays?.invoke()
+                        }
+                    }
+                }
+                colorPillsRow.addView(studyPill)
+                colorPillsRow.addView(breakPill)
+                heroInfoCol.addView(colorPillsRow)
+
+                heroContent.addView(heroInfoCol)
+                heroPreviewCard.addView(heroContent)
+                layout.addView(heroPreviewCard)
+
+                updateHeroRingAndPills = {
+                    liveRingView.invalidate()
+                    (studyPillDot.background as? GradientDrawable)?.setColor(themeCoordinator.primaryColor)
+                    studyPillTxt.setTextColor(themeCoordinator.primaryColor)
+                    studyPill.background = if (isStudySelected) {
+                        themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 10f)
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 10f)
+                    }
+
+                    (breakPillDot.background as? GradientDrawable)?.setColor(themeCoordinator.secondaryColor)
+                    breakPillTxt.setTextColor(themeCoordinator.secondaryColor)
+                    breakPill.background = if (!isStudySelected) {
+                        themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 10f)
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.secondaryColor, 35), 10f)
+                    }
+                }
+
+                // ==========================================
+                // 2. BACKGROUND & CARD STYLE (Merged Grouped Card)
+                // ==========================================
+                layout.addView(createSectionLabel("BACKGROUND & CARD STYLE"))
+                val bgAndStyleCard = createSettingsCard()
+                val bgAndStyleContainer = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                }
+
+                val bgRowTitle = TextView(this).apply {
+                    text = "Background"
+                    textSize = 12f
+                    letterSpacing = 0.04f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(tintedColor(themeCoordinator.textColor, 180))
+                    setPadding(dp(2), 0, 0, dp(8))
+                }
+                bgAndStyleContainer.addView(bgRowTitle)
+
+                val activeMode = themeCoordinator.activeBgMode
+                data class BgOption(val key: String, val name: String, val surfaceColor: Int, val isSelected: Boolean)
+                val bgOptions = listOf(
+                    BgOption("OLED", "OLED", 0xFF000000.toInt(), activeMode != "ECLIPSE" && activeMode != "LIGHT"),
+                    BgOption("ECLIPSE", "Midnight", 0xFF0F172A.toInt(), activeMode == "ECLIPSE"),
+                    BgOption("LIGHT", "Light", 0xFFF8FAFC.toInt(), activeMode == "LIGHT")
                 )
-                fontRow.setOnClickListener {
-                    showFontSelectionDialog()
+                val bgTilesRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
                 }
-                mediaFontCard.addView(fontRow)
-                layout.addView(mediaFontCard)
+                for ((i, opt) in bgOptions.withIndex()) {
+                    val tile = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER
+                        setPadding(dp(8), dp(10), dp(8), dp(10))
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            if (i > 0) leftMargin = dp(8)
+                        }
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(12).toFloat()
+                            setColor(opt.surfaceColor)
+                            if (opt.isSelected) {
+                                setStroke(dp(2), themeCoordinator.primaryColor)
+                            } else {
+                                setStroke(dp(1), if (opt.key == "LIGHT") 0xFFCBD5E1.toInt() else 0x2EFFFFFF)
+                            }
+                        }
+                        isClickable = true
+                        isFocusable = true
+                    }
+
+                    val disk = View(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply {
+                            rightMargin = dp(7)
+                        }
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            if (opt.key == "LIGHT") {
+                                setColor(0xFFFFFFFF.toInt())
+                                setStroke(dp(1.2f), 0xFF94A3B8.toInt())
+                            } else {
+                                setColor(if (opt.key == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF121212.toInt())
+                                setStroke(dp(1.2f), 0x33FFFFFF)
+                            }
+                        }
+                    }
+                    tile.addView(disk)
+
+                    val label = TextView(this).apply {
+                        text = opt.name
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        setTextColor(if (opt.key == "LIGHT") 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt())
+                    }
+                    tile.addView(label)
+
+                    tile.setOnClickListener {
+                        HapticFeedbackHelper.performMicroHaptic(host, it)
+                        pendingSettingsScrollY = settingsScrollView.scrollY
+                        sharedPrefs.edit().putString("activeBgMode", opt.key).apply()
+                        themeCoordinator.applyThemeCoordinates()
+                        navigateToPanel(AppPanel.SETTINGS)
+                    }
+                    bgTilesRow.addView(tile)
+                }
+                bgAndStyleContainer.addView(bgTilesRow)
+
+                val dividerBg = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                        setMargins(0, dp(14), 0, dp(12))
+                    }
+                    setBackgroundColor(tintedColor(themeCoordinator.textColor, 25))
+                }
+                bgAndStyleContainer.addView(dividerBg)
+
+                val styleRowTitle = TextView(this).apply {
+                    text = "Card Style"
+                    textSize = 12f
+                    letterSpacing = 0.04f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(tintedColor(themeCoordinator.textColor, 180))
+                    setPadding(dp(2), 0, 0, dp(8))
+                }
+                bgAndStyleContainer.addView(styleRowTitle)
+
+                val isGlass = themeCoordinator.isGlassStyle()
+                val styleRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                }
+                val styleOptions = listOf(
+                    Pair("GLASS", "\u2726 Glass"),
+                    Pair("CLASSIC", "\u25A0 Flat")
+                )
+                for ((idx, sOpt) in styleOptions.withIndex()) {
+                    val isSelected = (sOpt.first == "GLASS" && isGlass) || (sOpt.first == "CLASSIC" && !isGlass)
+                    val sTile = TextView(this).apply {
+                        text = sOpt.second
+                        textSize = 13f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        gravity = Gravity.CENTER
+                        setPadding(dp(12), dp(10), dp(12), dp(10))
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            if (idx > 0) leftMargin = dp(8)
+                        }
+                        if (isSelected) {
+                            setTextColor(themeCoordinator.primaryColor)
+                            background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
+                        } else {
+                            setTextColor(themeCoordinator.textColor)
+                            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
+                        }
+                        isClickable = true
+                        isFocusable = true
+                        setOnClickListener {
+                            HapticFeedbackHelper.performMicroHaptic(host, it)
+                            pendingSettingsScrollY = settingsScrollView.scrollY
+                            sharedPrefs.edit().putString("ui_style", sOpt.first).apply()
+                            themeCoordinator.applyThemeCoordinates()
+                            navigateToPanel(AppPanel.SETTINGS)
+                        }
+                    }
+                    styleRow.addView(sTile)
+                }
+                bgAndStyleContainer.addView(styleRow)
+                bgAndStyleCard.addView(bgAndStyleContainer)
+                layout.addView(bgAndStyleCard)
 
                 // ==========================================
-                // 4. ACCENT COLORS (WITH INLINE RANDOMIZE BUTTON)
+                // 3. THEME COLORS (Unified Studio)
                 // ==========================================
-                val accentHeader = LinearLayout(this).apply {
+                val colorHeader = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     setPadding(dp(6), dp(18), dp(6), dp(8))
                 }
-                accentHeader.addView(TextView(this).apply {
-                    text = "ACCENT COLORS"
+                colorHeader.addView(TextView(this).apply {
+                    text = "THEME COLORS"
                     textSize = 12f
                     letterSpacing = 0.12f
                     setTextColor(themeCoordinator.primaryColor)
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
-                val rollBtn = TextView(this).apply {
-                    text = "🎲 Randomize"
+                val shuffleBtn = TextView(this).apply {
+                    text = "\uD83C\uDFB2 Shuffle Colors"
                     textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(Color.WHITE)
@@ -2872,7 +3081,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         while (randomBreakHex.equals(randomFocusHex, ignoreCase = true) && breakList.size > 1) {
                             randomBreakHex = breakList.random()
                         }
-
                         val newFocus = Color.parseColor(randomFocusHex)
                         val newBreak = Color.parseColor(randomBreakHex)
 
@@ -2890,239 +3098,472 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                         themeCoordinator.primaryColor = newFocus
                         themeCoordinator.secondaryColor = newBreak
-
                         updateVisualStyles()
                         tabPageCache.clear()
 
-                        try {
-                            performMicroHaptic(v)
-                        } catch (_: Exception) {}
-                        pendingSettingsScrollY = settingsScrollView.scrollY
-                        AppToast.show(this@with, "New theme colors applied!")
-                        navigateToPanel(AppPanel.SETTINGS)
+                        HapticFeedbackHelper.performMicroHaptic(host, v)
+                        updateRingSegmentPills?.invoke()
+                        updateColorStudioDisplays?.invoke()
+                        updateHeroRingAndPills?.invoke()
+                        AppToast.show(this@with, "Fresh theme colors applied!")
                     }
                 }
-                accentHeader.addView(rollBtn)
-                layout.addView(accentHeader)
+                colorHeader.addView(shuffleBtn)
+                layout.addView(colorHeader)
 
-                // ==========================================
-                // DUAL FOCUS & BREAK ACCENT COLOR CONTROLS
-                // ==========================================
-                fun makeAccentColorSection(
-                    title: String,
-                    subtitle: String,
-                    prefKey: String,
-                    currentColor: Int,
-                    palette: List<String>,
-                    onColorChanged: (Int) -> Unit
-                ): LinearLayout {
-                    val card = createSettingsCard()
-                    val cardContainer = LinearLayout(this).apply {
-                        orientation = LinearLayout.VERTICAL
-                        setPadding(dp(18), dp(14), dp(18), dp(16))
+                // Unified Color Studio Card
+                val colorStudioCard = createSettingsCard()
+                val studioContainer = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(18), dp(14), dp(18), dp(16))
+                }
+
+                val ringSegmentRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    setPadding(0, 0, 0, dp(14))
+                }
+                val studyTabPill = TextView(this)
+                val breakTabPill = TextView(this)
+
+                updateRingSegmentPills = {
+                    studyTabPill.apply {
+                        text = "\u23F1\uFE0F Study Ring"
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        setTextColor(if (isStudySelected) themeCoordinator.primaryColor else themeCoordinator.textColor)
+                        background = if (isStudySelected) {
+                            themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
+                        } else {
+                            themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
+                        }
+                        gravity = Gravity.CENTER
+                        setPadding(dp(12), dp(8), dp(12), dp(8))
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            rightMargin = dp(6)
+                        }
+                    }
+                    breakTabPill.apply {
+                        text = "\u2615 Break Ring"
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        setTextColor(if (!isStudySelected) themeCoordinator.secondaryColor else themeCoordinator.textColor)
+                        background = if (!isStudySelected) {
+                            themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 12f)
+                        } else {
+                            themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
+                        }
+                        gravity = Gravity.CENTER
+                        setPadding(dp(12), dp(8), dp(12), dp(8))
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            leftMargin = dp(6)
+                        }
+                    }
+                }
+                updateRingSegmentPills?.invoke()
+                ringSegmentRow.addView(studyTabPill)
+                ringSegmentRow.addView(breakTabPill)
+                studioContainer.addView(ringSegmentRow)
+
+                val colorDetailRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, 0, 0, dp(14))
+                }
+                val colorPreviewCircle = View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply {
+                        rightMargin = dp(12)
+                    }
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(themeCoordinator.primaryColor)
+                        setStroke(dp(2), Color.argb(120, 255, 255, 255))
+                    }
+                }
+                colorDetailRow.addView(colorPreviewCircle)
+
+                val colorTextCol = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val colorTitleView = TextView(this).apply {
+                    text = "Study Focus Color"
+                    textSize = 14.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.textColor)
+                }
+                val colorSubView = TextView(this).apply {
+                    val hex = String.format("#%06X", 0xFFFFFF and themeCoordinator.primaryColor)
+                    text = "Highlights study timer ring & primary buttons \u2022 $hex"
+                    textSize = 11.5f
+                    alpha = 0.65f
+                    setTextColor(themeCoordinator.textColor)
+                    setPadding(0, dp(2), 0, 0)
+                }
+                colorTextCol.addView(colorTitleView)
+                colorTextCol.addView(colorSubView)
+                colorDetailRow.addView(colorTextCol)
+                studioContainer.addView(colorDetailRow)
+
+                val swatchesScroll = android.widget.HorizontalScrollView(this).apply {
+                    isHorizontalScrollBarEnabled = false
+                    setPadding(0, 0, 0, dp(12))
+                }
+                val swatchesContainer = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                }
+
+                val swatchViewsList = ArrayList<View>()
+                val hueSlider = android.widget.SeekBar(this)
+                val hueReadout = TextView(this)
+
+                updateColorStudioDisplays = {
+                    val targetColor = if (isStudySelected) themeCoordinator.primaryColor else themeCoordinator.secondaryColor
+                    val targetHex = String.format("#%06X", 0xFFFFFF and targetColor)
+                    (colorPreviewCircle.background as? GradientDrawable)?.setColor(targetColor)
+
+                    if (isStudySelected) {
+                        colorTitleView.text = "Study Focus Color"
+                        colorSubView.text = "Highlights study timer ring & primary buttons \u2022 $targetHex"
+                    } else {
+                        colorTitleView.text = "Break Rest Color"
+                        colorSubView.text = "Highlights rest timers & break status badges \u2022 $targetHex"
                     }
 
-                    val colorHeaderRow = LinearLayout(this).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        setPadding(0, 0, 0, dp(12))
+                    val paletteNow = if (isStudySelected) ThemeCoordinator.SOFT_FOCUS_PALETTE else ThemeCoordinator.SOFT_BREAK_PALETTE
+                    for ((idx, sv) in swatchViewsList.withIndex()) {
+                        if (idx < paletteNow.size) {
+                            val hex = paletteNow[idx]
+                            val sColor = Color.parseColor(hex)
+                            val isMatch = targetHex.equals(hex, ignoreCase = true)
+                            sv.background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor(sColor)
+                                setStroke(dp(if (isMatch) 3 else 1), if (isMatch) Color.WHITE else 0x33FFFFFF)
+                            }
+                        }
                     }
 
-                    var activeColor = currentColor
-                    val hexStr = String.format("#%06X", 0xFFFFFF and activeColor)
+                    val targetHsv = FloatArray(3)
+                    Color.colorToHSV(targetColor, targetHsv)
+                    hueSlider.progress = targetHsv[0].toInt()
+                    hueReadout.text = "${targetHsv[0].toInt()}\u00B0"
+                }
 
-                    val previewCircle = View(this).apply {
-                        layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
-                            setMargins(0, 0, dp(12), 0)
+                val currentPalette = ThemeCoordinator.SOFT_FOCUS_PALETTE
+                for (hex in currentPalette) {
+                    val sColor = Color.parseColor(hex)
+                    val sv = View(this).apply {
+                        layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                            rightMargin = dp(9)
                         }
                         background = GradientDrawable().apply {
                             shape = GradientDrawable.OVAL
-                            setColor(activeColor)
-                            setStroke(dp(2), Color.argb(100, 255, 255, 255))
+                            setColor(sColor)
+                            val isMatch = String.format("#%06X", 0xFFFFFF and themeCoordinator.primaryColor).equals(hex, ignoreCase = true)
+                            setStroke(dp(if (isMatch) 3 else 1), if (isMatch) Color.WHITE else 0x33FFFFFF)
                         }
-                    }
-                    colorHeaderRow.addView(previewCircle)
-
-                    val textCol = LinearLayout(this).apply {
-                        orientation = LinearLayout.VERTICAL
-                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                            minimumHeight = dp(38)
-                        }
-                    }
-                    textCol.addView(TextView(this).apply {
-                        text = title
-                        setTextColor(themeCoordinator.textColor)
-                        textSize = 15f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        setSingleLine(true)
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                    })
-                    val hexLabel = TextView(this).apply {
-                        text = "$subtitle  •  $hexStr"
-                        setTextColor(themeCoordinator.textColor)
-                        alpha = 0.6f
-                        textSize = 12f
-                        setSingleLine(true)
-                        ellipsize = android.text.TextUtils.TruncateAt.END
-                        setPadding(0, 2, 0, 0)
-                    }
-                    textCol.addView(hexLabel)
-                    colorHeaderRow.addView(textCol)
-                    cardContainer.addView(colorHeaderRow)
-
-                    // Curated Aesthetic Soft Swatches Horizontal Scroll
-                    val swatchesScroll = android.widget.HorizontalScrollView(this).apply {
-                        isHorizontalScrollBarEnabled = false
-                        setPadding(0, 0, 0, dp(12))
-                    }
-                    val swatchesLayout = LinearLayout(this).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                    }
-
-                    val swatchViews = ArrayList<View>()
-
-                    fun refreshSwatchBorders() {
-                        for ((idx, sView) in swatchViews.withIndex()) {
-                            val hex = palette[idx]
-                            val isMatch = String.format("#%06X", 0xFFFFFF and activeColor).equals(hex, ignoreCase = true)
-                            (sView.background as? GradientDrawable)?.apply {
-                                setStroke(dp(2), if (isMatch) Color.WHITE else Color.TRANSPARENT)
+                        setOnClickListener {
+                            HapticFeedbackHelper.performMicroHaptic(host, it)
+                            val paletteNow = if (isStudySelected) ThemeCoordinator.SOFT_FOCUS_PALETTE else ThemeCoordinator.SOFT_BREAK_PALETTE
+                            val clickedHex = paletteNow[swatchViewsList.indexOf(this)]
+                            val pickedColor = Color.parseColor(clickedHex)
+                            if (isStudySelected) {
+                                themeCoordinator.primaryColor = pickedColor
+                                sharedPrefs.edit().putInt("customPrimary", pickedColor).apply()
+                            } else {
+                                themeCoordinator.secondaryColor = pickedColor
+                                sharedPrefs.edit().putInt("customSecondary", pickedColor).apply()
                             }
+                            updateVisualStyles()
+                            tabPageCache.clear()
+                            updateColorStudioDisplays?.invoke()
+                            updateHeroRingAndPills?.invoke()
                         }
                     }
+                    swatchViewsList.add(sv)
+                    swatchesContainer.addView(sv)
+                }
+                swatchesScroll.addView(swatchesContainer)
+                studioContainer.addView(swatchesScroll)
 
+                val hueHeaderRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(4), 0, dp(6))
+                }
+                val hueTitle = TextView(this).apply {
+                    text = "Fine-Tune Color Shade"
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(tintedColor(themeCoordinator.textColor, 180))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                hueReadout.apply {
                     val hsv = FloatArray(3)
-                    Color.colorToHSV(activeColor, hsv)
+                    Color.colorToHSV(themeCoordinator.primaryColor, hsv)
+                    text = "${hsv[0].toInt()}\u00B0"
+                    textSize = 12f
+                    setTextColor(themeCoordinator.textColor)
+                    alpha = 0.65f
+                }
+                hueHeaderRow.addView(hueTitle)
+                hueHeaderRow.addView(hueReadout)
+                studioContainer.addView(hueHeaderRow)
 
-                    val hueHeader = LinearLayout(this).apply {
-                        orientation = LinearLayout.HORIZONTAL
+                val rainbowColors = intArrayOf(
+                    Color.RED, Color.YELLOW, Color.GREEN, Color.CYAN, Color.BLUE, Color.MAGENTA, Color.RED
+                )
+                val rainbowTrack = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, rainbowColors).apply {
+                    cornerRadius = dp(3).toFloat()
+                }
+
+                val sliderContainer = FrameLayout(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(32))
+                }
+                val trackBar = View(this).apply {
+                    background = rainbowTrack
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(5)).apply {
                         gravity = Gravity.CENTER_VERTICAL
-                        setPadding(0, dp(2), 0, dp(6))
+                        setMargins(dp(12), 0, dp(12), 0)
                     }
-                    val hueTitle = TextView(this).apply {
-                        text = "Fine-Tune Hue Slider"
-                        setTextColor(themeCoordinator.textColor)
-                        alpha = 0.65f
-                        textSize = 12f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                    }
-                    val hueValLabel = TextView(this).apply {
-                        text = "${hsv[0].toInt()}°"
-                        setTextColor(themeCoordinator.textColor)
-                        alpha = 0.6f
-                        textSize = 12f
-                    }
-                    hueHeader.addView(hueTitle)
-                    hueHeader.addView(hueValLabel)
+                }
+                sliderContainer.addView(trackBar)
 
-                    val hueSeekBar = android.widget.SeekBar(this).apply {
-                        max = 360
-                        progress = hsv[0].toInt()
-                        setPadding(dp(4), dp(4), dp(4), dp(4))
+                hueSlider.apply {
+                    max = 360
+                    val hsv = FloatArray(3)
+                    Color.colorToHSV(themeCoordinator.primaryColor, hsv)
+                    progress = hsv[0].toInt()
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                        gravity = Gravity.CENTER_VERTICAL
                     }
+                    val thumbDrawable = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setSize(dp(18), dp(18))
+                        setColor(themeCoordinator.primaryColor)
+                        setStroke(dp(2), Color.WHITE)
+                    }
+                    thumb = thumbDrawable
 
-                    hueSeekBar.setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                        override fun onProgressChanged(sb: android.widget.SeekBar?, prog: Int, fromUser: Boolean) {
-                            hueValLabel.text = "$prog°"
+                    setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                        override fun onProgressChanged(sb: android.widget.SeekBar?, progressVal: Int, fromUser: Boolean) {
                             if (fromUser) {
-                                val colorInt = Color.HSVToColor(floatArrayOf(prog.toFloat(), 0.70f, 0.95f))
-                                activeColor = colorInt
-                                (previewCircle.background as? GradientDrawable)?.setColor(activeColor)
-                                val newHex = String.format("#%06X", 0xFFFFFF and activeColor)
-                                hexLabel.text = "$subtitle  •  $newHex"
-                                sharedPrefs.edit().putInt(prefKey, activeColor).apply()
-                                onColorChanged(activeColor)
-                                refreshSwatchBorders()
+                                hueReadout.text = "${progressVal}\u00B0"
+                                val currentHsv = FloatArray(3)
+                                val baseColor = if (isStudySelected) themeCoordinator.primaryColor else themeCoordinator.secondaryColor
+                                Color.colorToHSV(baseColor, currentHsv)
+                                currentHsv[0] = progressVal.toFloat()
+                                if (currentHsv[1] < 0.35f) currentHsv[1] = 0.65f
+                                if (currentHsv[2] < 0.70f) currentHsv[2] = 0.95f
+                                val chosenColor = Color.HSVToColor(currentHsv)
+
+                                thumbDrawable.setColor(chosenColor)
+                                (colorPreviewCircle.background as? GradientDrawable)?.setColor(chosenColor)
+
+                                if (isStudySelected) {
+                                    themeCoordinator.primaryColor = chosenColor
+                                    sharedPrefs.edit().putInt("customPrimary", chosenColor).apply()
+                                } else {
+                                    themeCoordinator.secondaryColor = chosenColor
+                                    sharedPrefs.edit().putInt("customSecondary", chosenColor).apply()
+                                }
+                                updateVisualStyles()
+                                tabPageCache.clear()
+                                updateHeroRingAndPills?.invoke()
                             }
                         }
                         override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
-                        override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
-                    })
-
-                    for (hex in palette) {
-                        val swatchColor = Color.parseColor(hex)
-                        val sView = View(this).apply {
-                            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32)).apply {
-                                setMargins(0, 0, dp(8), 0)
-                            }
-                            background = GradientDrawable().apply {
-                                shape = GradientDrawable.OVAL
-                                setColor(swatchColor)
-                                val isMatch = String.format("#%06X", 0xFFFFFF and activeColor).equals(hex, ignoreCase = true)
-                                setStroke(dp(2), if (isMatch) Color.WHITE else Color.TRANSPARENT)
-                            }
-                            setOnClickListener {
-                                activeColor = swatchColor
-                                (previewCircle.background as? GradientDrawable)?.setColor(activeColor)
-                                val newHex = String.format("#%06X", 0xFFFFFF and activeColor)
-                                hexLabel.text = "$subtitle  •  $newHex"
-                                sharedPrefs.edit().putInt(prefKey, activeColor).apply()
-
-                                val swatchHsv = FloatArray(3)
-                                Color.colorToHSV(activeColor, swatchHsv)
-                                hueSeekBar.progress = swatchHsv[0].toInt()
-                                hueValLabel.text = "${swatchHsv[0].toInt()}°"
-
-                                onColorChanged(activeColor)
-                                refreshSwatchBorders()
-                            }
+                        override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {
+                            updateColorStudioDisplays?.invoke()
+                            updateHeroRingAndPills?.invoke()
                         }
-                        swatchViews.add(sView)
-                        swatchesLayout.addView(sView)
+                    })
+                }
+                sliderContainer.addView(hueSlider)
+                studioContainer.addView(sliderContainer)
+
+                studyTabPill.setOnClickListener {
+                    if (!isStudySelected) {
+                        HapticFeedbackHelper.performMicroHaptic(host, it)
+                        isStudySelected = true
+                        updateRingSegmentPills?.invoke()
+                        updateColorStudioDisplays?.invoke()
+                        updateHeroRingAndPills?.invoke()
                     }
-                    swatchesScroll.addView(swatchesLayout)
-                    cardContainer.addView(swatchesScroll)
-                    cardContainer.addView(hueHeader)
-                    cardContainer.addView(hueSeekBar)
-
-                    card.addView(cardContainer)
-                    return card
+                }
+                breakTabPill.setOnClickListener {
+                    if (isStudySelected) {
+                        HapticFeedbackHelper.performMicroHaptic(host, it)
+                        isStudySelected = false
+                        updateRingSegmentPills?.invoke()
+                        updateColorStudioDisplays?.invoke()
+                        updateHeroRingAndPills?.invoke()
+                    }
                 }
 
-                layout.addView(createSectionLabel("STUDY ACCENT COLOR"))
-                val focusColorCard = makeAccentColorSection(
-                    title = "Study Color",
-                    subtitle = "Colors your study timer ring & primary buttons",
-                    prefKey = "customPrimary",
-                    currentColor = themeCoordinator.primaryColor,
-                    palette = ThemeCoordinator.SOFT_FOCUS_PALETTE
-                ) { newColor ->
-                    themeCoordinator.primaryColor = newColor
-                    updateVisualStyles()
-                    tabPageCache.clear()
-                }
-                layout.addView(focusColorCard)
-
-                layout.addView(createSectionLabel("BREAK ACCENT COLOR"))
-                val breakColorCard = makeAccentColorSection(
-                    title = "Break Color",
-                    subtitle = "Colors your break timer ring & status badges",
-                    prefKey = "customSecondary",
-                    currentColor = themeCoordinator.secondaryColor,
-                    palette = ThemeCoordinator.SOFT_BREAK_PALETTE
-                ) { newColor ->
-                    themeCoordinator.secondaryColor = newColor
-                    updateVisualStyles()
-                    tabPageCache.clear()
-                }
-                layout.addView(breakColorCard)
+                colorStudioCard.addView(studioContainer)
+                layout.addView(colorStudioCard)
 
                 // ==========================================
-                // INTERACTION & HAPTICS (AT BOTTOM OF THEME)
+                // 4. DISPLAY & WALLPAPER (Grouped Settings Card)
                 // ==========================================
-                layout.addView(createSectionLabel("FEEDBACK & HAPTICS"))
-                val hapticCard = createSettingsCard()
-                val isHapticsEnabled = sharedPrefs.getBoolean("haptics_enabled", true)
-                val hapticsSwitch = SwitchMaterial(this).apply {
-                    isChecked = isHapticsEnabled
+                layout.addView(createSectionLabel("DISPLAY & WALLPAPER"))
+                val displayCard = createSettingsCard()
+
+                val wallpaperType = WallpaperManager.getWallpaperType(this)
+                val activePresetId = WallpaperManager.getActivePresetId(this)
+
+                val currentTitle = when (wallpaperType) {
+                    WallpaperManager.TYPE_PRESET -> WallpaperManager.getPresetById(this, activePresetId)?.title ?: "Preset Wallpaper"
+                    WallpaperManager.TYPE_STATIC -> "Custom Photo"
+                    WallpaperManager.TYPE_LIVE_AURORA -> "Aurora Wave (Live)"
+                    WallpaperManager.TYPE_LIVE_COSMIC -> "Cosmic Stars (Live)"
+                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> "Lofi Rain (Live)"
+                    WallpaperManager.TYPE_LIVE_VIDEO -> "Custom Video Loop"
+                    else -> "Solid Theme Background"
+                }
+                val isLiveWp = wallpaperType.startsWith("LIVE_") || wallpaperType == WallpaperManager.TYPE_LIVE_AURORA
+
+                val wallpaperRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(18), dp(14), dp(18), dp(14))
+                    isClickable = true
+                    isFocusable = true
+                }
+
+                val wpPreviewFrame = FrameLayout(this).apply {
+                    clipToOutline = true
+                    outlineProvider = object : android.view.ViewOutlineProvider() {
+                        override fun getOutline(view: View, outline: android.graphics.Outline) {
+                            outline.setRoundRect(0, 0, view.width, view.height, dp(10).toFloat())
+                        }
+                    }
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(10).toFloat()
+                        setColor(0xFF1E293B.toInt())
+                        setStroke(dp(1), 0x33FFFFFF)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(54), dp(42)).apply {
+                        rightMargin = dp(14)
+                    }
+                }
+
+                val wpImg = ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                }
+                when (wallpaperType) {
+                    WallpaperManager.TYPE_PRESET -> {
+                        val preset = WallpaperManager.getPresetById(this, activePresetId)
+                        val thumb = if (preset != null) WallpaperManager.loadPresetThumbnail(this, preset) else null
+                        if (thumb != null) wpImg.setImageBitmap(thumb) else wpImg.setBackgroundColor(0xFF334155.toInt())
+                    }
+                    WallpaperManager.TYPE_STATIC -> {
+                        val file = WallpaperManager.getCustomWallpaperFile(this)
+                        if (file.exists()) {
+                            val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
+                            val bm = android.graphics.BitmapFactory.decodeFile(file.absolutePath, opts)
+                            if (bm != null) wpImg.setImageBitmap(bm)
+                        }
+                    }
+                    WallpaperManager.TYPE_LIVE_AURORA -> wpImg.setBackgroundColor(0xFF065F46.toInt())
+                    WallpaperManager.TYPE_LIVE_COSMIC -> wpImg.setBackgroundColor(0xFF1E1B4B.toInt())
+                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> wpImg.setBackgroundColor(0xFF1E293B.toInt())
+                    WallpaperManager.TYPE_LIVE_VIDEO -> wpImg.setBackgroundColor(0xFF1E1E2E.toInt())
+                    else -> wpImg.setBackgroundColor(if (themeCoordinator.isDarkMode()) 0xFF121212.toInt() else 0xFFE2E8F0.toInt())
+                }
+                wpPreviewFrame.addView(wpImg)
+                wallpaperRow.addView(wpPreviewFrame)
+
+                val wpTextCol = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val wpTitle = TextView(this).apply {
+                    text = "Study Wallpaper"
+                    textSize = 15f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.textColor)
+                }
+                wpTextCol.addView(wpTitle)
+
+                val wpSub = TextView(this).apply {
+                    text = if (isLiveWp) "\u2728 Live Motion \u2022 $currentTitle" else "Active: $currentTitle"
+                    textSize = 12f
+                    setTextColor(tintedColor(themeCoordinator.textColor, 150))
+                    setPadding(0, dp(2), 0, 0)
+                }
+                wpTextCol.addView(wpSub)
+                wallpaperRow.addView(wpTextCol)
+
+                val changeWpChip = TextView(this).apply {
+                    text = "Change \u203A"
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.primaryColor)
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 10f)
+                    setPadding(dp(10), dp(5), dp(10), dp(5))
+                }
+                wallpaperRow.addView(changeWpChip)
+
+                wallpaperRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
+                    showWallpaperGalleryDialog()
+                }
+                displayCard.addView(wallpaperRow)
+
+                displayCard.addView(createDivider())
+
+                // Typography Row
+                val currentFontId = FontStyleManager.getSelectedFontId(this)
+                val currentFontItem = FontStyleManager.FONT_OPTIONS.find { it.id == currentFontId } ?: FontStyleManager.FONT_OPTIONS[0]
+
+                val fontBadge = TextView(this).apply {
+                    text = "${currentFontItem.displayName} \u203A"
+                    textSize = 12.5f
+                    typeface = FontStyleManager.getTypeface(this@with, currentFontItem.id)
+                    setTextColor(themeCoordinator.primaryColor)
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 12f)
+                    setPadding(dp(11), dp(5), dp(11), dp(5))
+                }
+
+                val fontRow = createSettingsRow(
+                    "",
+                    "Timer & App Font",
+                    "Digits & headings: ${currentFontItem.displayName}",
+                    fontBadge
+                )
+                fontRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
+                    showFontSelectionDialog()
+                }
+                displayCard.addView(fontRow)
+
+                displayCard.addView(createDivider())
+
+                // Minimal White Focus Clock Row
+                val isPureWhitePomo = sharedPrefs.getBoolean("pomodoro_pure_white_theme", true)
+                val pureWhitePomoSwitch = SwitchMaterial(this).apply {
+                    isChecked = isPureWhitePomo
                     setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("haptics_enabled", isChecked).apply()
-                        if (isChecked) performMicroHaptic(this)
+                        sharedPrefs.edit().putBoolean("pomodoro_pure_white_theme", isChecked).apply()
+                        tabPageCache.clear()
+                        if (currentPanel == AppPanel.FOCUS) {
+                            updateVisualStyles()
+                        }
                     }
                 }
-                hapticCard.addView(createSettingsRow("", "Tactile Haptics", "Subtle micro-haptic feedback on buttons & hold actions", hapticsSwitch))
-                layout.addView(hapticCard)
+                displayCard.addView(
+                    createSettingsRow(
+                        "",
+                        "Minimal White Focus Clock",
+                        "Distraction-free pure white timer ring during focus sessions",
+                        pureWhitePomoSwitch
+                    )
+                )
+
+                layout.addView(displayCard)
             }
 
             // ==========================================

@@ -10,6 +10,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 object CloudSyncManager {
     private const val CLOUD_CONFLICT_SKEW_TOLERANCE_MS = 60_000L
@@ -28,7 +31,13 @@ object CloudSyncManager {
         "streak_last_calculated",
         "pomo_overtime_alerted",
         "pomo_grace_realloc_pending",
-        "pending_inactivity_check"
+        "pending_inactivity_check",
+        // Study Room keys (feature deferred/disabled in v1)
+        "active_room_json",
+        "last_joined_room_json",
+        "user_created_rooms_json",
+        "dev_mock_active",
+        "dev_mock_rooms_json"
     )
 
     data class CloudRecordMetadata(
@@ -172,6 +181,10 @@ object CloudSyncManager {
                 Log.d("CloudSyncManager", "Skipping cloud sync: No data changes detected since last sync.")
                 return@withContext SyncResult(isSuccess = true)
             }
+
+            try {
+                StatsEngine(context).recalculateStreak()
+            } catch (_: Exception) {}
 
             val prefsJson = JSONObject()
             for ((key, value) in sharedPrefs.all) {
@@ -414,6 +427,10 @@ object CloudSyncManager {
                     "time_format_pref", "custom_display_name", "auth_user_name", "auth_profile_image_uri",
                     "profile_bio", "profile_study_target_grade", "profile_field_of_study", "profile_avatar_url"
                 )
+                val timelineEntries = TimelineLogger.load(context)
+                val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                val timelineDates = timelineEntries.map { sdf.format(Date(it.timestamp)) }.toSet()
+
                 while (keys.hasNext()) {
                     val k = keys.next()
                     if (k == "timerState") {
@@ -425,7 +442,27 @@ object CloudSyncManager {
                     } else if (k.endsWith("_focus_total") || k.endsWith("_break_total")) {
                         val localVal = sharedPrefs.safeLong(k, 0L)
                         val cloudVal = cloudPrefs.optLong(k, 0L)
-                        editor.putLong(k, maxOf(localVal, cloudVal))
+                        val prefVal = maxOf(localVal, cloudVal)
+                        val isFocus = k.endsWith("_focus_total")
+                        val dateStr = if (isFocus) k.removeSuffix("_focus_total") else k.removeSuffix("_break_total")
+
+                        val (sessions, breaks) = if (timelineDates.contains(dateStr)) {
+                            StatsEngine(context).dayBlocks(dateStr, timelineEntries)
+                        } else {
+                            emptyList<BlockInfo>() to emptyList<BlockInfo>()
+                        }
+                        val hasClosedBlock = sessions.any { !it.running } || breaks.any { !it.running }
+
+                        if (hasClosedBlock) {
+                            val derivedVal = if (isFocus) {
+                                sessions.filter { !it.running }.sumOf { it.secs }
+                            } else {
+                                breaks.filter { !it.running }.sumOf { it.secs }
+                            }
+                            editor.putLong(k, derivedVal)
+                        } else {
+                            editor.putLong(k, prefVal)
+                        }
                     } else if (k == "session_goals_json") {
                         val localGoals = sharedPrefs.safeString("session_goals_json", "[]") ?: "[]"
                         val cloudGoals = cloudPrefs.optString("session_goals_json", "[]")
@@ -493,9 +530,8 @@ object CloudSyncManager {
                     } else if (k == "daily_goal_secs") {
                         val localGoal = sharedPrefs.safeLong("daily_goal_secs", 0L)
                         val cloudGoal = cloudPrefs.optLong("daily_goal_secs", 0L)
-                        if (cloudGoal > 0L && localGoal <= 0L) {
-                            editor.putLong("daily_goal_secs", cloudGoal)
-                            editor.putInt("daily_goal_minutes", (cloudGoal / 60).toInt())
+                        if (cloudGoal > 0L && (localGoal <= 0L || cloudGoal > localGoal)) {
+                            GoalHistoryManager.setDailyGoal(context, cloudGoal)
                         }
                     } else if (!sharedPrefs.contains(k)) {
                         val v = cloudPrefs.get(k)
@@ -590,7 +626,12 @@ object CloudSyncManager {
 
                 // Merge hidden subjects
                 if (cloudSubObj.has("hidden_subjects_set")) {
-                    val localHidden = subPrefs.getStringSet("hidden_subjects_set", emptySet()) ?: emptySet()
+                    val localHidden = try {
+                        subPrefs.getStringSet("hidden_subjects_set", emptySet()) ?: emptySet()
+                    } catch (_: ClassCastException) {
+                        val raw = runCatching { subPrefs.getString("hidden_subjects_set", null) }.getOrNull()
+                        AppBlockerManager.parseStringSet(raw)
+                    }
                     val mergedHidden = HashSet(localHidden)
                     val rawCloudHidden = cloudSubObj.get("hidden_subjects_set")
                     when (rawCloudHidden) {
@@ -955,6 +996,8 @@ object CloudSyncManager {
                         AuthManager.saveProfileImageUri(context, cloudImg)
                     }
                     editor.commit()
+                    val restoredGoal = StatsEngine.getDailyGoalSecs(sharedPrefs)
+                    GoalHistoryManager.setDailyGoal(context, restoredGoal)
 
                     // Synchronize and restore User Profile from restored prefs JSON
                     try {

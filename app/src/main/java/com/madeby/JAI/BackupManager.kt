@@ -305,8 +305,11 @@ class BackupManager(private val context: Context) {
         try {
             val sharedPrefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
             val json = JSONObject()
+            val excludedExportKeys = setOf("active_room_json", "last_joined_room_json", "user_created_rooms_json", "dev_mock_active", "dev_mock_rooms_json")
             for ((key, value) in sharedPrefs.all) {
-                json.put(key, value)
+                if (key !in excludedExportKeys && !key.startsWith("dev_mock_members_")) {
+                    json.put(key, value)
+                }
             }
             putTimeline(json)
             putSubjectTags(json)
@@ -346,6 +349,8 @@ class BackupManager(private val context: Context) {
                 restoreTimeline(importedJsonObject)
                 restoreSubjectTags(importedJsonObject)
                 restoreExamCountdowns(importedJsonObject)
+                val importedGoalSecs = StatsEngine.getDailyGoalSecs(sharedPrefs)
+                GoalHistoryManager.setDailyGoal(context, importedGoalSecs)
                 StatsEngine(context).sanitizeAndHealHistoricalTotals()
                 runSilentAutoBackup()
 
@@ -371,6 +376,9 @@ class BackupManager(private val context: Context) {
         "time_format_pref", "custom_display_name", "auth_user_name", "auth_profile_image_uri",
         "profile_bio", "profile_study_target_grade", "profile_field_of_study", "profile_avatar_url"
     )
+    private val stringSetPrefKeys = setOf(
+        "app_blocker_blocked_packages", "streak_frozen_dates", "hidden_subjects_set"
+    )
 
     private fun sanitizeAndBuildPreferences(sourceJson: JSONObject, editor: android.content.SharedPreferences.Editor) {
         val keys = sourceJson.keys()
@@ -385,20 +393,57 @@ class BackupManager(private val context: Context) {
                 "accumulatedStudy", "currentBreakSeconds", "lastTimestamp", "focus_remaining_secs", "streak_last_calculated" -> {
                     // Never resurrect an in-flight session from a backup; streak is recomputed on next stats open.
                 }
-                else -> when (val value = sourceJson.get(key)) {
-                    is Number -> {
-                        if (key in intPrefKeys) {
-                            editor.putInt(key, value.toInt())
-                        } else if (key in stringPrefKeys) {
-                            editor.putString(key, value.toString())
-                        } else {
-                            editor.putLong(key, value.toLong())
+                "active_room_json", "last_joined_room_json", "user_created_rooms_json", "dev_mock_active", "dev_mock_rooms_json" -> {
+                    // Study Room keys ignored while feature is disabled/deferred
+                }
+                else -> {
+                    if (key in stringSetPrefKeys) {
+                        val set = HashSet<String>()
+                        when (val rawVal = sourceJson.get(key)) {
+                            is JSONArray -> {
+                                for (i in 0 until rawVal.length()) {
+                                    val s = rawVal.optString(i)
+                                    if (s.isNotBlank()) set.add(s)
+                                }
+                            }
+                            is String -> {
+                                val trimmed = rawVal.trim()
+                                if (trimmed.startsWith("[")) {
+                                    runCatching {
+                                        val arr = JSONArray(trimmed)
+                                        for (i in 0 until arr.length()) {
+                                            val s = arr.optString(i)
+                                            if (s.isNotBlank()) set.add(s)
+                                        }
+                                    }
+                                } else {
+                                    trimmed.removeSurrounding("[", "]")
+                                        .split(",")
+                                        .map { it.trim().removeSurrounding("\"").removeSurrounding("'") }
+                                        .filter { it.isNotEmpty() }
+                                        .forEach { set.add(it) }
+                                }
+                            }
+                        }
+                        editor.remove(key)
+                        editor.putStringSet(key, set)
+                    } else {
+                        when (val value = sourceJson.get(key)) {
+                            is Number -> {
+                                if (key in intPrefKeys) {
+                                    editor.putInt(key, value.toInt())
+                                } else if (key in stringPrefKeys) {
+                                    editor.putString(key, value.toString())
+                                } else {
+                                    editor.putLong(key, value.toLong())
+                                }
+                            }
+                            is String -> editor.putString(key, value)
+                            is Boolean -> editor.putBoolean(key, value)
+                            is JSONArray -> editor.putString(key, value.toString())
+                            is JSONObject -> editor.putString(key, value.toString())
                         }
                     }
-                    is String -> editor.putString(key, value)
-                    is Boolean -> editor.putBoolean(key, value)
-                    is JSONArray -> editor.putString(key, value.toString())
-                    is JSONObject -> editor.putString(key, value.toString())
                 }
             }
         }

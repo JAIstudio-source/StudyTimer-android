@@ -1,3 +1,4 @@
+// DISABLED in v3.3.5: no users, incomplete. Re-enable via BuildConfig.STUDY_ROOM_ENABLED = true once there is demand. See release v3.3.5.
 package com.madeby.JAI
 
 import android.content.Context

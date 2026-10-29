@@ -154,6 +154,7 @@ class StudyBottomNavBar @JvmOverloads constructor(
                 gravity = Gravity.CENTER
                 isClickable = true
                 isFocusable = true
+                contentDescription = "${dest.label}, Tab"
                 setPadding(0, dp(4), 0, dp(4))
                 layoutParams = LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f)
             }
@@ -230,7 +231,7 @@ class StudyBottomNavBar @JvmOverloads constructor(
             val label = labelViews.getOrNull(i) ?: continue
 
             val targetColor = if (isSelected) primaryAccentColor else unselectedColor
-            val targetAlpha = if (isSelected) 1.0f else 0.65f
+            val targetAlpha = if (isSelected) 1.0f else 0.78f
 
             icon.setColorFilter(targetColor)
             label.setTextColor(targetColor)

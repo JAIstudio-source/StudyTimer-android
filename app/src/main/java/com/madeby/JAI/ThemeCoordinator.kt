@@ -62,7 +62,7 @@ class ThemeCoordinator(private val context: Context) {
         }
 
         activeBgMode = sharedPrefs.getString("activeBgMode", "OLED") ?: "OLED"
-        uiStyle = sharedPrefs.getString("ui_style", "GLASS") ?: "GLASS"
+        uiStyle = sharedPrefs.getString("ui_style", "GLASS")?.takeIf { it != "BUBBLE" } ?: "GLASS"
 
         when (activeBgMode) {
             "LIGHT" -> {
@@ -107,7 +107,7 @@ class ThemeCoordinator(private val context: Context) {
 
     fun isDarkMode(): Boolean = activeBgMode != "LIGHT"
     fun isGlassStyle(): Boolean = uiStyle == "GLASS"
-    fun isBubbleStyle(): Boolean = uiStyle == "BUBBLE"
+    fun isBubbleStyle(): Boolean = false
 
     fun createBackgroundDrawable(): GradientDrawable {
         if (!isGlassStyle() && !isBubbleStyle()) {

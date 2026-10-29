@@ -281,7 +281,7 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
                 } else null
 
                 blockLabel = if (matchedSub != null) {
-                    "${matchedSub.iconEmoji} ${matchedSub.name}"
+                    matchedSub.name
                 } else {
                     if (b.manual) "Focus (Manual)" else "Focus"
                 }

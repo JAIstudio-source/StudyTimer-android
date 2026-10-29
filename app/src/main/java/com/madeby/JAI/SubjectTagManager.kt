@@ -29,12 +29,12 @@ object SubjectTagManager {
     private const val KEY_SUBJECT_WEEKLY_TARGETS_JSON = "subject_weekly_targets_json"
 
     val DEFAULT_SUBJECTS = listOf(
-        SubjectTag("general", "General", "📖", "#6366F1"),
-        SubjectTag("math", "Math", "📐", "#10B981"),
-        SubjectTag("coding", "Coding", "💻", "#3B82F6"),
-        SubjectTag("physics", "Physics", "⚛️", "#8B5CF6"),
-        SubjectTag("history", "History", "📜", "#F59E0B"),
-        SubjectTag("science", "Science", "🧪", "#EC4899")
+        SubjectTag("general", "General", "", "#6366F1"),
+        SubjectTag("math", "Math", "", "#10B981"),
+        SubjectTag("coding", "Coding", "", "#3B82F6"),
+        SubjectTag("physics", "Physics", "", "#8B5CF6"),
+        SubjectTag("history", "History", "", "#F59E0B"),
+        SubjectTag("science", "Science", "", "#EC4899")
     )
 
     private fun getPrefs(context: Context): SharedPreferences {
@@ -169,7 +169,7 @@ object SubjectTagManager {
                             SubjectTag(
                                 id = id,
                                 name = ov?.optString("name") ?: obj.getString("name"),
-                                iconEmoji = ov?.optString("iconEmoji") ?: obj.optString("iconEmoji", "📚"),
+                                iconEmoji = ov?.optString("iconEmoji") ?: obj.optString("iconEmoji", ""),
                                 colorHex = ov?.optString("colorHex") ?: obj.optString("colorHex", "#6366F1"),
                                 isCustom = true,
                                 subTopics = getSubTopics(context, id),
@@ -445,7 +445,7 @@ object SubjectTagManager {
                     SubjectTag(
                         id = obj.getString("id"),
                         name = obj.getString("name"),
-                        iconEmoji = obj.optString("iconEmoji", "📚"),
+                        iconEmoji = obj.optString("iconEmoji", ""),
                         colorHex = obj.optString("colorHex", "#6366F1"),
                         isCustom = true
                     )
@@ -470,12 +470,12 @@ object SubjectTagManager {
         return SubjectTag(
             id = subjectId ?: "custom_${subjectName ?: "general"}",
             name = subjectName ?: "General",
-            iconEmoji = "📖",
+            iconEmoji = "",
             colorHex = subjectColor ?: "#6366F1"
         )
     }
 
-    fun addCustomSubject(context: Context, name: String, emoji: String = "📚", colorHex: String? = null): SubjectTag {
+    fun addCustomSubject(context: Context, name: String, emoji: String = "", colorHex: String? = null): SubjectTag {
         val check = ProfanityFilter.checkSubjectName(name)
         val cleanName = if (check.isClean) check.sanitizedText else "Subject"
         val prefs = getPrefs(context)

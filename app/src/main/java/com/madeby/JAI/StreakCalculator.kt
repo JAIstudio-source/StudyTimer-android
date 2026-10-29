@@ -14,7 +14,14 @@ object StreakCalculator {
 
     fun getFrozenDates(context: Context): Set<String> {
         val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        return prefs.getStringSet(PREF_FROZEN_DATES, emptySet()) ?: emptySet()
+        return try {
+            prefs.getStringSet(PREF_FROZEN_DATES, emptySet()) ?: emptySet()
+        } catch (_: ClassCastException) {
+            val raw = runCatching { prefs.getString(PREF_FROZEN_DATES, null) }.getOrNull()
+            val parsed = AppBlockerManager.parseStringSet(raw)
+            prefs.edit().remove(PREF_FROZEN_DATES).putStringSet(PREF_FROZEN_DATES, parsed).apply()
+            parsed
+        }
     }
 
     fun getUsedFreezesForMonth(context: Context, monthKey: String): Set<String> {
@@ -35,9 +42,9 @@ object StreakCalculator {
         if (used.contains(dateKey)) return true // already frozen
         if (used.size >= MAX_FREEZES_PER_MONTH) return false // max reached
 
-        val currentSet = prefs.getStringSet(PREF_FROZEN_DATES, emptySet())?.toMutableSet() ?: mutableSetOf()
+        val currentSet = getFrozenDates(context).toMutableSet()
         currentSet.add(dateKey)
-        prefs.edit().putStringSet(PREF_FROZEN_DATES, currentSet).apply()
+        prefs.edit().remove(PREF_FROZEN_DATES).putStringSet(PREF_FROZEN_DATES, currentSet).apply()
         return true
     }
 

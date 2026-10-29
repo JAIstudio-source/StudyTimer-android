@@ -142,7 +142,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                             setStroke(dp(2), if (isLightColor(baseColor)) 0xFF0F172A.toInt() else Color.WHITE)
                         }
                     }
-                    layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
+                    layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
                     setOnClickListener {
                         selectionMade = true
                         val wasGracePending = host.appPrefs.getBoolean("pomo_grace_realloc_pending", false)
@@ -204,7 +204,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 } else {
                     // Empty space holder to keep 2-column balanced
                     row.addView(View(host).apply {
-                        layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                        layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                             setMargins(dp(4), 0, 0, 0)
                         }
                     })
@@ -237,7 +237,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.primaryColor)
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 14f)
-                layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     setMargins(0, 0, dp(3), 0)
                 }
                 isClickable = true
@@ -260,7 +260,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.accentColor)
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, 35), 14f)
-                layoutParams = LinearLayout.LayoutParams(0, dp(42), 1.15f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1.15f).apply {
                     setMargins(dp(3), 0, dp(3), 0)
                 }
                 isClickable = true
@@ -285,7 +285,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.textColor)
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 14f)
-                layoutParams = LinearLayout.LayoutParams(0, dp(42), 0.95f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 0.95f).apply {
                     setMargins(dp(3), 0, 0, 0)
                 }
                 isClickable = true
@@ -452,82 +452,177 @@ class SubjectDialogHelper(private val host: MainActivity) {
             dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
 
+            val parsedColor = try {
+                Color.parseColor(subj.colorHex)
+            } catch (e: Exception) {
+                themeCoordinator.primaryColor
+            }
+
             val container = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
-                background = themeCoordinator.createDialogBackground(24f)
-                setPadding(dp(20), dp(20), dp(20), dp(20))
+                background = themeCoordinator.createDialogBackground(26f)
+                setPadding(dp(22), dp(20), dp(22), dp(20))
                 layoutParams = LinearLayout.LayoutParams(
-                    (host.resources.displayMetrics.widthPixels * 0.85f).toInt().coerceAtMost(dp(360)),
+                    (host.resources.displayMetrics.widthPixels * 0.88f).toInt().coerceAtMost(dp(360)),
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             }
 
-            val title = TextView(host).apply {
-                text = "${subj.iconEmoji} ${subj.name}"
-                textSize = 17f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(themeCoordinator.textColor)
-                gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(14))
-            }
-            container.addView(title)
-
-            val subTopicsBtn = Button(host).apply {
-                text = "Chapters & Sub-Topics"
-                textSize = 13.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(themeCoordinator.textColor)
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(10))
-                }
-                setOnClickListener {
-                    dialog.dismiss()
-                    showSubTopicPickerDialog(subj)
+            // Top Header: Subject indicator dot + Subject Title + Close button
+            val headerRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(18))
                 }
             }
-            container.addView(subTopicsBtn)
 
-            val editBtn = Button(host).apply {
-                text = "Edit Subject"
-                textSize = 13.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(Color.WHITE)
+            val colorDot = View(host).apply {
+                val dotSize = dp(12)
+                layoutParams = LinearLayout.LayoutParams(dotSize, dotSize).apply {
+                    setMargins(0, 0, dp(10), 0)
+                }
                 background = GradientDrawable().apply {
-                    setColor(try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor })
-                    cornerRadius = dp(12).toFloat()
+                    shape = GradientDrawable.OVAL
+                    setColor(parsedColor)
                 }
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(10))
-                }
+            }
+            headerRow.addView(colorDot)
+
+            val titleView = TextView(host).apply {
+                text = subj.name
+                textSize = 17.5f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.textColor)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            headerRow.addView(titleView)
+
+            val closeBtn = TextView(host).apply {
+                text = "✕"
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(tintedColor(themeCoordinator.textColor, 150))
+                gravity = Gravity.CENTER
+                val pad = dp(6)
+                setPadding(pad, pad, pad, pad)
                 setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, this)
                     dialog.dismiss()
-                    showEditSubjectDialog(subj) {
-                        showSubjectPickerDialog()
+                }
+            }
+            headerRow.addView(closeBtn)
+            container.addView(headerRow)
+
+            // Reusable modern action row builder
+            fun createActionRow(
+                titleText: String,
+                subtitleText: String,
+                isDestructive: Boolean = false,
+                onClick: () -> Unit
+            ): LinearLayout {
+                return LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    val normalBg = if (isDestructive) {
+                        themeCoordinator.createGlassChip(tintedColor(0xFFEF4444.toInt(), 22), 14f)
+                    } else {
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 18), 14f)
+                    }
+                    background = normalBg
+                    setPadding(dp(16), dp(13), dp(14), dp(13))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, 0, 0, dp(10))
+                    }
+
+                    val textCol = LinearLayout(host).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+
+                    val titleTv = TextView(host).apply {
+                        text = titleText
+                        textSize = 14.5f
+                        typeface = themeCoordinator.getAppTypeface(isBold = true)
+                        setTextColor(if (isDestructive) 0xFFEF4444.toInt() else themeCoordinator.textColor)
+                    }
+                    textCol.addView(titleTv)
+
+                    val subTv = TextView(host).apply {
+                        text = subtitleText
+                        textSize = 11.5f
+                        typeface = themeCoordinator.getAppTypeface(isBold = false)
+                        setTextColor(if (isDestructive) tintedColor(0xFFEF4444.toInt(), 160) else tintedColor(themeCoordinator.textColor, 120))
+                        setPadding(0, dp(1), 0, 0)
+                    }
+                    textCol.addView(subTv)
+                    addView(textCol)
+
+                    val chevron = TextView(host).apply {
+                        text = "›"
+                        textSize = 18f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(if (isDestructive) tintedColor(0xFFEF4444.toInt(), 140) else tintedColor(themeCoordinator.textColor, 100))
+                        setPadding(dp(6), 0, dp(2), 0)
+                    }
+                    addView(chevron)
+
+                    setOnClickListener {
+                        HapticFeedbackHelper.performMicroHaptic(host, this)
+                        dialog.dismiss()
+                        onClick()
                     }
                 }
             }
-            container.addView(editBtn)
 
-            if (subj.id != "general") {
-                val deleteBtn = Button(host).apply {
-                    text = "Delete Subject"
-                    textSize = 13.5f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(0xFFEF4444.toInt())
-                    background = themeCoordinator.createGlassChip(tintedColor(0xFFEF4444.toInt(), 30), 12f)
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    setOnClickListener {
-                        dialog.dismiss()
-                        showDeleteSubjectConfirmDialog(subj)
-                    }
+            // 1. Chapters Row
+            val chapterCount = subj.subTopics.size
+            val chapterSub = if (chapterCount == 0) "No chapters added" else "$chapterCount chapter${if (chapterCount == 1) "" else "s"} configured"
+            val chaptersRow = createActionRow(
+                titleText = "Chapters",
+                subtitleText = chapterSub
+            ) {
+                showSubTopicPickerDialog(subj)
+            }
+            container.addView(chaptersRow)
+
+            // 2. Edit Subject Row
+            val goalSub = if (subj.weeklyTargetHours != null && subj.weeklyTargetHours > 0) {
+                "Goal: ${subj.weeklyTargetHours}h/week"
+            } else {
+                "Change name, color or weekly goal"
+            }
+            val editRow = createActionRow(
+                titleText = "Edit Subject",
+                subtitleText = goalSub
+            ) {
+                showEditSubjectDialog(subj) {
+                    showSubjectPickerDialog()
                 }
-                container.addView(deleteBtn)
+            }
+            container.addView(editRow)
+
+            // 3. Delete Subject Row (if not general)
+            if (subj.id != "general") {
+                val deleteRow = createActionRow(
+                    titleText = "Delete Subject",
+                    subtitleText = "Remove subject from picker",
+                    isDestructive = true
+                ) {
+                    showDeleteSubjectConfirmDialog(subj)
+                }
+                container.addView(deleteRow)
             }
 
             dialog.setContentView(container)
             dialog.show()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
     }
 
     fun showSubTopicPickerDialog(subj: SubjectTag, onSelected: ((String?) -> Unit)? = null) {
@@ -536,8 +631,8 @@ class SubjectDialogHelper(private val host: MainActivity) {
             DeveloperToolsHelper.showThemedConfirmDialog(
                 activity = host,
                 themeCoordinator = themeCoordinator,
-                title = "⏱️ Active Session Running",
-                message = "Chapter / subtopic cannot be changed during an active study session.\n\nYou can change chapters or topics during breaks, between Pomodoro rounds, or when the timer is idle.",
+                title = "Active Session Running",
+                message = "Chapters cannot be changed during an active study session.\n\nYou can change chapters during breaks, between Pomodoro rounds, or when the timer is idle.",
                 confirmText = "OK",
                 isDestructive = false,
                 onCancel = {}
@@ -549,33 +644,88 @@ class SubjectDialogHelper(private val host: MainActivity) {
             dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
 
+            val parsedColor = try {
+                Color.parseColor(subj.colorHex)
+            } catch (e: Exception) {
+                themeCoordinator.primaryColor
+            }
+
             val container = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
                 background = themeCoordinator.createDialogBackground(26f)
-                setPadding(dp(22), dp(22), dp(22), dp(20))
+                setPadding(dp(22), dp(20), dp(22), dp(20))
                 layoutParams = LinearLayout.LayoutParams(
-                    (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(400)),
+                    (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380)),
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             }
 
-            val title = TextView(host).apply {
-                text = "${subj.iconEmoji} ${subj.name}"
-                textSize = 17.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(themeCoordinator.textColor)
-                gravity = Gravity.CENTER
+            // Top Header: Subject Color Dot + Subject Name & Subtitle + Close Button
+            val headerRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(16))
+                }
             }
-            container.addView(title)
 
-            val subtitle = TextView(host).apply {
-                text = "Select Chapter / Sub-Topic"
-                textSize = 12.5f
-                setTextColor(tintedColor(themeCoordinator.textColor, 140))
-                gravity = Gravity.CENTER
-                setPadding(0, dp(2), 0, dp(14))
+            val colorDot = View(host).apply {
+                val dotSize = dp(12)
+                layoutParams = LinearLayout.LayoutParams(dotSize, dotSize).apply {
+                    setMargins(0, 0, dp(10), 0)
+                }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(parsedColor)
+                }
             }
-            container.addView(subtitle)
+            headerRow.addView(colorDot)
+
+            val titleCol = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val titleTv = TextView(host).apply {
+                text = subj.name
+                textSize = 17f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.textColor)
+            }
+            titleCol.addView(titleTv)
+
+            val subtitleTv = TextView(host).apply {
+                text = "Select Chapter"
+                textSize = 11.5f
+                typeface = themeCoordinator.getAppTypeface(isBold = false)
+                setTextColor(tintedColor(themeCoordinator.textColor, 130))
+                setPadding(0, dp(1), 0, 0)
+            }
+            titleCol.addView(subtitleTv)
+            headerRow.addView(titleCol)
+
+            val closeBtn = TextView(host).apply {
+                text = "✕"
+                textSize = 15f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(tintedColor(themeCoordinator.textColor, 150))
+                gravity = Gravity.CENTER
+                val pad = dp(6)
+                setPadding(pad, pad, pad, pad)
+                setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, this)
+                    dialog.dismiss()
+                }
+            }
+            headerRow.addView(closeBtn)
+            container.addView(headerRow)
+
+            var currentSubTopic = SubjectTagManager.getSelectedSubTopic(host, subj.id)
+            val allTopics = SubjectTagManager.getSubTopics(host, subj.id).toMutableList()
+            val studyTotals = SubjectTagManager.getSubTopicStudyTotals(host, subj.id)
 
             val listScroll = ScrollView(host).apply {
                 isFillViewport = true
@@ -583,7 +733,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(260).coerceAtMost((host.resources.displayMetrics.heightPixels * 0.40f).toInt())
+                    dp(240).coerceAtMost((host.resources.displayMetrics.heightPixels * 0.36f).toInt())
                 )
             }
             val topicsContainer = LinearLayout(host).apply {
@@ -593,11 +743,6 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     FrameLayout.LayoutParams.WRAP_CONTENT
                 )
             }
-
-            val currentSubTopic = SubjectTagManager.getSelectedSubTopic(host, subj.id)
-            val allTopics = SubjectTagManager.getSubTopics(host, subj.id).toMutableList()
-            val studyTotals = SubjectTagManager.getSubTopicStudyTotals(host, subj.id)
-            var selectionMade = false
 
             fun formatTopicDuration(secs: Long): String {
                 if (secs <= 0L) return ""
@@ -614,20 +759,20 @@ class SubjectDialogHelper(private val host: MainActivity) {
             fun populateTopicRows() {
                 topicsContainer.removeAllViews()
 
-                // Row for All / General (Unassigned)
+                // Row for All Chapters
+                val isAllSelected = currentSubTopic.isNullOrBlank()
                 val allRow = LinearLayout(host).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    val isSelected = currentSubTopic.isNullOrBlank()
-                    background = if (isSelected) {
+                    background = if (isAllSelected) {
                         GradientDrawable().apply {
                             cornerRadius = dp(12).toFloat()
-                            setColor(try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor })
+                            setColor(parsedColor)
                         }
                     } else {
-                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 12f)
+                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
                     }
-                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    setPadding(dp(14), dp(11), dp(14), dp(11))
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
@@ -635,19 +780,20 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         setMargins(0, 0, 0, dp(6))
                     }
                     setOnClickListener {
-                        selectionMade = true
+                        HapticFeedbackHelper.performMicroHaptic(host, this)
                         SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
                         dialog.dismiss()
                         onSelected?.invoke(null)
                         host.buildCurrentPanel()
-                        AppToast.show(host, "Studying: ${subj.name} (All Topics)")
+                        AppToast.show(host, "Studying: ${subj.name} • All Chapters")
                     }
                 }
+
                 allRow.addView(TextView(host).apply {
-                    text = if (currentSubTopic.isNullOrBlank()) "✓ All Chapters / Topics" else "All Chapters / Topics"
+                    text = if (isAllSelected) "✓  All Chapters" else "All Chapters"
                     textSize = 13.5f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(if (currentSubTopic.isNullOrBlank()) Color.WHITE else themeCoordinator.textColor)
+                    typeface = themeCoordinator.getAppTypeface(isBold = isAllSelected)
+                    setTextColor(if (isAllSelected) Color.WHITE else themeCoordinator.textColor)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 topicsContainer.addView(allRow)
@@ -663,12 +809,12 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         background = if (isSelected) {
                             GradientDrawable().apply {
                                 cornerRadius = dp(12).toFloat()
-                                setColor(try { Color.parseColor(subj.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor })
+                                setColor(parsedColor)
                             }
                         } else {
-                            themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 12f)
+                            themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
                         }
-                        setPadding(dp(14), dp(10), dp(14), dp(10))
+                        setPadding(dp(14), dp(10), dp(10), dp(10))
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -676,7 +822,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                             setMargins(0, 0, 0, dp(6))
                         }
                         setOnClickListener {
-                            selectionMade = true
+                            HapticFeedbackHelper.performMicroHaptic(host, this)
                             SubjectTagManager.setSelectedSubTopic(host, subj.id, topic)
                             dialog.dismiss()
                             onSelected?.invoke(topic)
@@ -686,9 +832,9 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     }
 
                     row.addView(TextView(host).apply {
-                        text = if (isSelected) "✓ $topic" else topic
+                        text = if (isSelected) "✓  $topic" else topic
                         textSize = 13.5f
-                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        typeface = themeCoordinator.getAppTypeface(isBold = isSelected)
                         setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     })
@@ -696,22 +842,33 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     if (durText.isNotEmpty()) {
                         row.addView(TextView(host).apply {
                             text = durText
-                            textSize = 12f
-                            setTextColor(if (isSelected) Color.WHITE else tintedColor(themeCoordinator.textColor, 160))
+                            textSize = 11.5f
+                            typeface = themeCoordinator.getAppTypeface(isBold = false)
+                            setTextColor(if (isSelected) Color.WHITE else tintedColor(themeCoordinator.textColor, 150))
                             setPadding(dp(6), 0, dp(6), 0)
                         })
                     }
 
+                    // Delete button with explicit circular touch target
                     val delBtn = TextView(host).apply {
                         text = "✕"
                         textSize = 12f
+                        typeface = Typeface.DEFAULT_BOLD
+                        gravity = Gravity.CENTER
                         setTextColor(if (isSelected) Color.WHITE else 0xFFEF4444.toInt())
-                        setPadding(dp(8), dp(4), dp(4), dp(4))
+                        val p = dp(8)
+                        setPadding(p, p, p, p)
+                        layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
                         setOnClickListener {
+                            HapticFeedbackHelper.performMicroHaptic(host, this)
                             SubjectTagManager.removeSubTopic(host, subj.id, topic)
                             allTopics.remove(topic)
                             if (topic.equals(currentSubTopic, ignoreCase = true)) {
+                                currentSubTopic = null
                                 SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
+                                onSelected?.invoke(null)
+                                host.buildCurrentPanel()
+                                AppToast.show(host, "Studying: ${subj.name} • All Chapters")
                             }
                             populateTopicRows()
                         }
@@ -726,63 +883,71 @@ class SubjectDialogHelper(private val host: MainActivity) {
             listScroll.addView(topicsContainer)
             container.addView(listScroll)
 
-            // Add new Sub-Topic Row
+            // Add new Chapter Row
             val addRow = LinearLayout(host).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(10), 0, 0)
+                setPadding(0, dp(12), 0, 0)
             }
+
             val input = EditText(host).apply {
-                hint = "+ Add chapter / topic"
+                hint = "New chapter name..."
                 setHintTextColor(tintedColor(themeCoordinator.textColor, 120))
                 setTextColor(themeCoordinator.textColor)
                 textSize = 13f
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 10f)
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                maxLines = 1
+                imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 22), 12f)
+                setPadding(dp(14), dp(11), dp(14), dp(11))
+                layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
                     setMargins(0, 0, dp(8), 0)
                 }
             }
-            val addBtn = Button(host).apply {
-                text = "Add"
-                textSize = 12.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(10).toFloat()
-                    setColor(themeCoordinator.primaryColor)
-                }
-                setPadding(dp(14), dp(8), dp(14), dp(8))
-                setOnClickListener {
-                    val name = input.text.toString().trim()
-                    if (name.isNotEmpty()) {
-                        if (SubjectTagManager.addSubTopic(host, subj.id, name)) {
-                            allTopics.add(name)
-                            input.setText("")
-                            populateTopicRows()
-                        } else {
-                            AppToast.show(host, "Topic already exists")
-                        }
+
+            fun handleAddChapter() {
+                val name = input.text.toString().trim()
+                if (name.isNotEmpty()) {
+                    if (SubjectTagManager.addSubTopic(host, subj.id, name)) {
+                        HapticFeedbackHelper.performMicroHaptic(host, input)
+                        allTopics.add(name)
+                        input.setText("")
+                        populateTopicRows()
+                    } else {
+                        AppToast.show(host, "Chapter already exists")
                     }
                 }
             }
+
+            input.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) {
+                    handleAddChapter()
+                    true
+                } else false
+            }
+
+            val addBtn = TextView(host).apply {
+                text = "+ Add"
+                textSize = 13f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(Color.WHITE)
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(parsedColor)
+                }
+                layoutParams = LinearLayout.LayoutParams(dp(76), dp(44))
+                setOnClickListener {
+                    handleAddChapter()
+                }
+            }
+
             addRow.addView(input)
             addRow.addView(addBtn)
             container.addView(addRow)
 
-            dialog.setOnDismissListener {
-                if (!selectionMade) {
-                    selectionMade = true
-                    SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
-                    onSelected?.invoke(null)
-                    host.buildCurrentPanel()
-                    AppToast.show(host, "Studying: ${subj.name} (All Topics)")
-                }
-            }
-
             dialog.setContentView(container)
             dialog.show()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
     }
 
     fun showEditSubjectDialog(subj: SubjectTag, onUpdated: (() -> Unit)? = null) {
@@ -793,23 +958,109 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             val container = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
-                background = themeCoordinator.createDialogBackground(24f)
-                setPadding(dp(20), dp(20), dp(20), dp(20))
+                background = themeCoordinator.createDialogBackground(26f)
+                setPadding(dp(22), dp(22), dp(22), dp(20))
                 layoutParams = LinearLayout.LayoutParams(
-                    (host.resources.displayMetrics.widthPixels * 0.88f).toInt().coerceAtMost(dp(380)),
+                    (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380)),
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             }
 
+            // Top Header: Title + Close Icon
+            val headerRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(14))
+                }
+            }
+
             val title = TextView(host).apply {
                 text = "Edit Subject"
-                textSize = 17f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                textSize = 17.5f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.textColor)
-                gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(14))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            container.addView(title)
+            headerRow.addView(title)
+
+            val closeBtn = TextView(host).apply {
+                text = "✕"
+                textSize = 15f
+                setTextColor(tintedColor(themeCoordinator.textColor, 140))
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                isClickable = true
+                isFocusable = true
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
+                setOnClickListener { dialog.dismiss() }
+            }
+            headerRow.addView(closeBtn)
+            container.addView(headerRow)
+
+            var selectedColorHex = subj.colorHex
+
+            fun isLightColor(color: Int): Boolean {
+                val r = Color.red(color) / 255.0
+                val g = Color.green(color) / 255.0
+                val b = Color.blue(color) / 255.0
+                return (0.299 * r + 0.587 * g + 0.114 * b) > 0.65
+            }
+
+            // Live Subject Preview Badge at Top
+            val previewCardBox = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 18), 16f)
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(14))
+                }
+            }
+
+            val previewLabel = TextView(host).apply {
+                text = "PREVIEW"
+                textSize = 10f
+                letterSpacing = 0.08f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(tintedColor(themeCoordinator.textColor, 120))
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(6))
+            }
+            previewCardBox.addView(previewLabel)
+
+            val previewPill = TextView(host).apply {
+                text = subj.name
+                textSize = 13.5f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                val cInt = try { Color.parseColor(selectedColorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                setTextColor(if (isLightColor(cInt)) 0xFF0F172A.toInt() else Color.WHITE)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(cInt)
+                }
+                setPadding(dp(18), dp(7), dp(18), dp(7))
+                gravity = Gravity.CENTER
+            }
+            previewCardBox.addView(previewPill)
+            container.addView(previewCardBox)
+
+            // Subject Name
+            val nameHeader = TextView(host).apply {
+                text = "Subject Name"
+                textSize = 12f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(tintedColor(themeCoordinator.textColor, 160))
+                setPadding(dp(2), 0, 0, dp(6))
+            }
+            container.addView(nameHeader)
 
             val input = android.widget.EditText(host).apply {
                 setText(subj.name)
@@ -818,204 +1069,129 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 setTextColor(themeCoordinator.textColor)
                 textSize = 14f
                 filters = arrayOf(android.text.InputFilter.LengthFilter(25))
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 28), 12f)
                 setPadding(dp(14), dp(12), dp(14), dp(12))
+                minHeight = dp(46)
             }
             container.addView(input)
 
-            var selectedEmoji = subj.iconEmoji
-            var selectedColorHex = subj.colorHex
-
-            val emojiHeader = TextView(host).apply {
-                text = "Select Icon Emoji"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
+            // Subject Color (2-Row Curated Grid)
+            val colorHeader = TextView(host).apply {
+                text = "Subject Color"
                 textSize = 12f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(0, dp(12), 0, dp(4))
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(tintedColor(themeCoordinator.textColor, 160))
+                setPadding(dp(2), dp(14), 0, dp(6))
             }
-            container.addView(emojiHeader)
+            container.addView(colorHeader)
 
-            val presetEmojis = mutableListOf("📚", "💻", "📐", "🧪", "📜", "⚛️", "🎨", "✍️", "🎧", "🎯", "💡", "🧠", "📖", "🔬", "📊", "🏆")
-            if (selectedEmoji.isNotBlank() && !presetEmojis.contains(selectedEmoji)) {
-                presetEmojis.add(0, selectedEmoji)
-            }
-            val emojiScroll = android.widget.HorizontalScrollView(host).apply {
-                isHorizontalScrollBarEnabled = false
-                setPadding(0, 0, 0, dp(6))
-            }
-            val emojiLayout = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
+            val presetColors = listOf(
+                "#6366F1", "#3B82F6", "#06B6D4", "#10B981", "#84CC16",
+                "#EAB308", "#F97316", "#EF4444", "#EC4899", "#A855F7",
+                "#8B5CF6", "#14B8A6", "#0EA5E9", "#64748B"
+            )
 
-            fun refreshEmojiViews() {
-                emojiLayout.removeAllViews()
-                for (em in presetEmojis) {
-                    val isMatch = em == selectedEmoji
-                    val eView = TextView(host).apply {
-                        text = em
-                        textSize = 18f
-                        gravity = Gravity.CENTER
-                        background = GradientDrawable().apply {
-                            setColor(if (isMatch) tintedColor(themeCoordinator.primaryColor, 60) else tintedColor(themeCoordinator.textColor, 15))
-                            cornerRadius = dp(10).toFloat()
-                            setStroke(dp(2), if (isMatch) themeCoordinator.primaryColor else Color.TRANSPARENT)
-                        }
-                        layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { setMargins(0, 0, dp(6), 0) }
-                        setOnClickListener {
-                            selectedEmoji = em
-                            refreshEmojiViews()
-                        }
-                    }
-                    emojiLayout.addView(eView)
+            val swatchViews = ArrayList<FrameLayout>()
+
+            fun updatePreviewBadge() {
+                val enteredName = input.text.toString().trim()
+                previewPill.text = if (enteredName.isNotEmpty()) enteredName else "Subject"
+                val col = try { Color.parseColor(selectedColorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                (previewPill.background as? GradientDrawable)?.setColor(col)
+                previewPill.setTextColor(if (isLightColor(col)) 0xFF0F172A.toInt() else Color.WHITE)
+            }
+
+            fun refreshSubjectSwatchBorders() {
+                for ((idx, fLayout) in swatchViews.withIndex()) {
+                    val hex = presetColors[idx]
+                    val isMatch = hex.equals(selectedColorHex, true)
+                    (fLayout.background as? GradientDrawable)?.setStroke(dp(2), if (isMatch) Color.WHITE else Color.TRANSPARENT)
+                    val checkmarkView = fLayout.getChildAt(0) as? TextView
+                    checkmarkView?.visibility = if (isMatch) View.VISIBLE else View.GONE
                 }
+                updatePreviewBadge()
+            }
 
-                // Custom Emoji Add Button at the end of the line
-                val customBtn = TextView(host).apply {
-                    text = "➕"
-                    textSize = 15f
-                    gravity = Gravity.CENTER
-                    background = GradientDrawable().apply {
-                        setColor(tintedColor(themeCoordinator.primaryColor, 30))
-                        cornerRadius = dp(10).toFloat()
-                        setStroke(dp(2), tintedColor(themeCoordinator.primaryColor, 100))
-                    }
-                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { setMargins(0, 0, dp(6), 0) }
-                    setOnClickListener {
-                        showCustomEmojiInputDialog(selectedEmoji) { newEmoji ->
-                            selectedEmoji = newEmoji
-                            if (!presetEmojis.contains(newEmoji)) {
-                                presetEmojis.add(newEmoji)
-                            }
-                            refreshEmojiViews()
-                        }
-                    }
+            input.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    updatePreviewBadge()
                 }
-                emojiLayout.addView(customBtn)
-            }
-
-            refreshEmojiViews()
-            emojiScroll.addView(emojiLayout)
-            container.addView(emojiScroll)
-
-            val previewRow = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(14), 0, dp(8))
-            }
-            val colorPreviewCircle = View(host).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { setMargins(0, 0, dp(10), 0) }
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(try { Color.parseColor(selectedColorHex) } catch (_: Exception) { themeCoordinator.primaryColor })
-                }
-            }
-            previewRow.addView(colorPreviewCircle)
-
-            val colorLabel = TextView(host).apply {
-                text = "Subject Color: $selectedColorHex"
-                setTextColor(themeCoordinator.textColor)
-                textSize = 13f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            }
-            previewRow.addView(colorLabel)
-            container.addView(previewRow)
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
 
             val swatchesScroll = android.widget.HorizontalScrollView(host).apply {
                 isHorizontalScrollBarEnabled = false
-                setPadding(0, 0, 0, dp(10))
+                clipToPadding = false
+                setPadding(0, 0, dp(12), dp(8))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
             }
-            val swatchesLayout = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
-            val swatchViews = ArrayList<View>()
-            val presetColors = listOf("#6366F1", "#EC4899", "#F97316", "#06B6D4", "#10B981", "#EAB308", "#8B5CF6", "#EF4444", "#3B82F6", "#14B8A6")
 
-            fun refreshSubjectSwatchBorders() {
-                for ((idx, sView) in swatchViews.withIndex()) {
-                    val hex = presetColors[idx]
-                    val isMatch = hex.equals(selectedColorHex, true)
-                    (sView.background as? GradientDrawable)?.setStroke(dp(2), if (isMatch) Color.WHITE else Color.TRANSPARENT)
+            val paletteRowsContainer = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+            val row1 = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
+            val row2 = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, dp(8), 0, 0)
                 }
             }
 
-            val curColorInt = try { Color.parseColor(selectedColorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
-            val initHsv = FloatArray(3)
-            Color.colorToHSV(curColorInt, initHsv)
-
-            val hueHeader = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(2), 0, dp(4))
-            }
-            val hueTitle = TextView(host).apply {
-                text = "Fine-Tune Hue Slider"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
-                textSize = 12f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            val hueValLabel = TextView(host).apply {
-                text = "${initHsv[0].toInt()}°"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
-                textSize = 12f
-            }
-            hueHeader.addView(hueTitle)
-            hueHeader.addView(hueValLabel)
-
-            val hueSeekBar = android.widget.SeekBar(host).apply {
-                max = 360
-                progress = initHsv[0].toInt()
-                setPadding(dp(4), dp(4), dp(4), dp(4))
-                setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(sb: android.widget.SeekBar?, prog: Int, fromUser: Boolean) {
-                        hueValLabel.text = "$prog°"
-                        if (fromUser) {
-                            val colorInt = Color.HSVToColor(floatArrayOf(prog.toFloat(), 0.70f, 0.95f))
-                            selectedColorHex = String.format("#%06X", 0xFFFFFF and colorInt)
-                            (colorPreviewCircle.background as? GradientDrawable)?.setColor(colorInt)
-                            colorLabel.text = "Subject Color: $selectedColorHex"
-                            refreshSubjectSwatchBorders()
-                        }
-                    }
-                    override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
-                    override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
-                })
-            }
-
-            for (hex in presetColors) {
-                val swatch = View(host).apply {
-                    layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply { setMargins(0, 0, dp(8), 0) }
+            val half = (presetColors.size + 1) / 2
+            for ((idx, hex) in presetColors.withIndex()) {
+                val swatchCol = try { Color.parseColor(hex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                val swatchFrame = FrameLayout(host).apply {
+                    contentDescription = "Color $hex"
+                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { setMargins(0, 0, dp(8), 0) }
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor(hex))
+                        setColor(swatchCol)
                         setStroke(dp(2), if (hex.equals(selectedColorHex, true)) Color.WHITE else Color.TRANSPARENT)
                     }
+                    isClickable = true
+                    isFocusable = true
                     setOnClickListener {
                         selectedColorHex = hex
-                        val cInt = Color.parseColor(hex)
-                        (colorPreviewCircle.background as? GradientDrawable)?.setColor(cInt)
-                        colorLabel.text = "Subject Color: $selectedColorHex"
-                        val swatchHsv = FloatArray(3)
-                        Color.colorToHSV(cInt, swatchHsv)
-                        hueSeekBar.progress = swatchHsv[0].toInt()
-                        hueValLabel.text = "${swatchHsv[0].toInt()}°"
                         refreshSubjectSwatchBorders()
                     }
                 }
-                swatchViews.add(swatch)
-                swatchesLayout.addView(swatch)
-            }
-            swatchesScroll.addView(swatchesLayout)
-            container.addView(swatchesScroll)
-            container.addView(hueHeader)
-            container.addView(hueSeekBar)
+                val checkMark = TextView(host).apply {
+                    text = "✓"
+                    textSize = 12f
+                    typeface = themeCoordinator.getAppTypeface(isBold = true)
+                    setTextColor(if (isLightColor(swatchCol)) 0xFF0F172A.toInt() else Color.WHITE)
+                    gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                    visibility = if (hex.equals(selectedColorHex, true)) View.VISIBLE else View.GONE
+                }
+                swatchFrame.addView(checkMark)
+                swatchViews.add(swatchFrame)
 
+                if (idx < half) {
+                    row1.addView(swatchFrame)
+                } else {
+                    row2.addView(swatchFrame)
+                }
+            }
+            paletteRowsContainer.addView(row1)
+            paletteRowsContainer.addView(row2)
+            swatchesScroll.addView(paletteRowsContainer)
+            container.addView(swatchesScroll)
+
+            // Weekly Target Section with Quick Presets
             val weeklyHeader = TextView(host).apply {
                 text = "Weekly Goal Target (Hours / Week)"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
+                setTextColor(tintedColor(themeCoordinator.textColor, 160))
                 textSize = 12f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(0, dp(12), 0, dp(4))
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setPadding(dp(2), dp(14), 0, dp(6))
             }
             container.addView(weeklyHeader)
 
@@ -1024,21 +1200,52 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 setText(if (currentWeeklyTarget > 0f) "${currentWeeklyTarget.toInt()}" else "")
                 hint = "e.g. 10 (Optional target in hours)"
                 inputType = android.text.InputType.TYPE_CLASS_NUMBER
-                setHintTextColor(tintedColor(themeCoordinator.textColor, 120))
+                setHintTextColor(tintedColor(themeCoordinator.textColor, 110))
                 setTextColor(themeCoordinator.textColor)
                 textSize = 14f
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 28), 12f)
                 setPadding(dp(14), dp(10), dp(14), dp(10))
+                minHeight = dp(44)
             }
             container.addView(weeklyInput)
 
+            // Quick Preset Target Chips (5h, 10h, 15h, 20h, Clear)
+            val presetChipsRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, dp(6), 0, dp(4))
+            }
+            val presets = listOf("5h" to "5", "10h" to "10", "15h" to "15", "20h" to "20", "None" to "")
+            for ((pLabel, pVal) in presets) {
+                val pChip = TextView(host).apply {
+                    text = pLabel
+                    textSize = 11.5f
+                    typeface = themeCoordinator.getAppTypeface(isBold = true)
+                    setTextColor(themeCoordinator.primaryColor)
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 10f)
+                    setPadding(dp(10), dp(5), dp(10), dp(5))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, 0, dp(6), 0)
+                    }
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        weeklyInput.setText(pVal)
+                    }
+                }
+                presetChipsRow.addView(pChip)
+            }
+            container.addView(presetChipsRow)
+
+            // Chapters & Sub-Topics
             val topicsHeader = TextView(host).apply {
                 text = "Chapters & Sub-Topics"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
+                setTextColor(tintedColor(themeCoordinator.textColor, 160))
                 textSize = 12f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(0, dp(12), 0, dp(4))
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setPadding(dp(2), dp(14), 0, dp(6))
             }
             container.addView(topicsHeader)
 
@@ -1050,32 +1257,79 @@ class SubjectDialogHelper(private val host: MainActivity) {
             val currentSubTopics = SubjectTagManager.getSubTopics(host, subj.id).toMutableList()
             fun renderTopicChips() {
                 topicsChipsLayout.removeAllViews()
+                if (currentSubTopics.isEmpty()) {
+                    topicsChipsLayout.addView(TextView(host).apply {
+                        text = "No chapters added yet"
+                        textSize = 12f
+                        setTextColor(tintedColor(themeCoordinator.textColor, 100))
+                        setPadding(dp(2), 0, 0, dp(4))
+                    })
+                    return
+                }
+
+                // Wrap in rows of chips
+                var curRow = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, 0, 0, dp(4))
+                    }
+                }
+                topicsChipsLayout.addView(curRow)
+
+                var itemsInCurRow = 0
                 for (t in currentSubTopics) {
+                    if (itemsInCurRow >= 2) {
+                        curRow = LinearLayout(host).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 0, 0, dp(4))
+                            }
+                        }
+                        topicsChipsLayout.addView(curRow)
+                        itemsInCurRow = 0
+                    }
+
                     val chip = LinearLayout(host).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
-                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
-                        setPadding(dp(10), dp(4), dp(8), dp(4))
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 0, dp(6), dp(4))
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 10f)
+                        setPadding(dp(10), dp(5), dp(8), dp(5))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, dp(6), 0)
                         }
                     }
                     chip.addView(TextView(host).apply {
                         text = t
                         textSize = 12f
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        maxWidth = dp(120)
                         setTextColor(themeCoordinator.textColor)
                     })
                     chip.addView(TextView(host).apply {
                         text = " ✕"
                         textSize = 11f
                         setTextColor(if (themeCoordinator.isDarkMode()) 0xFFEF4444.toInt() else 0xFFDC2626.toInt())
+                        setPadding(dp(4), 0, dp(2), 0)
+                        isClickable = true
+                        isFocusable = true
                         setOnClickListener {
                             currentSubTopics.remove(t)
                             SubjectTagManager.removeSubTopic(host, subj.id, t)
                             renderTopicChips()
                         }
                     })
-                    topicsChipsLayout.addView(chip)
+                    curRow.addView(chip)
+                    itemsInCurRow++
                 }
             }
             renderTopicChips()
@@ -1084,11 +1338,11 @@ class SubjectDialogHelper(private val host: MainActivity) {
             val addTopicRow = LinearLayout(host).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, 0, 0, dp(8))
+                setPadding(0, dp(2), 0, dp(8))
             }
             val newTopicInput = android.widget.EditText(host).apply {
                 hint = "+ Add chapter or topic"
-                setHintTextColor(tintedColor(themeCoordinator.textColor, 120))
+                setHintTextColor(tintedColor(themeCoordinator.textColor, 110))
                 setTextColor(themeCoordinator.textColor)
                 textSize = 13f
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f)
@@ -1100,13 +1354,15 @@ class SubjectDialogHelper(private val host: MainActivity) {
             val addTopicBtn = TextView(host).apply {
                 text = "Add"
                 textSize = 12.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(Color.WHITE)
                 background = GradientDrawable().apply {
                     cornerRadius = dp(10).toFloat()
                     setColor(themeCoordinator.primaryColor)
                 }
-                setPadding(dp(12), dp(8), dp(12), dp(8))
+                setPadding(dp(14), dp(8), dp(14), dp(8))
+                isClickable = true
+                isFocusable = true
                 setOnClickListener {
                     val tName = newTopicInput.text.toString().trim()
                     if (tName.isNotEmpty()) {
@@ -1122,17 +1378,43 @@ class SubjectDialogHelper(private val host: MainActivity) {
             addTopicRow.addView(addTopicBtn)
             container.addView(addTopicRow)
 
+            // Dual Action Row: Cancel + Save Changes
+            val actionRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, dp(18), 0, 0)
+                }
+            }
+
+            val cancelBtn = Button(host).apply {
+                text = "Cancel"
+                textSize = 13.5f
+                isAllCaps = false
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.textColor)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 14f)
+                layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                    setMargins(0, 0, dp(6), 0)
+                }
+                setOnClickListener { dialog.dismiss() }
+            }
+            actionRow.addView(cancelBtn)
+
             val saveBtn = Button(host).apply {
                 text = "Save Changes"
-                textSize = 14f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                textSize = 13.5f
+                isAllCaps = false
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(Color.WHITE)
                 background = GradientDrawable().apply {
                     setColor(themeCoordinator.primaryColor)
-                    cornerRadius = dp(12).toFloat()
+                    cornerRadius = dp(14).toFloat()
                 }
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, dp(16), 0, 0)
+                layoutParams = LinearLayout.LayoutParams(0, dp(46), 1.5f).apply {
+                    setMargins(dp(6), 0, 0, 0)
                 }
                 setOnClickListener {
                     val name = input.text.toString().trim()
@@ -1142,7 +1424,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     }
                     val check = ProfanityFilter.checkSubjectName(name)
                     if (!check.isClean) {
-                        AppToast.show(host, check.reason ?: "Subject name contains inappropriate words 🛡️")
+                        AppToast.show(host, check.reason ?: "Subject name contains inappropriate words")
                         return@setOnClickListener
                     }
                     val weeklyHours = weeklyInput.text.toString().trim().toFloatOrNull() ?: 0f
@@ -1150,7 +1432,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
                     val updatedSubj = subj.copy(
                         name = check.sanitizedText,
-                        iconEmoji = selectedEmoji,
+                        iconEmoji = "",
                         colorHex = selectedColorHex,
                         subTopics = currentSubTopics,
                         weeklyTargetHours = weeklyHours
@@ -1162,7 +1444,8 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     onUpdated?.invoke()
                 }
             }
-            container.addView(saveBtn)
+            actionRow.addView(saveBtn)
+            container.addView(actionRow)
 
             val dialogScroll = android.widget.ScrollView(host).apply {
                 isFillViewport = true
@@ -1172,11 +1455,11 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
             dialog.setContentView(dialogScroll)
             dialog.window?.setLayout(
-                (host.resources.displayMetrics.widthPixels * 0.88f).toInt().coerceAtMost(dp(380)),
+                (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380)),
                 (host.resources.displayMetrics.heightPixels * 0.85f).toInt()
             )
             dialog.show()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {}
     }
 
     fun showDeleteSubjectConfirmDialog(subj: SubjectTag) {
@@ -1185,7 +1468,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 context = host,
                 themeCoordinator = themeCoordinator,
                 title = "Delete '${subj.name}' Subject?",
-                message = "Are you sure you want to remove ${subj.iconEmoji} ${subj.name}? Existing recorded stats for this subject will remain saved.",
+                message = "Are you sure you want to remove '${subj.name}'? Existing recorded stats for this subject will remain saved.",
                 positiveText = "Delete",
                 negativeText = "Cancel",
                 isDestructive = true,
@@ -1206,239 +1489,288 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             val container = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
-                background = themeCoordinator.createDialogBackground(24f)
-                setPadding(dp(20), dp(20), dp(20), dp(20))
+                background = themeCoordinator.createDialogBackground(26f)
+                setPadding(dp(22), dp(22), dp(22), dp(20))
                 layoutParams = LinearLayout.LayoutParams(
-                    (host.resources.displayMetrics.widthPixels * 0.88f).toInt().coerceAtMost(dp(380)),
+                    (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380)),
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
             }
 
+            // Top Header: Title + Close Icon
+            val headerRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(14))
+                }
+            }
+
             val title = TextView(host).apply {
                 text = "Add New Subject"
-                textSize = 17f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                textSize = 17.5f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.textColor)
-                gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(14))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            container.addView(title)
+            headerRow.addView(title)
+
+            val closeBtn = TextView(host).apply {
+                text = "✕"
+                textSize = 15f
+                setTextColor(tintedColor(themeCoordinator.textColor, 140))
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                isClickable = true
+                isFocusable = true
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
+                setOnClickListener { dialog.dismiss() }
+            }
+            headerRow.addView(closeBtn)
+            container.addView(headerRow)
+
+            // State variables
+            var selectedColorHex = SubjectTagManager.generateUniqueColor(host)
+
+            fun isLightColor(color: Int): Boolean {
+                val r = Color.red(color) / 255.0
+                val g = Color.green(color) / 255.0
+                val b = Color.blue(color) / 255.0
+                return (0.299 * r + 0.587 * g + 0.114 * b) > 0.65
+            }
+
+            // --- 1. LIVE SUBJECT PREVIEW CARD AT TOP ---
+            val previewCardBox = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 18), 16f)
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(16))
+                }
+            }
+
+            val previewLabel = TextView(host).apply {
+                text = "PREVIEW"
+                textSize = 10.5f
+                letterSpacing = 0.08f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(tintedColor(themeCoordinator.textColor, 120))
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(8))
+            }
+            previewCardBox.addView(previewLabel)
+
+            val previewPill = TextView(host).apply {
+                text = "New Subject"
+                textSize = 13.5f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                val cInt = try { Color.parseColor(selectedColorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                setTextColor(if (isLightColor(cInt)) 0xFF0F172A.toInt() else Color.WHITE)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(cInt)
+                }
+                setPadding(dp(18), dp(8), dp(18), dp(8))
+                gravity = Gravity.CENTER
+            }
+            previewCardBox.addView(previewPill)
+            container.addView(previewCardBox)
+
+            // --- 2. SUBJECT NAME INPUT FIELD ---
+            val inputHeader = TextView(host).apply {
+                text = "Subject Name"
+                textSize = 12f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(tintedColor(themeCoordinator.textColor, 160))
+                setPadding(dp(2), 0, 0, dp(6))
+            }
+            container.addView(inputHeader)
 
             val input = android.widget.EditText(host).apply {
-                hint = "Subject Name (max 25 chars)"
-                setHintTextColor(tintedColor(themeCoordinator.textColor, 120))
+                hint = "e.g. Physics, Calculus, Coding"
+                setHintTextColor(tintedColor(themeCoordinator.textColor, 110))
                 setTextColor(themeCoordinator.textColor)
                 textSize = 14f
                 filters = arrayOf(android.text.InputFilter.LengthFilter(25))
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 28), 12f)
                 setPadding(dp(14), dp(12), dp(14), dp(12))
+                minHeight = dp(46)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(16))
+                }
             }
             container.addView(input)
 
-            var selectedEmoji = "📚"
-
-            val emojiHeader = TextView(host).apply {
-                text = "Select Icon Emoji"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
+            // --- 3. CURATED COLOR PALETTE SELECTION ---
+            val colorHeader = TextView(host).apply {
+                text = "Subject Color"
                 textSize = 12f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(0, dp(12), 0, dp(4))
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(tintedColor(themeCoordinator.textColor, 160))
+                setPadding(dp(2), 0, 0, dp(8))
             }
-            container.addView(emojiHeader)
+            container.addView(colorHeader)
 
-            val presetEmojis = mutableListOf("📚", "💻", "📐", "🧪", "📜", "⚛️", "🎨", "✍️", "🎧", "🎯", "💡", "🧠", "📖", "🔬", "📊", "🏆")
-            val emojiScroll = android.widget.HorizontalScrollView(host).apply {
-                isHorizontalScrollBarEnabled = false
-                setPadding(0, 0, 0, dp(6))
-            }
-            val emojiLayout = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
+            val presetColors = listOf(
+                "#6366F1", "#3B82F6", "#06B6D4", "#10B981", "#84CC16",
+                "#EAB308", "#F97316", "#EF4444", "#EC4899", "#A855F7",
+                "#8B5CF6", "#14B8A6", "#0EA5E9", "#64748B"
+            )
 
-            fun refreshEmojiViews() {
-                emojiLayout.removeAllViews()
-                for (em in presetEmojis) {
-                    val isMatch = em == selectedEmoji
-                    val eView = TextView(host).apply {
-                        text = em
-                        textSize = 18f
-                        gravity = Gravity.CENTER
-                        background = GradientDrawable().apply {
-                            setColor(if (isMatch) tintedColor(themeCoordinator.primaryColor, 60) else tintedColor(themeCoordinator.textColor, 15))
-                            cornerRadius = dp(10).toFloat()
-                            setStroke(dp(2), if (isMatch) themeCoordinator.primaryColor else Color.TRANSPARENT)
-                        }
-                        layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { setMargins(0, 0, dp(6), 0) }
-                        setOnClickListener {
-                            selectedEmoji = em
-                            refreshEmojiViews()
-                        }
-                    }
-                    emojiLayout.addView(eView)
-                }
-
-                // Custom Emoji Add Button at the end of the line
-                val customBtn = TextView(host).apply {
-                    text = "➕"
-                    textSize = 15f
-                    gravity = Gravity.CENTER
-                    background = GradientDrawable().apply {
-                        setColor(tintedColor(themeCoordinator.primaryColor, 30))
-                        cornerRadius = dp(10).toFloat()
-                        setStroke(dp(2), tintedColor(themeCoordinator.primaryColor, 100))
-                    }
-                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { setMargins(0, 0, dp(6), 0) }
-                    setOnClickListener {
-                        showCustomEmojiInputDialog(selectedEmoji) { newEmoji ->
-                            selectedEmoji = newEmoji
-                            if (!presetEmojis.contains(newEmoji)) {
-                                presetEmojis.add(newEmoji)
-                            }
-                            refreshEmojiViews()
-                        }
-                    }
-                }
-                emojiLayout.addView(customBtn)
+            // Make sure the initially selected color is included or matched
+            if (!presetColors.any { it.equals(selectedColorHex, true) }) {
+                selectedColorHex = presetColors[0]
             }
 
-            refreshEmojiViews()
-            emojiScroll.addView(emojiLayout)
-            container.addView(emojiScroll)
+            val swatchViews = ArrayList<FrameLayout>()
 
-            var selectedColorHex = SubjectTagManager.generateUniqueColor(host)
+            fun updatePreviewBadge() {
+                val enteredName = input.text.toString().trim()
+                previewPill.text = if (enteredName.isNotEmpty()) enteredName else "New Subject"
+                val col = try { Color.parseColor(selectedColorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                (previewPill.background as? GradientDrawable)?.setColor(col)
+                previewPill.setTextColor(if (isLightColor(col)) 0xFF0F172A.toInt() else Color.WHITE)
+            }
 
-            val previewRow = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(14), 0, dp(8))
-            }
-            val colorPreviewCircle = View(host).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
-                    setMargins(0, 0, dp(10), 0)
-                }
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(Color.parseColor(selectedColorHex))
-                }
-            }
-            previewRow.addView(colorPreviewCircle)
-
-            val colorLabel = TextView(host).apply {
-                text = "Subject Color: $selectedColorHex"
-                setTextColor(themeCoordinator.textColor)
-                textSize = 13f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            }
-            previewRow.addView(colorLabel)
-            container.addView(previewRow)
-
-            // Preset Swatches Horizontal Row
-            val swatchesScroll = android.widget.HorizontalScrollView(host).apply {
-                isHorizontalScrollBarEnabled = false
-                setPadding(0, 0, 0, dp(10))
-            }
-            val swatchesLayout = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-            }
-            val swatchViews = ArrayList<View>()
-            val presetColors = listOf("#6366F1", "#EC4899", "#F97316", "#06B6D4", "#10B981", "#EAB308", "#8B5CF6", "#EF4444", "#3B82F6", "#14B8A6")
-
-            fun refreshSubjectSwatchBorders() {
-                for ((idx, sView) in swatchViews.withIndex()) {
+            fun refreshSubjectSwatchSelection() {
+                for ((idx, fLayout) in swatchViews.withIndex()) {
                     val hex = presetColors[idx]
                     val isMatch = hex.equals(selectedColorHex, true)
-                    (sView.background as? GradientDrawable)?.setStroke(dp(2), if (isMatch) Color.WHITE else Color.TRANSPARENT)
+                    val outerRing = fLayout.background as? GradientDrawable
+                    outerRing?.setStroke(dp(2), if (isMatch) Color.WHITE else Color.TRANSPARENT)
+                    val checkmarkView = fLayout.getChildAt(0) as? TextView
+                    checkmarkView?.visibility = if (isMatch) View.VISIBLE else View.GONE
+                }
+                updatePreviewBadge()
+            }
+
+            input.addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    updatePreviewBadge()
+                }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+
+            // 2-row horizontal scroller for clean touch targets
+            val swatchesScroll = android.widget.HorizontalScrollView(host).apply {
+                isHorizontalScrollBarEnabled = false
+                clipToPadding = false
+                setPadding(0, 0, dp(12), dp(10))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+
+            val paletteRowsContainer = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+
+            val row1 = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
+            val row2 = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, dp(8), 0, 0)
                 }
             }
 
-            val curColorInt = try { Color.parseColor(selectedColorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
-            val initHsv = FloatArray(3)
-            Color.colorToHSV(curColorInt, initHsv)
-
-            val hueHeader = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(2), 0, dp(4))
-            }
-            val hueTitle = TextView(host).apply {
-                text = "Fine-Tune Hue Slider"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
-                textSize = 12f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            val hueValLabel = TextView(host).apply {
-                text = "${initHsv[0].toInt()}°"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.6f
-                textSize = 12f
-            }
-            hueHeader.addView(hueTitle)
-            hueHeader.addView(hueValLabel)
-
-            val hueSeekBar = android.widget.SeekBar(host).apply {
-                max = 360
-                progress = initHsv[0].toInt()
-                setPadding(dp(4), dp(4), dp(4), dp(4))
-                setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(sb: android.widget.SeekBar?, prog: Int, fromUser: Boolean) {
-                        hueValLabel.text = "$prog°"
-                        if (fromUser) {
-                            val colorInt = Color.HSVToColor(floatArrayOf(prog.toFloat(), 0.70f, 0.95f))
-                            selectedColorHex = String.format("#%06X", 0xFFFFFF and colorInt)
-                            (colorPreviewCircle.background as? GradientDrawable)?.setColor(colorInt)
-                            colorLabel.text = "Subject Color: $selectedColorHex"
-                            refreshSubjectSwatchBorders()
-                        }
-                    }
-                    override fun onStartTrackingTouch(sb: android.widget.SeekBar?) {}
-                    override fun onStopTrackingTouch(sb: android.widget.SeekBar?) {}
-                })
-            }
-
-            for (hex in presetColors) {
-                val swatch = View(host).apply {
-                    layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply {
-                        setMargins(0, 0, dp(8), 0)
+            val half = (presetColors.size + 1) / 2
+            for ((idx, hex) in presetColors.withIndex()) {
+                val swatchCol = try { Color.parseColor(hex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                val swatchFrame = FrameLayout(host).apply {
+                    contentDescription = "Color $hex"
+                    layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+                        setMargins(0, 0, dp(10), 0)
                     }
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
-                        setColor(Color.parseColor(hex))
+                        setColor(swatchCol)
                         setStroke(dp(2), if (hex.equals(selectedColorHex, true)) Color.WHITE else Color.TRANSPARENT)
                     }
+                    isClickable = true
+                    isFocusable = true
                     setOnClickListener {
                         selectedColorHex = hex
-                        val cInt = Color.parseColor(hex)
-                        (colorPreviewCircle.background as? GradientDrawable)?.setColor(cInt)
-                        colorLabel.text = "Subject Color: $selectedColorHex"
-
-                        val swatchHsv = FloatArray(3)
-                        Color.colorToHSV(cInt, swatchHsv)
-                        hueSeekBar.progress = swatchHsv[0].toInt()
-                        hueValLabel.text = "${swatchHsv[0].toInt()}°"
-
-                        refreshSubjectSwatchBorders()
+                        refreshSubjectSwatchSelection()
                     }
                 }
-                swatchViews.add(swatch)
-                swatchesLayout.addView(swatch)
+
+                val checkMark = TextView(host).apply {
+                    text = "✓"
+                    textSize = 13f
+                    typeface = themeCoordinator.getAppTypeface(isBold = true)
+                    setTextColor(if (isLightColor(swatchCol)) 0xFF0F172A.toInt() else Color.WHITE)
+                    gravity = Gravity.CENTER
+                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                    visibility = if (hex.equals(selectedColorHex, true)) View.VISIBLE else View.GONE
+                }
+                swatchFrame.addView(checkMark)
+                swatchViews.add(swatchFrame)
+
+                if (idx < half) {
+                    row1.addView(swatchFrame)
+                } else {
+                    row2.addView(swatchFrame)
+                }
             }
-            swatchesScroll.addView(swatchesLayout)
+
+            paletteRowsContainer.addView(row1)
+            paletteRowsContainer.addView(row2)
+            swatchesScroll.addView(paletteRowsContainer)
             container.addView(swatchesScroll)
-            container.addView(hueHeader)
-            container.addView(hueSeekBar)
+
+            // --- 4. ACTION BUTTONS: Cancel + Create Subject ---
+            val actionRow = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, dp(18), 0, 0)
+                }
+            }
+
+            val cancelBtn = Button(host).apply {
+                text = "Cancel"
+                textSize = 13.5f
+                isAllCaps = false
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.textColor)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 14f)
+                layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                    setMargins(0, 0, dp(6), 0)
+                }
+                setOnClickListener { dialog.dismiss() }
+            }
+            actionRow.addView(cancelBtn)
 
             val saveBtn = Button(host).apply {
-                text = "Save Subject"
-                textSize = 14f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                text = "Create Subject"
+                textSize = 13.5f
+                isAllCaps = false
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(Color.WHITE)
                 background = GradientDrawable().apply {
                     setColor(themeCoordinator.primaryColor)
-                    cornerRadius = dp(12).toFloat()
+                    cornerRadius = dp(14).toFloat()
                 }
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, dp(16), 0, 0)
+                layoutParams = LinearLayout.LayoutParams(0, dp(46), 1.5f).apply {
+                    setMargins(dp(6), 0, 0, 0)
                 }
                 setOnClickListener {
                     val name = input.text.toString().trim()
@@ -1448,20 +1780,24 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     }
                     val check = ProfanityFilter.checkSubjectName(name)
                     if (!check.isClean) {
-                        AppToast.show(host, check.reason ?: "Subject name contains inappropriate words 🛡️")
+                        AppToast.show(host, check.reason ?: "Subject name contains inappropriate words")
                         return@setOnClickListener
                     }
-                    val created = SubjectTagManager.addCustomSubject(host, check.sanitizedText, selectedEmoji, selectedColorHex)
+                    // Save custom subject with empty emoji so typography stays clean
+                    val created = SubjectTagManager.addCustomSubject(host, check.sanitizedText, "", selectedColorHex)
                     dialog.dismiss()
                     host.navigateToPanel(AppPanel.FOCUS)
                     onSubjectCreated?.invoke(created)
                 }
             }
-            container.addView(saveBtn)
+            actionRow.addView(saveBtn)
+            container.addView(actionRow)
+
+            refreshSubjectSwatchSelection()
 
             dialog.setContentView(container)
             dialog.window?.setLayout(
-                (host.resources.displayMetrics.widthPixels * 0.88f).toInt().coerceAtMost(dp(380)),
+                (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380)),
                 android.view.ViewGroup.LayoutParams.WRAP_CONTENT
             )
             dialog.show()
@@ -1537,6 +1873,9 @@ class SubjectDialogHelper(private val host: MainActivity) {
             text = "Close"
             setTextColor(themeCoordinator.primaryColor)
             textSize = 14f
+            gravity = Gravity.CENTER
+            minHeight = dp(44)
+            minWidth = dp(64)
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(dp(16), dp(8), dp(16), dp(8))
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 20f)
@@ -1572,13 +1911,18 @@ class SubjectDialogHelper(private val host: MainActivity) {
             text = "◄"
             setTextColor(themeCoordinator.primaryColor)
             textSize = 16f
+            gravity = Gravity.CENTER
+            minWidth = dp(48)
+            minHeight = dp(44)
+            contentDescription = "Previous date"
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setPadding(dp(14), dp(8), dp(14), dp(8))
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 16f)
         }
 
         val dateTitleBtn = TextView(host).apply {
             gravity = Gravity.CENTER
+            minHeight = dp(44)
             setTextColor(themeCoordinator.textColor)
             textSize = 14.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1591,8 +1935,12 @@ class SubjectDialogHelper(private val host: MainActivity) {
             text = "►"
             setTextColor(themeCoordinator.primaryColor)
             textSize = 16f
+            gravity = Gravity.CENTER
+            minWidth = dp(48)
+            minHeight = dp(44)
+            contentDescription = "Next date"
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(16), dp(8), dp(16), dp(8))
+            setPadding(dp(14), dp(8), dp(14), dp(8))
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 16f)
         }
 
@@ -1833,7 +2181,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
                     headerRowSubj.addView(colorCircle)
                     headerRowSubj.addView(TextView(host).apply {
-                        text = "${subj.iconEmoji} ${subj.name}"
+                        text = subj.name
                         setTextColor(themeCoordinator.textColor)
                         textSize = 17f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1853,14 +2201,22 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     // Weekly Target Quota (if set)
                     if (subj.weeklyTargetHours > 0f) {
                         val targetSecs = (subj.weeklyTargetHours * 3600f).toLong()
-                        val quotaPct = ((secs.toDouble() / targetSecs.toDouble()) * 100.0).toInt()
+                        // Ensure weekly target progress accurately reflects this week's study time
+                        val weekSecs = if (currentPeriod == SubjectTagManager.SubjectStatsPeriod.WEEK) {
+                            secs
+                        } else {
+                            val thisWeekDates = SubjectTagManager.getDatesForWeek(WeekHelper.mondayOf(Calendar.getInstance()))
+                            val weekMap = statsEngine.getSubjectBreakdownForDates(thisWeekDates)
+                            weekMap[subj.id]?.second ?: 0L
+                        }
+                        val quotaPct = ((weekSecs.toDouble() / targetSecs.toDouble()) * 100.0).toInt()
                         val isReached = quotaPct >= 100
 
                         val quotaTag = TextView(host).apply {
                             text = if (isReached) {
-                                "Target Reached: ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
+                                "This Week's Goal: Target Reached! ${String.format(Locale.US, "%.1f", weekSecs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
                             } else {
-                                "Weekly Goal: ${String.format(Locale.US, "%.1f", secs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
+                                "This Week's Goal: ${String.format(Locale.US, "%.1f", weekSecs / 3600f)}h / ${String.format(Locale.US, "%.1f", subj.weeklyTargetHours)}h ($quotaPct%)"
                             }
                             setTextColor(if (isReached) Color.parseColor("#10B981") else themeCoordinator.primaryColor)
                             textSize = 12f
@@ -2473,7 +2829,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
         })
 
         root.addView(TextView(host).apply {
-            text = "Next Pomodoro session (#$pomoCount) has started.\n\nCurrent subject: ${curSub.iconEmoji} ${curSub.name}\n\nWould you like to keep this subject or switch to another?"
+            text = "Next Pomodoro session (#$pomoCount) has started.\n\nCurrent subject: ${curSub.name}\n\nWould you like to keep this subject or switch to another?"
             setTextColor(themeCoordinator.textColor)
             alpha = 0.85f
             textSize = 13.5f

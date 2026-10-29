@@ -1,7 +1,7 @@
 {
     "apkUrl": "https://raw.githubusercontent.com/JAIstudio-source/StudyTimer/main/StudyTimer-release.apk",
     "url": "https://get-studytimer.vercel.app/?download=true",
-    "versionCode": 49,
-    "versionName": "3.3.5",
-    "releaseNotes": "• New UI Layout & Refined Transitions\n• Study Report Summary Card\n• New Themes & Wallpapers\n• Minor Bug Fixes & Stability Improvements"
+    "versionCode": 50,
+    "versionName": "3.3.6",
+    "releaseNotes": "• Streak Animation: strictly follows goal setting & chaining\n• Leaderboard: accurate streak calculation & broken streak fix\n• Leaderboard: aligned profile stats & clean top ranks layout\n• UI/UX touch target & accessibility enhancements"
 }

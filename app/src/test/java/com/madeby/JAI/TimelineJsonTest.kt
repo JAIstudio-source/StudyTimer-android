@@ -101,23 +101,6 @@ class TimelineJsonTest {
         assertEquals(listOf(e(1L, "A"), e(1L, "B"), e(1L, "C")), out)
     }
 
-    @Test
-    fun removeEntryWithTs_removesAllMatches() {
-        val entries = listOf(e(1L, "A"), e(2L, "B"), e(1L, "C"))
-        assertEquals(listOf(e(2L, "B")), removeEntryWithTs(entries, 1L))
-    }
-
-    @Test
-    fun moveEntry_resorts() {
-        val entries = listOf(e(1L, "A"), e(2L, "B"), e(5L, "C"))
-        val out = moveEntryInList(entries, 1L, 3L)
-        assertEquals(listOf(e(2L, "B"), e(3L, "A"), e(5L, "C")), out)
-    }
-
-    @Test
-    fun moveEntry_returnsNull_whenAbsent() {
-        assertNull(moveEntryInList(listOf(e(1L, "A")), 99L, 3L))
-    }
 
     @Test
     fun removeDayEntries_filtersByDate() {

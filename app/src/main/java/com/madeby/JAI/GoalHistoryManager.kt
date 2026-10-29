@@ -1,6 +1,7 @@
 package com.madeby.JAI
 
 import android.content.Context
+import android.content.ContextWrapper
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -67,12 +68,15 @@ object GoalHistoryManager {
         return list.sortedBy { it.date }
     }
 
-    fun recordGoalChange(context: Context, dateStr: String, goalSecs: Long) {
+    fun setDailyGoal(context: Context, goalSecs: Long, forDateStr: String? = null) {
         if (goalSecs <= 0L) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val targetDateStr = forDateStr?.takeIf { it.isNotBlank() }
+            ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
         val history = loadHistory(context).toMutableList()
-        val existingIdx = history.indexOfFirst { it.date == dateStr }
-        val newEntry = GoalHistoryEntry(dateStr, goalSecs, System.currentTimeMillis())
+        val existingIdx = history.indexOfFirst { it.date == targetDateStr }
+        val newEntry = GoalHistoryEntry(targetDateStr, goalSecs, System.currentTimeMillis())
         if (existingIdx >= 0) {
             history[existingIdx] = newEntry
         } else {
@@ -87,39 +91,72 @@ object GoalHistoryManager {
                 put("timestamp", e.timestamp)
             })
         }
-        prefs.edit()
-            .putString(HISTORY_KEY, arr.toString())
-            .putLong("${dateStr}_goal_secs", goalSecs)
-            .apply()
+
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val isTodayOrFuture = targetDateStr >= todayStr
+        val priorConfiguredGoal = StatsEngine.getDailyGoalSecs(prefs)
+
+        // Lock any past dates that had activity to the prior configured goal so future changes never bleed into the past
+        if (isTodayOrFuture && priorConfiguredGoal > 0L && priorConfiguredGoal != goalSecs) {
+            val allKeys = prefs.all.keys.toList()
+            val focusDates = allKeys.filter { it.endsWith("_focus_total") }.map { it.removeSuffix("_focus_total") }
+            val pastEditor = prefs.edit()
+            for (pastDate in focusDates) {
+                if (pastDate < targetDateStr && !prefs.contains("${pastDate}_goal_secs")) {
+                    pastEditor.putLong("${pastDate}_goal_secs", priorConfiguredGoal)
+                }
+            }
+            pastEditor.apply()
+        }
+
+        prefs.edit().apply {
+            if (isTodayOrFuture) {
+                putLong("daily_goal_secs", goalSecs)
+                putInt("daily_goal_minutes", (goalSecs / 60L).toInt())
+            }
+            putLong("${targetDateStr}_goal_secs", goalSecs)
+            putString(HISTORY_KEY, arr.toString())
+            apply()
+        }
+
+        val act = (context as? MainActivity) ?: ((context as? ContextWrapper)?.baseContext as? MainActivity)
+        act?.let { host ->
+            host.invalidateStatsCache()
+            host.recalculateStreak()
+            StudyWidgetProvider.refresh(host)
+        }
+    }
+
+    fun recordGoalChange(context: Context, dateStr: String, goalSecs: Long) {
+        setDailyGoal(context, goalSecs, forDateStr = dateStr)
     }
 
     fun resolveGoalForDate(context: Context, dateStr: String, fallbackGlobalGoal: Long): Long {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
-        // 1. Highest priority: Fetch the saved daily goal on that specific day if present
-        if (prefs.contains("${dateStr}_goal_secs")) {
-            val explicit = prefs.getLong("${dateStr}_goal_secs", 0L)
-            if (explicit > 0L) return explicit
+        val hasKey = prefs.contains("${dateStr}_goal_secs")
+        val explicit = if (hasKey) prefs.getLong("${dateStr}_goal_secs", 0L) else null
+        if (explicit != null && explicit > 0L) {
+            return explicit
         }
 
-        // 2. Second priority: Search Goal History log for the goal active on or immediately before dateStr
         val history = loadHistory(context)
-        if (history.isNotEmpty()) {
-            val matchingEntry = history.filter { it.date <= dateStr }.maxByOrNull { it.date }
-            if (matchingEntry != null && matchingEntry.goalSecs > 0L) {
-                prefs.edit().putLong("${dateStr}_goal_secs", matchingEntry.goalSecs).apply()
-                return matchingEntry.goalSecs
-            }
-        }
+        val matchingEntry = if (history.isNotEmpty()) history.filter { it.date <= dateStr }.maxByOrNull { it.date } else null
+        val oldestEntry = if (history.isNotEmpty()) history.minByOrNull { it.date } else null
 
-        // 3. Authoritative fallback: Use user's configured daily goal from settings
         val configuredGoal = StatsEngine.getDailyGoalSecs(prefs)
         val defaultGoal = if (configuredGoal > 0L) configuredGoal else (if (fallbackGlobalGoal > 0L) fallbackGlobalGoal else StatsEngine.DEFAULT_DAILY_GOAL_SECS)
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        if (dateStr >= todayStr) {
-            prefs.edit().putLong("${dateStr}_goal_secs", defaultGoal).apply()
+
+        val result = when {
+            matchingEntry != null && matchingEntry.goalSecs > 0L -> matchingEntry.goalSecs
+            oldestEntry != null && oldestEntry.goalSecs > 0L -> oldestEntry.goalSecs
+            else -> defaultGoal
         }
-        return defaultGoal
+
+        // Permanently cache this day's goal so future changes to daily_goal_secs never alter past days!
+        prefs.edit().putLong("${dateStr}_goal_secs", result).apply()
+
+        return result
     }
 
     /**
@@ -132,7 +169,7 @@ object GoalHistoryManager {
 
         val history = loadHistory(context)
         if (history.isEmpty()) {
-            recordGoalChange(context, todayStr, globalGoal)
+            setDailyGoal(context, globalGoal, forDateStr = todayStr)
         }
 
         val allKeys = prefs.all.keys.toList()
@@ -142,9 +179,6 @@ object GoalHistoryManager {
                         snapshotKeys.map { it.removeSuffix("_planner_snapshot") } +
                         setOf(todayStr)).toSet()
 
-        val editor = prefs.edit()
-        var modified = false
-
         for (dStr in allDates) {
             val goalKey = "${dStr}_goal_secs"
             // If the date already has a saved goal, DO NOT overwrite it!
@@ -152,10 +186,8 @@ object GoalHistoryManager {
                 continue
             }
             val resolved = resolveGoalForDate(context, dStr, globalGoal)
-            editor.putLong(goalKey, resolved)
-            modified = true
+            setDailyGoal(context, resolved, forDateStr = dStr)
         }
-        if (modified) editor.apply()
     }
 
     fun mergeCloudHistory(localJson: String, cloudJson: String): String {

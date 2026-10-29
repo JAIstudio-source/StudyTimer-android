@@ -9,7 +9,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -17,11 +19,14 @@ import android.os.Looper
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.HapticFeedbackConstants
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.view.Window
 import android.view.WindowManager
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.PathInterpolator
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -29,6 +34,7 @@ import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
@@ -46,6 +52,14 @@ import org.json.JSONObject
 
 class PlannerPanelBuilder(private val host: MainActivity) {
 
+    enum class PlannerFilter { ALL, ACTIVE, DONE }
+    private var currentPlannerFilter: PlannerFilter = PlannerFilter.ALL
+    enum class PlannerSort { DEFAULT, TIME_ASC, TIME_DESC }
+    private var currentPlannerSort: PlannerSort = runCatching {
+        PlannerSort.valueOf(host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("planner_sort_mode", "DEFAULT") ?: "DEFAULT")
+    }.getOrDefault(PlannerSort.DEFAULT)
+    private var plannerScrollView: ScrollView? = null
+
     private val themeCoordinator get() = host.themeCoordinator
     private val statsEngine get() = host.statsEngine
     private val dateKeyFmt get() = host.dateKeyFmt
@@ -55,7 +69,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         set(value) { host.statsSnapshotCache = value }
 
     private fun dp(v: Int): Int = host.dp(v)
-    private fun dp(v: Float): Int = host.dp(v.toInt())
+    private fun dp(v: Float): Int = host.dp(v)
     private fun tintedColor(color: Int, alpha: Int): Int = host.tintedColor(color, alpha)
     private fun rippleBackground(color: Int) = host.rippleBackground(color)
     private fun computeStatsSnapshot() = host.computeStatsSnapshot()
@@ -89,20 +103,32 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
 
-        val overflowBtn = TextView(host).apply {
-            text = "⋯"
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(themeCoordinator.textColor)
-            gravity = Gravity.CENTER
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 18f)
-            setPadding(dp(12), dp(2), dp(12), dp(6))
-            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply {
+        val (plannerPrimary, _) = resolvePlannerColors()
+        val isPomoWhite = host.isPomodoroPureWhiteActive()
+        val isDark = themeCoordinator.isDarkMode()
+
+        val overflowBtn = ImageView(host).apply {
+            setImageDrawable(ContextCompat.getDrawable(host, R.drawable.ic_more_horiz))
+            val iconBg = if (isPomoWhite) {
+                GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(0xFFF1F5F9.toInt())
+                }
+            } else {
+                themeCoordinator.createGlassIconBackground(tintedColor(plannerPrimary, if (isDark) 65 else 90))
+            }
+            background = iconBg
+            setColorFilter(if (isPomoWhite) 0xFF0F172A.toInt() else plannerPrimary)
+            setPadding(dp(9), dp(9), dp(9), dp(9))
+            contentDescription = "Planner options"
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
                 setMargins(0, 0, dp(4), 0)
             }
+            isClickable = true
+            isFocusable = true
             setOnClickListener {
                 it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                showPlannerOptionsMenu(target)
+                showPlannerOptionsMenu(target, this)
             }
         }
 
@@ -112,9 +138,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val scroll = ScrollView(host).apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
             isFillViewport = true
-            isVerticalScrollBarEnabled = true
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            isFocusableInTouchMode = true
+            descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
         }
+        plannerScrollView = scroll
         val content = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(4), dp(4), dp(4), dp(84))
@@ -147,42 +177,323 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
         root.addView(fab)
 
+        val oldScrollY = plannerScrollView?.scrollY ?: 0
         target.removeAllViews()
         target.addView(root)
+        if (oldScrollY > 0) {
+            scroll.post {
+                scroll.scrollY = oldScrollY
+            }
+        }
         FontStyleManager.applyRecursively(root)
     }
 
-    private fun showPlannerOptionsMenu(target: ViewGroup) {
-        val dialog = Dialog(host)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
-        dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-
+    private fun showPlannerOptionsMenu(target: ViewGroup, anchorView: View) {
         val isDark = themeCoordinator.isDarkMode()
         val (plannerPrimary, _) = resolvePlannerColors()
         val textColor = themeCoordinator.textColor
 
+        val cardWidth = dp(230)
+
         val card = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(22f)
-            setPadding(dp(18), dp(18), dp(18), dp(16))
-            layoutParams = FrameLayout.LayoutParams(dp(270), FrameLayout.LayoutParams.WRAP_CONTENT)
+            background = themeCoordinator.createDialogBackground(18f)
+            setPadding(dp(6), dp(8), dp(6), dp(8))
+            layoutParams = ViewGroup.LayoutParams(cardWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
+            elevation = dp(16).toFloat()
         }
 
+        val popupWindow = PopupWindow(
+            card,
+            cardWidth,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            true
+        ).apply {
+            isOutsideTouchable = true
+            isFocusable = true
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            elevation = dp(16).toFloat()
+        }
+
+        var isDismissing = false
+        fun dismissWithAnim(onEnd: (() -> Unit)? = null) {
+            if (isDismissing) return
+            isDismissing = true
+            card.animate()
+                .scaleX(0.72f)
+                .scaleY(0.72f)
+                .alpha(0f)
+                .translationY(-dp(8).toFloat())
+                .setDuration(160)
+                .setInterpolator(AccelerateInterpolator(1.6f))
+                .withEndAction {
+                    try { popupWindow.dismiss() } catch (_: Exception) {}
+                    onEnd?.invoke()
+                }
+                .start()
+        }
+
+        // Header label
         val titleView = TextView(host).apply {
             text = "PLANNER OPTIONS"
-            textSize = 11.5f
-            letterSpacing = 0.12f
+            textSize = 10.5f
+            letterSpacing = 0.14f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(plannerPrimary)
-            setPadding(dp(6), 0, dp(6), dp(12))
+            setPadding(dp(12), dp(6), dp(12), dp(6))
         }
         card.addView(titleView)
 
-        fun createMenuItem(title: String, subtitle: String, onClick: () -> Unit): View {
+        fun createMenuItem(
+            iconRes: Int,
+            iconTint: Int,
+            title: String,
+            badgeText: String? = null,
+            titleColor: Int = textColor,
+            onClick: () -> Unit
+        ): View {
             val row = LinearLayout(host).apply {
-                orientation = LinearLayout.VERTICAL
-                background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, if (isDark) 24 else 18), 12f)
-                setPadding(dp(14), dp(10), dp(14), dp(10))
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                val rowMask = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(Color.WHITE)
+                }
+                val rowContent = themeCoordinator.createGlassChip(Color.TRANSPARENT, 10f)
+                background = RippleDrawable(
+                    ColorStateList.valueOf(tintedColor(plannerPrimary, if (isDark) 50 else 35)),
+                    rowContent,
+                    rowMask
+                )
+                setPadding(dp(10), dp(9), dp(10), dp(9))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(1)
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    dismissWithAnim { onClick() }
+                }
+            }
+
+            val iconPill = FrameLayout(host).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply {
+                    setMargins(0, 0, dp(10), 0)
+                }
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(8).toFloat()
+                    setColor(tintedColor(iconTint, if (isDark) 35 else 22))
+                    setStroke(dp(1), tintedColor(iconTint, if (isDark) 60 else 40))
+                }
+            }
+            val iconView = ImageView(host).apply {
+                setImageResource(iconRes)
+                setColorFilter(iconTint)
+                layoutParams = FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER)
+            }
+            iconPill.addView(iconView)
+            row.addView(iconPill)
+
+            val titleView = TextView(host).apply {
+                text = title
+                textSize = 13.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(titleColor)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            row.addView(titleView)
+
+            if (badgeText != null) {
+                val badgeView = TextView(host).apply {
+                    text = badgeText
+                    textSize = 10f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(iconTint)
+                    background = themeCoordinator.createGlassChip(tintedColor(iconTint, if (isDark) 40 else 25), 6f)
+                    setPadding(dp(6), dp(2), dp(6), dp(2))
+                }
+                row.addView(badgeView)
+            }
+
+            return row
+        }
+
+        // 1. Weekly Goal Tracker
+        card.addView(createMenuItem(
+            R.drawable.ic_calendar,
+            plannerPrimary,
+            "Weekly Goal Tracker"
+        ) {
+            showPlannerMatrixDialog()
+        })
+
+        // 2. Edit Yesterday Goals
+        val skyBlue = if (isDark) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt()
+        card.addView(createMenuItem(
+            R.drawable.ic_clock,
+            skyBlue,
+            "Edit Yesterday Goals"
+        ) {
+            showEditYesterdayGoalsDialog()
+        })
+
+        // 3. Sort Goals
+        val sortAccent = if (isDark) 0xFFA78BFA.toInt() else 0xFF8B5CF6.toInt()
+        val sortBadge = when (currentPlannerSort) {
+            PlannerSort.DEFAULT -> null
+            PlannerSort.TIME_ASC -> "Time ↑"
+            PlannerSort.TIME_DESC -> "Time ↓"
+        }
+        card.addView(createMenuItem(
+            R.drawable.ic_sort,
+            sortAccent,
+            "Sort Goals",
+            badgeText = sortBadge
+        ) {
+            showGoalSortDialog()
+        })
+
+        // Subtle Hairline Divider before destructive action
+        val divider = View(host).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(1)
+            ).apply {
+                setMargins(dp(8), dp(4), dp(8), dp(4))
+            }
+            setBackgroundColor(tintedColor(textColor, if (isDark) 24 else 18))
+        }
+        card.addView(divider)
+
+        // 4. Clear Completed Goals (with safety confirmation dialog)
+        val dangerRed = 0xFFEF4444.toInt()
+        card.addView(createMenuItem(
+            R.drawable.ic_trash,
+            dangerRed,
+            "Clear Completed Goals",
+            titleColor = dangerRed
+        ) {
+            val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+            val goalsJson = prefs.getString("session_goals_json", "[]") ?: "[]"
+            val currentList = loadSessionGoalsFromJson(goalsJson)
+            val completedCount = currentList.count { it.completed }
+            if (completedCount == 0) {
+                AppToast.show(host, "No completed goals to clear")
+            } else {
+                showConfirmClearCompletedDialog(target, completedCount, currentList)
+            }
+        })
+
+        FontStyleManager.applyRecursively(card)
+
+        // Pivot precisely from the 3-dot button right above the card
+        card.pivotX = (cardWidth - anchorView.width / 2).toFloat()
+        card.pivotY = 0f
+        card.scaleX = 0.65f
+        card.scaleY = 0.65f
+        card.alpha = 0f
+        card.translationY = -dp(8).toFloat()
+
+        val xOffset = -(cardWidth - anchorView.width)
+        val yOffset = dp(6)
+        popupWindow.showAsDropDown(anchorView, xOffset, yOffset)
+
+        try {
+            val container = card.rootView
+            val wm = host.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+            val p = container.layoutParams as WindowManager.LayoutParams
+            p.flags = p.flags or WindowManager.LayoutParams.FLAG_DIM_BEHIND
+            p.dimAmount = 0.28f
+            wm.updateViewLayout(container, p)
+        } catch (_: Exception) {}
+
+        card.animate()
+            .scaleX(1f)
+            .scaleY(1f)
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(240)
+            .setInterpolator(PathInterpolator(0.16f, 1f, 0.3f, 1f))
+            .start()
+    }
+
+    internal fun showGoalSortDialog(onSorted: (() -> Unit)? = null) {
+        val dialog = Dialog(host)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val isDark = themeCoordinator.isDarkMode()
+        val (plannerPrimary, plannerSecondary) = resolvePlannerColors()
+        val textColor = themeCoordinator.textColor
+
+        val content = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(26f)
+            setPadding(dp(22), dp(20), dp(22), dp(18))
+        }
+
+        content.addView(TextView(host).apply {
+            text = "SORT GOALS"
+            setTextColor(plannerSecondary)
+            textSize = 11f
+            letterSpacing = 0.15f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+
+        content.addView(TextView(host).apply {
+            text = "Arrange Daily Goals"
+            setTextColor(plannerPrimary)
+            textSize = 18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(0, dp(4), 0, dp(6))
+        })
+
+        content.addView(TextView(host).apply {
+            text = "Arrange goals by target study time:"
+            setTextColor(tintedColor(textColor, if (isDark) 160 else 170))
+            textSize = 12.5f
+            setPadding(0, 0, 0, dp(14))
+        })
+
+        fun createSortOption(
+            sortMode: PlannerSort,
+            title: String,
+            subtitle: String
+        ): View {
+            val isSelected = currentPlannerSort == sortMode
+            val row = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                val rowMask = GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(Color.WHITE)
+                }
+                val rowContent = if (isSelected) {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(tintedColor(plannerPrimary, if (isDark) 40 else 25))
+                        setStroke(dp(1.5f), plannerPrimary)
+                    }
+                } else {
+                    if (isDark) {
+                        themeCoordinator.createGlassChip(Color.argb(25, 255, 255, 255), 14f)
+                    } else {
+                        GradientDrawable().apply {
+                            cornerRadius = dp(14).toFloat()
+                            setColor(0xFFF8FAFC.toInt())
+                            setStroke(dp(1), 0xFFE2E8F0.toInt())
+                        }
+                    }
+                }
+                background = RippleDrawable(
+                    ColorStateList.valueOf(tintedColor(plannerPrimary, 40)),
+                    rowContent,
+                    rowMask
+                )
+                setPadding(dp(14), dp(12), dp(14), dp(12))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -190,55 +501,190 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     bottomMargin = dp(8)
                 }
                 isClickable = true
+                isFocusable = true
                 setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    currentPlannerSort = sortMode
+                    host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
+                        .putString("planner_sort_mode", sortMode.name).apply()
                     dialog.dismiss()
-                    onClick()
+                    onSorted?.invoke() ?: host.buildPlannerPanel()
                 }
             }
-            row.addView(TextView(host).apply {
-                text = title
-                textSize = 13.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(textColor)
-            })
-            row.addView(TextView(host).apply {
-                text = subtitle
-                textSize = 11f
-                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-                setTextColor(tintedColor(textColor, 170))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    topMargin = dp(2)
+
+            val radioIndicator = FrameLayout(host).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).apply {
+                    rightMargin = dp(12)
                 }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    if (isSelected) {
+                        setColor(plannerPrimary)
+                    } else {
+                        setColor(Color.TRANSPARENT)
+                        setStroke(dp(1.5f), tintedColor(textColor, if (isDark) 100 else 120))
+                    }
+                }
+            }
+            if (isSelected) {
+                val innerDot = View(host).apply {
+                    layoutParams = FrameLayout.LayoutParams(dp(8), dp(8), Gravity.CENTER)
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(Color.WHITE)
+                    }
+                }
+                radioIndicator.addView(innerDot)
+            }
+            row.addView(radioIndicator)
+
+            val textCol = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            textCol.addView(TextView(host).apply {
+                text = title
+                setTextColor(if (isSelected) plannerPrimary else textColor)
+                textSize = 14f
+                typeface = Typeface.create("sans-serif-medium", if (isSelected) Typeface.BOLD else Typeface.NORMAL)
             })
+            textCol.addView(TextView(host).apply {
+                text = subtitle
+                setTextColor(tintedColor(textColor, if (isDark) 140 else 150))
+                textSize = 11.5f
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            })
+            row.addView(textCol)
+
             return row
         }
 
-        card.addView(createMenuItem("Weekly Goal Tracker", "See which goals you finished each day") {
-            showPlannerMatrixDialog()
-        })
-        card.addView(createMenuItem("Yesterday's Goals", "Review or adjust previous day's completed goals") {
-            showEditYesterdayGoalsDialog()
-        })
-        card.addView(createMenuItem("Goal Colors", "Customize colors and theme accents") {
-            showPlannerThemePickerDialog()
-        })
-        card.addView(createMenuItem("Clear Completed Goals", "Archive all marked check items") {
-            val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val goalsJson = prefs.getString("session_goals_json", "[]") ?: "[]"
-            val currentList = loadSessionGoalsFromJson(goalsJson)
-            val remaining = currentList.filter { !it.completed }
-            saveSessionGoalsToJson(remaining)
-            PlannerHistoryManager.snapshotToday(host, remaining)
-            build(target)
-            AppToast.show(host, "Cleared completed goals")
-        })
+        content.addView(createSortOption(
+            PlannerSort.DEFAULT,
+            "Default Order",
+            "Manual drag-and-drop order"
+        ))
+
+        content.addView(createSortOption(
+            PlannerSort.TIME_ASC,
+            "Shortest Time First",
+            "Ascending (e.g. 15m → 60m → 120m)"
+        ))
+
+        content.addView(createSortOption(
+            PlannerSort.TIME_DESC,
+            "Longest Time First",
+            "Descending (e.g. 120m → 60m → 15m)"
+        ))
+
+        val cancelBtn = TextView(host).apply {
+            text = "Cancel"
+            setTextColor(tintedColor(textColor, if (isDark) 170 else 150))
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
+                topMargin = dp(4)
+            }
+            setOnClickListener { dialog.dismiss() }
+        }
+        content.addView(cancelBtn)
+
+        dialog.setContentView(content)
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout((host.resources.displayMetrics.widthPixels * 0.90f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        dialog.show()
+    }
+
+    private fun showConfirmClearCompletedDialog(target: ViewGroup, completedCount: Int, currentList: List<SessionGoal>) {
+        val dialog = Dialog(host)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        val textColor = themeCoordinator.textColor
+
+        val card = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(22f)
+            setPadding(dp(22), dp(20), dp(22), dp(18))
+            layoutParams = FrameLayout.LayoutParams(dp(300), FrameLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        val titleTv = TextView(host).apply {
+            text = "Clear Completed Goals?"
+            textSize = 17f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(textColor)
+            setPadding(0, 0, 0, dp(8))
+        }
+        card.addView(titleTv)
+
+        val msgTv = TextView(host).apply {
+            text = "Archive $completedCount finished goal${if (completedCount > 1) "s" else ""}? Your active goals will remain untouched."
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            setTextColor(tintedColor(textColor, 180))
+            setLineSpacing(dp(2).toFloat(), 1f)
+            setPadding(0, 0, 0, dp(18))
+        }
+        card.addView(msgTv)
+
+        val btnRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+
+        val cancelBtn = TextView(host).apply {
+            text = "Cancel"
+            textSize = 14f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(tintedColor(textColor, 170))
+            background = themeCoordinator.createGlassChip(Color.TRANSPARENT, 10f)
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            isClickable = true
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                dialog.dismiss()
+            }
+        }
+        btnRow.addView(cancelBtn)
+
+        val clearBtn = TextView(host).apply {
+            text = "Clear ($completedCount)"
+            textSize = 14f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(0xFFEF4444.toInt())
+            }
+            setPadding(dp(16), dp(10), dp(16), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                leftMargin = dp(8)
+            }
+            isClickable = true
+            setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                dialog.dismiss()
+                val remaining = currentList.filter { !it.completed }
+                saveSessionGoalsToJson(remaining)
+                PlannerHistoryManager.snapshotToday(host, remaining)
+                build(target)
+                AppToast.show(host, "Cleared $completedCount completed goal${if (completedCount > 1) "s" else ""}")
+            }
+        }
+        btnRow.addView(clearBtn)
+        card.addView(btnRow)
 
         val wrapper = FrameLayout(host).apply {
             setPadding(dp(20), dp(20), dp(20), dp(20))
             addView(card)
         }
-
         dialog.setContentView(wrapper)
         FontStyleManager.applyRecursively(card)
         dialog.show()
@@ -269,9 +715,35 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         )
 
         fun reloadPlanner() {
+            val scroll = plannerScrollView ?: (parent.parent as? ScrollView)
+            val savedY = scroll?.scrollY ?: 0
+            val oldHeight = parent.height
+            if (oldHeight > 0) {
+                parent.minimumHeight = oldHeight
+            }
             val curSnap = statsSnapshotCache ?: computeStatsSnapshot().also { statsSnapshotCache = it }
             parent.removeAllViews()
             renderPlannerTabContent(parent, curSnap)
+            if (scroll != null && savedY > 0) {
+                scroll.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+                    override fun onPreDraw(): Boolean {
+                        if (scroll.viewTreeObserver.isAlive) {
+                            scroll.viewTreeObserver.removeOnPreDrawListener(this)
+                        }
+                        parent.minimumHeight = 0
+                        val maxScroll = maxOf(0, parent.height - scroll.height)
+                        scroll.scrollY = savedY.coerceAtMost(maxScroll)
+                        return true
+                    }
+                })
+                scroll.post {
+                    parent.minimumHeight = 0
+                    val maxScroll = maxOf(0, parent.height - scroll.height)
+                    scroll.scrollY = savedY.coerceAtMost(maxScroll)
+                }
+            } else {
+                parent.minimumHeight = 0
+            }
         }
 
         // Auto-complete goals (subject-tagged or untagged) whose target time has reached
@@ -290,16 +762,15 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             PlannerHistoryManager.snapshotToday(host, activeGoalsList)
         }
 
+        fun isGoalDone(goal: SessionGoal): Boolean {
+            val prog = progressMap[goal.id]
+            val actualMins = prog?.actualMinutes ?: 0
+            return goal.completed || (goal.targetMinutes > 0 && actualMins >= goal.targetMinutes)
+        }
+
         val trulyAchievedIds = mutableSetOf<String>()
         for (goal in activeGoalsList) {
-            val prog = progressMap[goal.id]
-            val targetMins = goal.targetMinutes
-            val actualMins = prog?.actualMinutes ?: 0
-            if (targetMins > 0) {
-                if (actualMins >= targetMins) {
-                    trulyAchievedIds.add(goal.id)
-                }
-            } else if (goal.completed) {
+            if (isGoalDone(goal)) {
                 trulyAchievedIds.add(goal.id)
             }
         }
@@ -308,7 +779,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val totalCount = activeGoalsList.size
         val progressPct = if (totalCount > 0) (completedCount * 100) / totalCount else 0
 
-        // Upcoming Exam Countdown Capsule (Pinned at Top of Planner)
+        // Upcoming Exam Countdown Capsule (Pinned at Top of Planner - Clean Typography, No Emojis/Pills)
         val upcomingExams = try {
             ExamCountdownManager.getExams(host).filter {
                 it.targetTimestampMs >= System.currentTimeMillis() - 86400000L
@@ -333,15 +804,17 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     CalendarTimeline(host).showAddEditExamModal(exam)
                 }
             }
-            examCapsule.addView(TextView(host).apply {
-                text = "🎯"
-                textSize = 16f
-                setPadding(0, 0, dp(8), 0)
-            })
             val examTextCol = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
+            examTextCol.addView(TextView(host).apply {
+                text = "UPCOMING EXAM"
+                textSize = 10f
+                letterSpacing = 0.12f
+                typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(plannerPrimary)
+            })
             examTextCol.addView(TextView(host).apply {
                 text = exam.title
                 textSize = 13.5f
@@ -350,50 +823,47 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             })
             examTextCol.addView(TextView(host).apply {
                 text = breakdown.readableSubtitle.ifBlank { breakdown.mainHeadline }
-                textSize = 11.5f
+                textSize = 11f
                 setTextColor(tintedColor(themeCoordinator.textColor, 170))
             })
             examCapsule.addView(examTextCol)
 
             val daysBadge = TextView(host).apply {
                 text = breakdown.mainHeadline
-                textSize = 12f
+                textSize = 12.5f
                 typeface = host.themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(plannerPrimary)
-                background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 60), 10f)
-                setPadding(dp(10), dp(4), dp(10), dp(4))
+                setPadding(dp(8), dp(4), dp(8), dp(4))
             }
             examCapsule.addView(daysBadge)
             parent.addView(examCapsule)
         }
 
+        // 1. Daily Target Summary Card (Clean, Refined, No Emoji)
         val summaryCard = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             background = themeCoordinator.createCardBackground()
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(8)) }
         }
 
         val topRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         topRow.addView(TextView(host).apply {
-            text = "DAILY GOALS"
+            text = "DAILY TARGET"
             setTextColor(plannerPrimary)
-            textSize = 12.5f
+            textSize = 11.5f
             typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-            letterSpacing = 0.15f
+            letterSpacing = 0.12f
         })
         topRow.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
 
         val gridBtn = TextView(host).apply {
-            text = "📊 History"
+            text = "History ›"
             setTextColor(plannerPrimary)
             textSize = 12f
             typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-            background = themeCoordinator.createGlassChip(tintedColor(plannerPrimary, 70), 12f)
-            setPadding(dp(10), dp(5), dp(10), dp(5))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, dp(2), 0)
-            }
+            setPadding(dp(8), dp(4), dp(4), dp(4))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             contentDescription = "Weekly Study History"
             setOnClickListener { showPlannerMatrixDialog() }
         }
@@ -427,51 +897,129 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             progress = progressPct
             progressTintList = android.content.res.ColorStateList.valueOf(lineProgressColor)
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(if (themeCoordinator.isDarkMode()) 0xFF222430.toInt() else 0xFFE2E8F0.toInt())
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4)).apply { setMargins(0, 0, 0, dp(2)) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(3)).apply { setMargins(0, dp(2), 0, dp(2)) }
         }
         summaryCard.addView(progressBar)
         parent.addView(summaryCard)
 
-        if (activeGoalsList.isEmpty()) {
-            val emptyCard = LinearLayout(host).apply {
+        // 2. Filter Tabs (Direction 3: Focus Deck Filter Segments - Minimum to None Pills, Clean Typography)
+        val activeCount = (totalCount - completedCount).coerceAtLeast(0)
+        val filterRow = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, dp(2), 0, dp(8))
+            }
+        }
+
+        fun createFilterTab(filter: PlannerFilter, label: String, count: Int): TextView {
+            val isSelected = currentPlannerFilter == filter
+            return TextView(host).apply {
+                tag = "filter_tab_$filter"
+                text = "$label ($count)"
+                textSize = 12f
+                typeface = host.themeCoordinator.getAppTypeface(isBold = isSelected)
+                setTextColor(if (isSelected) plannerPrimary else tintedColor(themeCoordinator.textColor, 130))
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+                background = if (isSelected) {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(8).toFloat()
+                        setColor(tintedColor(plannerPrimary, if (themeCoordinator.isDarkMode()) 36 else 24))
+                    }
+                } else null
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    if (currentPlannerFilter != filter) {
+                        currentPlannerFilter = filter
+                        reloadPlanner()
+                    }
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, dp(6), 0)
+                }
+            }
+        }
+
+        filterRow.addView(createFilterTab(PlannerFilter.ALL, "All", totalCount))
+        filterRow.addView(createFilterTab(PlannerFilter.ACTIVE, "Active", activeCount))
+        filterRow.addView(createFilterTab(PlannerFilter.DONE, "Done", completedCount))
+        parent.addView(filterRow)
+
+        val filteredGoals = when (currentPlannerFilter) {
+            PlannerFilter.ALL -> activeGoalsList
+            PlannerFilter.ACTIVE -> activeGoalsList.filter { !isGoalDone(it) }
+            PlannerFilter.DONE -> activeGoalsList.filter { isGoalDone(it) }
+        }
+
+        val displayedGoals = when (currentPlannerSort) {
+            PlannerSort.DEFAULT -> filteredGoals
+            PlannerSort.TIME_ASC -> filteredGoals.sortedWith(
+                compareBy<PlannerGoal> { if (it.targetMinutes <= 0) Int.MAX_VALUE else it.targetMinutes }
+                    .thenBy { it.title }
+            )
+            PlannerSort.TIME_DESC -> filteredGoals.sortedWith(
+                compareByDescending<PlannerGoal> { it.targetMinutes }
+                    .thenBy { it.title }
+            )
+        }
+
+        if (displayedGoals.isEmpty()) {
+            val emptyFilterView = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 background = themeCoordinator.createCardBackground()
-                setPadding(dp(20), dp(32), dp(20), dp(32))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(12)) }
-            }
-            emptyCard.addView(TextView(host).apply {
-                text = "No Goals Set for Today"
-                setTextColor(themeCoordinator.textColor)
-                textSize = 16f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(4))
-            })
-            emptyCard.addView(TextView(host).apply {
-                text = "Set target study times for your subjects or add daily tasks to stay on track."
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.7f
-                textSize = 13.5f
-                gravity = Gravity.CENTER
-                setPadding(dp(16), dp(4), dp(16), dp(16))
-            })
-
-            val addFirstBtn = TextView(host).apply {
-                text = "+ Add Daily Goal"
-                setTextColor(Color.WHITE)
-                textSize = 14f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(14).toFloat()
-                    setColor(plannerPrimary)
+                setPadding(dp(20), dp(28), dp(20), dp(28))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, 0, dp(12))
                 }
-                setPadding(dp(18), dp(10), dp(18), dp(10))
-                gravity = Gravity.CENTER
-                setOnClickListener { showAddSessionGoalDialog() }
             }
-            emptyCard.addView(addFirstBtn)
-            parent.addView(emptyCard)
+            val emptyMsg = when {
+                activeGoalsList.isEmpty() -> "No Goals Set for Today"
+                currentPlannerFilter == PlannerFilter.ACTIVE -> "All daily goals completed!"
+                currentPlannerFilter == PlannerFilter.DONE -> "No completed goals yet."
+                else -> "No goals found."
+            }
+            emptyFilterView.addView(TextView(host).apply {
+                text = emptyMsg
+                setTextColor(themeCoordinator.textColor)
+                textSize = 15f
+                typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                gravity = Gravity.CENTER
+            })
+            if (activeGoalsList.isEmpty()) {
+                val addFirstBtn = TextView(host).apply {
+                    text = "+ Add Daily Goal"
+                    setTextColor(Color.WHITE)
+                    textSize = 13.5f
+                    typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(plannerPrimary)
+                    }
+                    setPadding(dp(18), dp(9), dp(18), dp(9))
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = dp(14)
+                    }
+                    setOnClickListener { showAddSessionGoalDialog() }
+                }
+                emptyFilterView.addView(addFirstBtn)
+            }
+            parent.addView(emptyFilterView)
         } else {
             val goalsContainer = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
@@ -489,7 +1037,6 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
             val infoMap = mutableMapOf<String, GoalDisplayInfo>()
             val greenColor = 0xFF22C55E.toInt()
-            val redColor = 0xFFEF4444.toInt()
 
             for (goal in activeGoalsList) {
                 val targetMins = goal.targetMinutes
@@ -507,7 +1054,6 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             isDeficit = false
                         )
                     } else if (goal.completed) {
-                        // User manually completed it early: show affirmative completion checkmark
                         val earlyColor = if (themeCoordinator.isDarkMode()) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt()
                         infoMap[goal.id] = GoalDisplayInfo(
                             isChecked = true,
@@ -546,252 +1092,96 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 }
             }
 
-            for (goal in activeGoalsList) {
+            fun updateFilterCounts() {
+                val curTotal = activeGoalsList.size
+                val curDone = activeGoalsList.count { isGoalDone(it) }
+                val curActive = (curTotal - curDone).coerceAtLeast(0)
+                parent.findViewWithTag<TextView>("filter_tab_ALL")?.text = "All ($curTotal)"
+                parent.findViewWithTag<TextView>("filter_tab_ACTIVE")?.text = "Active ($curActive)"
+                parent.findViewWithTag<TextView>("filter_tab_DONE")?.text = "Done ($curDone)"
+            }
+
+            val toggleGoalAction: (SessionGoal) -> Unit = { goalToToggle ->
+                val now = System.currentTimeMillis()
+                val targetIndex = activeGoalsList.indexOfFirst { it.id == goalToToggle.id }
+                if (targetIndex != -1) {
+                    val currentGoal = activeGoalsList[targetIndex]
+                    val newCompleted = !currentGoal.completed
+                    val updatedGoal = currentGoal.copy(completed = newCompleted, checkedAt = if (newCompleted) now else 0L)
+                    activeGoalsList[targetIndex] = updatedGoal
+
+                    saveSessionGoalsToJson(activeGoalsList)
+                    if (updatedGoal.completed) {
+                        GoalReminderScheduler.cancelGoalReminder(host, updatedGoal.id)
+                    } else if (updatedGoal.reminderEnabled) {
+                        GoalReminderScheduler.scheduleGoalReminder(host, updatedGoal)
+                    }
+                    PlannerHistoryManager.snapshotToday(host, activeGoalsList)
+                    host.updateStatsLiveViews()
+                    if (currentPlannerFilter != PlannerFilter.ALL) {
+                        reloadPlanner()
+                    } else {
+                        updateFilterCounts()
+                        parent.findViewWithTag<TextView>("goal_note_${goalToToggle.id}")?.alpha = if (updatedGoal.completed) 0.35f else 0.65f
+                    }
+                }
+            }
+
+            val animateToggleGoalAction = { targetView: View, goalToToggle: SessionGoal ->
+                targetView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                targetView.animate()
+                    .scaleX(1.28f)
+                    .scaleY(1.28f)
+                    .setDuration(110)
+                    .setInterpolator(android.view.animation.OvershootInterpolator(1.8f))
+                    .withEndAction {
+                        targetView.animate()
+                            .scaleX(1.0f)
+                            .scaleY(1.0f)
+                            .setDuration(80)
+                            .withEndAction {
+                                toggleGoalAction(goalToToggle)
+                            }
+                            .start()
+                    }
+                    .start()
+            }
+
+            for (goal in displayedGoals) {
                 val info = infoMap[goal.id] ?: continue
                 val isChecked = info.isChecked
                 val targetMins = goal.targetMinutes
-
-                val goalCard = LinearLayout(host).apply {
-                    orientation = LinearLayout.VERTICAL
-                    clipChildren = false
-                    clipToPadding = false
-                    background = themeCoordinator.createCardBackground()
-                    setPadding(dp(14), dp(8), dp(14), dp(8))
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, 0, 0, dp(6)) }
-                }
-
-                val toggleGoalAction = {
-                    val now = System.currentTimeMillis()
-                    val targetIndex = activeGoalsList.indexOfFirst { it.id == goal.id }
-                    if (targetIndex != -1) {
-                        val currentGoal = activeGoalsList[targetIndex]
-                        val newCompleted = !currentGoal.completed
-                        val updatedGoal = currentGoal.copy(completed = newCompleted, checkedAt = if (newCompleted) now else 0L)
-                        activeGoalsList[targetIndex] = updatedGoal
-
-                        saveSessionGoalsToJson(activeGoalsList)
-                        if (updatedGoal.completed) {
-                            GoalReminderScheduler.cancelGoalReminder(host, updatedGoal.id)
-                        } else if (updatedGoal.reminderEnabled) {
-                            GoalReminderScheduler.scheduleGoalReminder(host, updatedGoal)
-                        }
-                        PlannerHistoryManager.snapshotToday(host, activeGoalsList)
-
-                        // Compute updated display info for this goal
-                        val prog = progressMap[goal.id]
-                        val actualMins = prog?.actualMinutes ?: 0
-                        val newInfo = if (goal.targetMinutes > 0) {
-                            val isDone = actualMins >= goal.targetMinutes
-                            if (isDone) {
-                                GoalDisplayInfo(
-                                    isChecked = true,
-                                    checkSymbol = "✓",
-                                    progressText = "${actualMins}/${goal.targetMinutes}m",
-                                    chipColor = greenColor,
-                                    isDeficit = false
-                                )
-                            } else if (updatedGoal.completed) {
-                                val earlyColor = if (themeCoordinator.isDarkMode()) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt()
-                                GoalDisplayInfo(
-                                    isChecked = true,
-                                    checkSymbol = "✓",
-                                    progressText = "${actualMins}/${goal.targetMinutes}m",
-                                    chipColor = earlyColor,
-                                    isDeficit = false
-                                )
-                            } else {
-                                GoalDisplayInfo(
-                                    isChecked = false,
-                                    checkSymbol = "",
-                                    progressText = "${actualMins}/${goal.targetMinutes}m",
-                                    chipColor = plannerPrimary,
-                                    isDeficit = false
-                                )
-                            }
-                        } else {
-                            if (updatedGoal.completed) {
-                                GoalDisplayInfo(
-                                    isChecked = true,
-                                    checkSymbol = "✓",
-                                    progressText = if (actualMins > 0) "${actualMins}m" else "Done",
-                                    chipColor = greenColor,
-                                    isDeficit = false
-                                )
-                            } else {
-                                GoalDisplayInfo(
-                                    isChecked = false,
-                                    checkSymbol = "",
-                                    progressText = if (actualMins > 0) "${actualMins}m" else "Mark Done",
-                                    chipColor = plannerPrimary,
-                                    isDeficit = false
-                                )
-                            }
-                        }
-                        infoMap[goal.id] = newInfo
-
-                        // Update Goal Card views in place (zero layout flicker!)
-                        parent.findViewWithTag<TextView>("goal_check_${goal.id}")?.let { checkBtn ->
-                            checkBtn.text = newInfo.checkSymbol
-                            checkBtn.textSize = if (newInfo.checkSymbol == "✕") 12f else 13f
-                            val checkColor = if (newInfo.isChecked) newInfo.chipColor else Color.TRANSPARENT
-                            val strokeColor = if (newInfo.isChecked) newInfo.chipColor else plannerPrimary
-                            checkBtn.background = GradientDrawable().apply {
-                                shape = GradientDrawable.OVAL
-                                setColor(checkColor)
-                                setStroke(dp(2), strokeColor)
-                            }
-                        }
-
-                        parent.findViewWithTag<TextView>("goal_title_${goal.id}")?.let { titleTv ->
-                            titleTv.setTextColor(if (newInfo.isChecked) tintedColor(themeCoordinator.textColor, 120) else themeCoordinator.textColor)
-                            if (newInfo.isChecked) {
-                                titleTv.paintFlags = titleTv.paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
-                            } else {
-                                titleTv.paintFlags = titleTv.paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
-                            }
-                        }
-
-                        parent.findViewWithTag<TextView>("goal_chip_${goal.id}")?.let { timeChip ->
-                            val shouldShow = if (newInfo.isChecked) true else (goal.targetMinutes > 0 || actualMins > 0)
-                            timeChip.visibility = if (shouldShow) View.VISIBLE else View.GONE
-                            timeChip.text = newInfo.progressText
-                            timeChip.setTextColor(newInfo.chipColor)
-                            timeChip.background = themeCoordinator.createGlassChip(
-                                tintedColor(newInfo.chipColor, 50),
-                                8f
-                            )
-                        }
-
-                        parent.findViewWithTag<View>("goal_action_${goal.id}")?.let { actionCta ->
-                            actionCta.visibility = if (!newInfo.isChecked) View.VISIBLE else View.GONE
-                        }
-
-                        parent.findViewWithTag<ProgressBar>("goal_minibar_${goal.id}")?.let { bar ->
-                            bar.progressTintList = ColorStateList.valueOf(newInfo.chipColor)
-                        }
-
-                        // Update Summary Card in place
-                        val updatedAchieved = mutableSetOf<String>()
-                        for (g in activeGoalsList) {
-                            val p = progressMap[g.id]
-                            val tm = g.targetMinutes
-                            val am = p?.actualMinutes ?: 0
-                            if (tm > 0) {
-                                if (am >= tm) updatedAchieved.add(g.id)
-                            } else if (g.completed) {
-                                updatedAchieved.add(g.id)
-                            }
-                        }
-                        val compCount = updatedAchieved.size
-                        val totCount = activeGoalsList.size
-                        val pct = if (totCount > 0) (compCount * 100) / totCount else 0
-                        val isReached = pct >= 100 && totCount > 0
-                        val lineCol = if (isReached) 0xFF43D36E.toInt() else plannerPrimary
-
-                        parent.findViewWithTag<TextView>("planner_completed_text")?.text = "$compCount of $totCount completed"
-                        parent.findViewWithTag<TextView>("planner_pct_text")?.let { pctTv ->
-                            pctTv.text = "$pct%"
-                            pctTv.setTextColor(lineCol)
-                        }
-                        parent.findViewWithTag<ProgressBar>("planner_progress_bar")?.let { pBar ->
-                            pBar.progress = pct
-                            pBar.progressTintList = android.content.res.ColorStateList.valueOf(lineCol)
-                        }
-
-                        host.updateStatsLiveViews()
-                    }
-                }
-
-                val animateToggleGoalAction = { targetView: View ->
-                    targetView.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    targetView.animate()
-                        .scaleX(1.28f)
-                        .scaleY(1.28f)
-                        .setDuration(120)
-                        .setInterpolator(android.view.animation.OvershootInterpolator(1.8f))
-                        .withEndAction {
-                            targetView.animate()
-                                .scaleX(1.0f)
-                                .scaleY(1.0f)
-                                .setDuration(90)
-                                .withEndAction {
-                                    toggleGoalAction()
-                                }
-                                .start()
-                        }
-                        .start()
-                }
-
                 val prog = progressMap[goal.id]
                 val actualMins = prog?.actualMinutes ?: 0
 
-                // Function to build action CTA: Quick Start button for ongoing active goals
-                fun createActionCtaView(): View {
-                    return LinearLayout(host).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        background = GradientDrawable().apply {
-                            cornerRadius = dp(14).toFloat()
-                            setColor(plannerPrimary)
-                        }
-                        setPadding(dp(8), dp(3), dp(10), dp(3))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            dp(26)
-                        )
-                        isClickable = true
-                        isFocusable = true
-                        contentDescription = "Start Focus on ${goal.title}"
-                        setOnClickListener { v ->
-                            v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                            v.animate()
-                                .scaleX(0.92f)
-                                .scaleY(0.92f)
-                                .setDuration(70)
-                                .withEndAction {
-                                    v.animate()
-                                        .scaleX(1.0f)
-                                        .scaleY(1.0f)
-                                        .setDuration(70)
-                                        .withEndAction {
-                                            host.startFocusForGoal(goal)
-                                        }
-                                        .start()
-                                }
-                                .start()
-                        }
-                        addView(ImageView(host).apply {
-                            setImageResource(R.drawable.ic_play_arrow)
-                            imageTintList = ColorStateList.valueOf(Color.WHITE)
-                            layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply {
-                                setMargins(0, 0, dp(3), 0)
-                            }
-                        })
-                        addView(TextView(host).apply {
-                            text = "Start"
-                            textSize = 11.5f
-                            setTextColor(Color.WHITE)
-                            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                        })
-                    }
-                }
-
-                // 1. Top Header Row: Checkbox, Title, Time Chip, Action CTA, Drag Grip
-                val headerRow = LinearLayout(host).apply {
+                val goalCard = LinearLayout(host).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     clipChildren = false
                     clipToPadding = false
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    background = themeCoordinator.createCardBackground()
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, 0, 0, dp(6))
+                    }
                 }
 
+                // 1. Left: Checkbox (top-aligned with title)
                 val checkWrapper = FrameLayout(host).apply {
-                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply { setMargins(0, 0, dp(4), 0) }
+                    layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                        setMargins(0, 0, dp(6), 0)
+                        gravity = Gravity.TOP
+                        topMargin = dp(1)
+                    }
                 }
                 val checkBtn = TextView(host).apply {
                     tag = "goal_check_${goal.id}"
+                    setTag(R.id.tag_goal_check_state, "${isChecked}_${info.chipColor}")
                     text = info.checkSymbol
-                    textSize = if (info.checkSymbol == "✕") 12f else 13f
+                    textSize = 12f
                     gravity = Gravity.CENTER
                     typeface = host.themeCoordinator.getAppTypeface(isBold = true)
                     setTextColor(Color.WHITE)
@@ -800,80 +1190,47 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
                         setColor(checkColor)
-                        setStroke(dp(2), strokeColor)
+                        setStroke(dp(1.8f), strokeColor)
                     }
                     layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
                 }
                 checkWrapper.addView(checkBtn)
-                checkWrapper.setOnClickListener { animateToggleGoalAction(checkBtn) }
-                headerRow.addView(checkWrapper)
+                checkWrapper.setOnClickListener { animateToggleGoalAction(checkBtn, goal) }
+                goalCard.addView(checkWrapper)
 
-                // Center Section: (Title + Time Chip) and directly underneath, the Slim Progress Bar
-                val centerCol = LinearLayout(host).apply {
+                // 2. Middle: Content Column (Title, Note, Progression Bar, Scope, Timing)
+                val mainContentCol = LinearLayout(host).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                        setMargins(0, 0, if (!info.isChecked) dp(6) else if (activeGoalsList.size > 1) dp(4) else 0, 0)
+                        setMargins(0, 0, dp(6), 0)
                     }
                 }
 
-                val titleAndTimeRow = LinearLayout(host).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                }
-
-                val textCol = LinearLayout(host).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                }
-                textCol.addView(TextView(host).apply {
+                val titleTv = TextView(host).apply {
                     tag = "goal_title_${goal.id}"
                     text = goal.title
                     setTextColor(if (isChecked) tintedColor(themeCoordinator.textColor, 120) else themeCoordinator.textColor)
                     textSize = 14.5f
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
                     typeface = host.themeCoordinator.getAppTypeface(isBold = true)
                     if (isChecked) paintFlags = paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
-                })
+                }
+                mainContentCol.addView(titleTv)
+
                 if (goal.note.isNotBlank()) {
-                    textCol.addView(TextView(host).apply {
+                    mainContentCol.addView(TextView(host).apply {
+                        tag = "goal_note_${goal.id}"
                         text = goal.note
                         setTextColor(themeCoordinator.textColor)
-                        alpha = 0.65f
+                        alpha = if (isChecked) 0.35f else 0.65f
                         textSize = 11.5f
+                        maxLines = 2
+                        ellipsize = TextUtils.TruncateAt.END
                         setPadding(0, dp(1), 0, 0)
                     })
                 }
-                titleAndTimeRow.addView(textCol)
 
-                // Single Status / Progress Chip
-                val shouldShowTimeChip = if (info.isChecked) {
-                    true
-                } else {
-                    targetMins > 0 || actualMins > 0
-                }
-
-                if (shouldShowTimeChip) {
-                    val timeChip = TextView(host).apply {
-                        tag = "goal_chip_${goal.id}"
-                        text = info.progressText
-                        setTextColor(info.chipColor)
-                        textSize = 11f
-                        isSingleLine = true
-                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                        background = themeCoordinator.createGlassChip(
-                            tintedColor(info.chipColor, 50),
-                            8f
-                        )
-                        setPadding(dp(7), dp(3), dp(7), dp(3))
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(dp(6), 0, 0, 0)
-                        }
-                    }
-                    titleAndTimeRow.addView(timeChip)
-                }
-                centerCol.addView(titleAndTimeRow)
-
-                // 2. Slim Progress Bar (bounded within centerCol, ending directly under timeChip)
                 if (targetMins > 0) {
                     val pct = ((actualMins * 100) / targetMins).coerceIn(0, 100)
                     val miniBar = ProgressBar(host, null, android.R.attr.progressBarStyleHorizontal).apply {
@@ -883,33 +1240,235 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         progressTintList = ColorStateList.valueOf(info.chipColor)
                         progressBackgroundTintList = ColorStateList.valueOf(if (themeCoordinator.isDarkMode()) 0x22FFFFFF else 0x1A000000)
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2.5f)).apply {
-                            setMargins(0, dp(4), 0, dp(2))
+                            setMargins(0, dp(4), 0, dp(3))
                         }
                     }
-                    centerCol.addView(miniBar)
+                    mainContentCol.addView(miniBar)
                 }
 
-                headerRow.addView(centerCol)
+                // Metadata Rows (Scope + Timing)
+                val hasSubject = !goal.subjectId.isNullOrBlank() && goal.subjectId != "all"
+                val hasSubTopic = !goal.subTopic.isNullOrBlank()
+                val hasScheduledDays = goal.scheduledDays.isNotEmpty()
+                val hasReminder = goal.reminderEnabled
 
-                val actionCta = createActionCtaView().apply {
-                    tag = "goal_action_${goal.id}"
-                    visibility = if (!info.isChecked) View.VISIBLE else View.GONE
-                    (layoutParams as? LinearLayout.LayoutParams)?.let { lp ->
-                        lp.setMargins(0, 0, if (activeGoalsList.size > 1) dp(4) else 0, 0)
-                        layoutParams = lp
+                val hasScope = hasSubject || hasSubTopic
+                val hasTiming = hasScheduledDays || hasReminder
+
+                // Line 1: Academic Scope (Subject Badge + Chapter / Sub-Topic)
+                if (hasScope) {
+                    val scopeRow = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, dp(3), 0, 0)
+                        }
+                    }
+
+                    val sub = if (hasSubject) SubjectTagManager.resolveSubject(host, goal.subjectId) else null
+                    val subColor = sub?.let { try { Color.parseColor(it.colorHex) } catch (_: Exception) { plannerPrimary } } ?: plannerPrimary
+
+                    if (hasSubject && sub != null) {
+                        val subBadge = TextView(host).apply {
+                            text = sub.name
+                            setTextColor(subColor)
+                            textSize = 11f
+                            isSingleLine = true
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                            maxWidth = dp(130)
+                            typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                            background = themeCoordinator.createGlassChip(tintedColor(subColor, 55), 7f)
+                            setPadding(dp(7), dp(2), dp(7), dp(2))
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.WRAP_CONTENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 0, dp(6), 0)
+                            }
+                        }
+                        scopeRow.addView(subBadge)
+                    }
+
+                    if (hasSubTopic) {
+                        val topicItem = LinearLayout(host).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+                        topicItem.addView(ImageView(host).apply {
+                            setImageResource(R.drawable.ic_book)
+                            imageTintList = ColorStateList.valueOf(subColor)
+                            layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
+                                setMargins(0, 0, dp(3), 0)
+                            }
+                        })
+                        topicItem.addView(TextView(host).apply {
+                            text = goal.subTopic
+                            setTextColor(subColor)
+                            textSize = 11f
+                            isSingleLine = true
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                            maxWidth = dp(150)
+                            typeface = host.themeCoordinator.getAppTypeface(isBold = false)
+                        })
+                        scopeRow.addView(topicItem)
+                    }
+
+                    mainContentCol.addView(scopeRow)
+                }
+
+                // Line 2: Timing Context (Scheduled Days + Reminder Alert)
+                if (hasTiming) {
+                    val timingRow = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, dp(2), 0, 0)
+                        }
+                    }
+
+                    if (hasScheduledDays) {
+                        val daysMap = mapOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
+                        val daysText = when {
+                            goal.scheduledDays.size == 7 -> "Every Day"
+                            goal.scheduledDays.size == 5 && goal.scheduledDays.sorted() == listOf(1, 2, 3, 4, 5) -> "Weekdays"
+                            goal.scheduledDays.size == 2 && goal.scheduledDays.sorted() == listOf(6, 7) -> "Weekends"
+                            else -> goal.scheduledDays.sorted().mapNotNull { daysMap[it] }.joinToString(", ")
+                        }
+                        val schedItem = LinearLayout(host).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+                        schedItem.addView(ImageView(host).apply {
+                            setImageResource(R.drawable.ic_calendar)
+                            imageTintList = ColorStateList.valueOf(tintedColor(themeCoordinator.textColor, 170))
+                            layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
+                                setMargins(0, 0, dp(3), 0)
+                            }
+                        })
+                        schedItem.addView(TextView(host).apply {
+                            text = daysText
+                            setTextColor(tintedColor(themeCoordinator.textColor, 170))
+                            textSize = 10.5f
+                            isSingleLine = true
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                            maxWidth = dp(160)
+                            typeface = host.themeCoordinator.getAppTypeface(isBold = false)
+                        })
+                        timingRow.addView(schedItem)
+                    }
+
+                    if (hasScheduledDays && hasReminder) {
+                        timingRow.addView(TextView(host).apply {
+                            text = "\u00B7"
+                            textSize = 11f
+                            typeface = Typeface.DEFAULT_BOLD
+                            setTextColor(tintedColor(themeCoordinator.textColor, 70))
+                            setPadding(dp(4), 0, dp(4), 0)
+                        })
+                    }
+
+                    if (hasReminder) {
+                        val cal = Calendar.getInstance().apply {
+                            set(Calendar.HOUR_OF_DAY, goal.reminderHour)
+                            set(Calendar.MINUTE, goal.reminderMinute)
+                        }
+                        val reminderTimeStr = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
+                        val reminderColor = tintedColor(themeCoordinator.textColor, 170)
+                        val reminderItem = LinearLayout(host).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                        }
+                        reminderItem.addView(ImageView(host).apply {
+                            setImageResource(R.drawable.ic_clock)
+                            imageTintList = ColorStateList.valueOf(reminderColor)
+                            layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
+                                setMargins(0, 0, dp(3), 0)
+                            }
+                        })
+                        reminderItem.addView(TextView(host).apply {
+                            text = reminderTimeStr
+                            setTextColor(reminderColor)
+                            textSize = 10.5f
+                            isSingleLine = true
+                            maxLines = 1
+                            ellipsize = TextUtils.TruncateAt.END
+                            typeface = host.themeCoordinator.getAppTypeface(isBold = false)
+                        })
+                        timingRow.addView(reminderItem)
+                    }
+
+                    mainContentCol.addView(timingRow)
+                }
+
+                goalCard.addView(mainContentCol)
+
+                // 3. Right: Action Column (Time 0/45m, Start Button, Grip) - Centered Vertically in Card
+                val rightCol = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        gravity = Gravity.CENTER_VERTICAL
                     }
                 }
-                headerRow.addView(actionCta)
 
-                // Hold & Drag Reorder Handle
+                val shouldShowTime = isChecked || (targetMins > 0 || actualMins > 0)
+                val chipTv = TextView(host).apply {
+                    tag = "goal_chip_${goal.id}"
+                    text = info.progressText
+                    textSize = 11.5f
+                    typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    setTextColor(info.chipColor)
+                    setPadding(dp(4), 0, dp(4), 0)
+                    visibility = if (shouldShowTime) View.VISIBLE else View.GONE
+                }
+                rightCol.addView(chipTv)
+
+                val playIcon = FrameLayout(host).apply {
+                    tag = "goal_action_${goal.id}"
+                    visibility = if (!isChecked) View.VISIBLE else View.GONE
+                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                        setMargins(dp(2), 0, dp(2), 0)
+                    }
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(tintedColor(plannerPrimary, if (themeCoordinator.isDarkMode()) 45 else 25))
+                    }
+                    isClickable = true
+                    isFocusable = true
+                    contentDescription = "Start ${goal.title}"
+                    val iv = ImageView(host).apply {
+                        setImageResource(R.drawable.ic_play_arrow)
+                        imageTintList = ColorStateList.valueOf(plannerPrimary)
+                        layoutParams = FrameLayout.LayoutParams(dp(13), dp(13), Gravity.CENTER)
+                    }
+                    addView(iv)
+                    setOnClickListener { v ->
+                        v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        host.startFocusForGoal(goal)
+                    }
+                }
+                rightCol.addView(playIcon)
+
                 if (activeGoalsList.size > 1) {
                     val gripBtn = TextView(host).apply {
-                        text = "⠿"
-                        textSize = 16f
+                        text = "\u283F"
+                        textSize = 15f
                         setTextColor(tintedColor(themeCoordinator.textColor, 80))
-                        setPadding(dp(6), dp(4), dp(2), dp(4))
+                        setPadding(dp(4), dp(4), dp(2), dp(4))
                     }
-                    headerRow.addView(gripBtn)
+                    rightCol.addView(gripBtn)
 
                     gripBtn.setOnLongClickListener { v ->
                         val clipData = android.content.ClipData.newPlainText("goal_id", goal.id)
@@ -925,162 +1484,14 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     }
                 }
 
-                goalCard.addView(headerRow)
-
-                // 3. Subject, Sub-Topic, Schedule, and Reminder Badges Row
-                val hasSubject = !goal.subjectId.isNullOrBlank() && goal.subjectId != "all"
-                val hasSubTopic = !goal.subTopic.isNullOrBlank()
-                val hasScheduledDays = goal.scheduledDays.isNotEmpty()
-                val hasReminder = goal.reminderEnabled
-
-                val tagsRow = if (hasSubject || hasSubTopic || hasScheduledDays || hasReminder) {
-                    LinearLayout(host).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            setMargins(dp(32), dp(2), 0, 0)
-                        }
-                    }
-                } else null
-
-                if (hasSubject && tagsRow != null) {
-                    val sub = SubjectTagManager.resolveSubject(host, goal.subjectId)
-                    val subColor = try { Color.parseColor(sub.colorHex) } catch (_: Exception) { plannerPrimary }
-                    val subBadge = TextView(host).apply {
-                        text = "${sub.iconEmoji} ${sub.name}"
-                        setTextColor(subColor)
-                        textSize = 11f
-                        isSingleLine = true
-                        maxLines = 1
-                        ellipsize = TextUtils.TruncateAt.END
-                        maxWidth = dp(120)
-                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                        background = themeCoordinator.createGlassChip(tintedColor(subColor, 60), 8f)
-                        setPadding(dp(7), dp(2), dp(7), dp(2))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            setMargins(0, 0, dp(5), 0)
-                        }
-                    }
-                    tagsRow.addView(subBadge)
-                }
-
-                if (hasSubTopic && tagsRow != null) {
-                    val topicBadge = LinearLayout(host).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, 50), 8f)
-                        setPadding(dp(7), dp(2), dp(7), dp(2))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            setMargins(0, 0, dp(5), 0)
-                        }
-                    }
-                    topicBadge.addView(ImageView(host).apply {
-                        setImageResource(R.drawable.ic_book)
-                        setColorFilter(themeCoordinator.accentColor)
-                        layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
-                            setMargins(0, 0, dp(4), 0)
-                        }
-                    })
-                    topicBadge.addView(TextView(host).apply {
-                        text = goal.subTopic
-                        setTextColor(themeCoordinator.accentColor)
-                        textSize = 11f
-                        isSingleLine = true
-                        maxLines = 1
-                        ellipsize = TextUtils.TruncateAt.END
-                        maxWidth = dp(110)
-                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                    })
-                    tagsRow.addView(topicBadge)
-                }
-
-                if (hasScheduledDays && tagsRow != null) {
-                    val daysMap = mapOf(1 to "Mon", 2 to "Tue", 3 to "Wed", 4 to "Thu", 5 to "Fri", 6 to "Sat", 7 to "Sun")
-                    val daysText = goal.scheduledDays.sorted().mapNotNull { daysMap[it] }.joinToString(",")
-                    val schedBadge = LinearLayout(host).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 8f)
-                        setPadding(dp(7), dp(2), dp(7), dp(2))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            setMargins(0, 0, dp(5), 0)
-                        }
-                    }
-                    schedBadge.addView(ImageView(host).apply {
-                        setImageResource(R.drawable.ic_calendar)
-                        setColorFilter(tintedColor(themeCoordinator.textColor, 180))
-                        layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
-                            setMargins(0, 0, dp(4), 0)
-                        }
-                    })
-                    schedBadge.addView(TextView(host).apply {
-                        text = daysText
-                        setTextColor(tintedColor(themeCoordinator.textColor, 180))
-                        textSize = 10.5f
-                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                    })
-                    tagsRow.addView(schedBadge)
-                }
-
-                if (hasReminder && tagsRow != null) {
-                    val cal = Calendar.getInstance().apply {
-                        set(Calendar.HOUR_OF_DAY, goal.reminderHour)
-                        set(Calendar.MINUTE, goal.reminderMinute)
-                    }
-                    val reminderTimeStr = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(cal.time)
-                    val reminderColor = if (themeCoordinator.isDarkMode()) 0xFFF59E0B.toInt() else 0xFFD97706.toInt()
-                    val reminderBadge = LinearLayout(host).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        background = themeCoordinator.createGlassChip(tintedColor(0xFFF59E0B.toInt(), 50), 8f)
-                        setPadding(dp(7), dp(2), dp(7), dp(2))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.WRAP_CONTENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            setMargins(0, 0, dp(5), 0)
-                        }
-                    }
-                    reminderBadge.addView(ImageView(host).apply {
-                        setImageResource(R.drawable.ic_clock)
-                        setColorFilter(reminderColor)
-                        layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
-                            setMargins(0, 0, dp(4), 0)
-                        }
-                    })
-                    reminderBadge.addView(TextView(host).apply {
-                        text = reminderTimeStr
-                        setTextColor(reminderColor)
-                        textSize = 10.5f
-                        isSingleLine = true
-                        maxLines = 1
-                        typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                    })
-                    tagsRow.addView(reminderBadge)
-                }
-
-                if (tagsRow != null) {
-                    goalCard.addView(tagsRow)
-                }
+                goalCard.addView(rightCol)
 
                 goalCard.setOnClickListener {
-                    showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn) }
+                    showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn, goal) }
                 }
                 goalCard.setOnLongClickListener { v ->
                     v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn) }
+                    showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn, goal) }
                     true
                 }
 
@@ -1107,6 +1518,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                                         val moved = mutable.removeAt(fromIdx)
                                         mutable.add(toIdx, moved)
                                         saveSessionGoalsToJson(mutable)
+                                        currentPlannerSort = PlannerSort.DEFAULT
+                                        host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
+                                            .putString("planner_sort_mode", "DEFAULT").apply()
                                         PlannerHistoryManager.snapshotToday(host, mutable)
                                         reloadPlanner()
                                     }
@@ -1121,8 +1535,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         }
                     }
                 }
+
                 goalsContainer.addView(goalCard)
             }
+
             parent.addView(goalsContainer)
         }
 
@@ -2205,7 +2621,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val statusText = when {
             isAchieved || isTargetMet -> "✓ Completed"
             isEarlyStopped -> "✕ Stopped Early"
-            actualMins > 0 -> "In Progress"
+            actualMins > 0 -> "○ In Progress"
             else -> "○ Incomplete"
         }
         val statusColor = when {
@@ -2509,10 +2925,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 orientation = LinearLayout.HORIZONTAL
             }
 
+            val leftColumnWidth = dp(136)
+            val rowHeight = dp(42)
+
             // Left Fixed Column for Goal Titles
             val leftColumn = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(dp(110), LinearLayout.LayoutParams.WRAP_CONTENT)
+                layoutParams = LinearLayout.LayoutParams(leftColumnWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
             }
             leftColumn.addView(TextView(host).apply {
                 text = "Goal"
@@ -2520,7 +2939,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 textSize = 12f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setPadding(dp(8), dp(8), dp(8), dp(8))
-                layoutParams = LinearLayout.LayoutParams(dp(110), dp(36))
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(leftColumnWidth, rowHeight)
             })
             leftColumn.addView(createDivider())
 
@@ -2529,26 +2949,77 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     SubjectTagManager.resolveSubject(host, item.subjectId)
                 } else null
                 val prefix = if (sub != null) "${sub.iconEmoji} " else ""
-                leftColumn.addView(TextView(host).apply {
-                    text = if (item.isDeleted) "$prefix${item.title} (Old)" else "$prefix${item.title}"
-                    setTextColor(if (item.isDeleted) (if (isDark) tintedColor(themeCoordinator.textColor, 120) else 0xFF94A3B8.toInt()) else (if (isDark) themeCoordinator.textColor else 0xFF0F172A.toInt()))
-                    textSize = 13f
-                    maxLines = 1
-                    ellipsize = android.text.TextUtils.TruncateAt.END
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setPadding(dp(8), dp(8), dp(8), dp(8))
-                    layoutParams = LinearLayout.LayoutParams(dp(110), dp(38))
-                    setOnClickListener {
-                        showGoalDetailFloatingCard(item)
+                val itemRow = LinearLayout(host).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(leftColumnWidth, rowHeight)
+                    setPadding(dp(8), dp(3), dp(8), dp(3))
+                    isClickable = true
+                    isFocusable = true
+                    val typedValue = android.util.TypedValue()
+                    if (host.theme.resolveAttribute(android.R.attr.selectableItemBackground, typedValue, true)) {
+                        foreground = androidx.core.content.ContextCompat.getDrawable(host, typedValue.resourceId)
                     }
-                    setOnLongClickListener {
-                        showDeletePlannerGoalMatrixDialog(item.id, item.title) {
+                    setOnClickListener {
+                        showGoalDetailFloatingCard(item) {
                             dialog.dismiss()
                             showPlannerMatrixDialog(startFullscreen = isFullscreen)
                         }
+                    }
+                    setOnLongClickListener {
+                        if (item.isDeleted) {
+                            showArchivedGoalActionMenu(item) {
+                                dialog.dismiss()
+                                showPlannerMatrixDialog(startFullscreen = isFullscreen)
+                            }
+                        } else {
+                            showDeletePlannerGoalMatrixDialog(item.id, item.title) {
+                                dialog.dismiss()
+                                showPlannerMatrixDialog(startFullscreen = isFullscreen)
+                            }
+                        }
                         true
                     }
-                })
+                }
+
+                val titleTv = TextView(host).apply {
+                    text = if (prefix.isNotBlank()) "$prefix${item.title}" else item.title
+                    setTextColor(
+                        if (item.isDeleted) {
+                            if (isDark) tintedColor(themeCoordinator.textColor, 140) else 0xFF64748B.toInt()
+                        } else {
+                            if (isDark) themeCoordinator.textColor else 0xFF0F172A.toInt()
+                        }
+                    )
+                    textSize = 12.5f
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                }
+                itemRow.addView(titleTv)
+
+                if (item.isDeleted) {
+                    val archBadge = TextView(host).apply {
+                        text = "Archived • Tap to merge"
+                        setTextColor(if (isDark) 0xFFF59E0B.toInt() else 0xFFD97706.toInt())
+                        textSize = 9f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    }
+                    itemRow.addView(archBadge)
+                } else if (item.targetMinutes > 0) {
+                    val subTv = TextView(host).apply {
+                        text = "${item.targetMinutes}m target"
+                        setTextColor(tintedColor(themeCoordinator.textColor, if (isDark) 120 else 140))
+                        textSize = 9.5f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                        maxLines = 1
+                    }
+                    itemRow.addView(subTv)
+                }
+
+                leftColumn.addView(itemRow)
                 leftColumn.addView(createDivider())
             }
             splitLayout.addView(leftColumn)
@@ -2572,35 +3043,44 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
             val todayAccent = if (allGoalsTodayCompleted) (if (isDark) 0xFF22C55E.toInt() else 0xFF10B981.toInt()) else (if (isDark) plannerSecondary else 0xFF0284C7.toInt())
             val todayBgColor = if (isDark) {
-                if (allGoalsTodayCompleted) Color.argb(35, 34, 197, 94) else Color.argb(22, Color.red(plannerSecondary), Color.green(plannerSecondary), Color.blue(plannerSecondary))
+                if (allGoalsTodayCompleted) Color.argb(35, 34, 197, 94) else Color.argb(20, Color.red(plannerPrimary), Color.green(plannerPrimary), Color.blue(plannerPrimary))
             } else {
-                if (allGoalsTodayCompleted) 0x2210B981.toInt() else 0x1A0284C7.toInt()
+                if (allGoalsTodayCompleted) 0x2210B981.toInt() else 0x140284C7.toInt()
             }
+
+            val dayOfWeekFmt = SimpleDateFormat("EEE", Locale.getDefault())
 
             val headerRow = LinearLayout(host).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(2), 0, dp(2))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, rowHeight)
             }
             for (d in filteredDates) {
                 val dateKey = sdf.format(d)
                 val isToday = (dateKey == todayStr)
+                val cal = Calendar.getInstance().apply { time = d }
+                val isWeekend = (cal.get(Calendar.DAY_OF_WEEK) == Calendar.SATURDAY || cal.get(Calendar.DAY_OF_WEEK) == Calendar.SUNDAY)
+                val weekdayStr = if (isToday) "TODAY" else dayOfWeekFmt.format(d).uppercase()
+                val dateShortStr = dateHeaderFmt.format(d)
+
                 headerRow.addView(TextView(host).apply {
-                    text = if (isToday) "TODAY\n${dateHeaderFmt.format(d)}" else dateHeaderFmt.format(d)
+                    text = "$weekdayStr\n$dateShortStr"
                     setTextColor(
                         if (isToday) {
-                            if (isDark) 0xFFFFFFFF.toInt() else 0xFF0369A1.toInt()
+                            if (isDark) Color.WHITE else 0xFF0369A1.toInt()
+                        } else if (isWeekend) {
+                            if (isDark) 0xFFF59E0B.toInt() else 0xFFD97706.toInt()
                         } else {
                             if (isDark) plannerPrimary else 0xFF475569.toInt()
                         }
                     )
-                    textSize = if (isToday) 10f else 11f
+                    textSize = if (isToday) 9.5f else 10f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     gravity = Gravity.CENTER
                     if (isToday) {
                         background = if (isDark) {
-                            themeCoordinator.createGlassChip(todayAccent, 10f)
+                            themeCoordinator.createGlassChip(plannerPrimary, 10f)
                         } else {
                             GradientDrawable().apply {
                                 cornerRadius = dp(10).toFloat()
@@ -2622,7 +3102,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val row = LinearLayout(host).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(38))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, rowHeight)
                 }
                 val history = goalHistories[item.id] ?: emptyMap()
                 for (d in filteredDates) {
@@ -2639,25 +3119,24 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         text = when {
                             isAchieved -> "\u2713"
                             isMissed -> "\u2715"
-                            isToday -> "•"
+                            isToday -> "\u25CB"
                             isUnscheduled -> "—"
                             d.after(Date()) -> ""
                             else -> "—"
                         }
                         setTextColor(when {
                             isAchieved -> greenColor
-                            isToday -> if (isDark) 0xFFFFFFFF.toInt() else 0xFFD97706.toInt()
+                            isToday -> plannerPrimary
                             isMissed -> redColor
                             isUnscheduled -> if (isDark) tintedColor(themeCoordinator.textColor, 70) else 0xFF94A3B8.toInt()
                             else -> if (isDark) tintedColor(themeCoordinator.textColor, 80) else 0xFF94A3B8.toInt()
                         })
-                        textSize = 14f
+                        textSize = if (isToday) 16f else 14f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         gravity = Gravity.CENTER
                         if (isToday) {
                             background = GradientDrawable().apply {
                                 setColor(todayBgColor)
-                                setStroke(dp(1), if (isDark) todayAccent else 0xFF0284C7.toInt())
                                 cornerRadius = dp(6).toFloat()
                             }
                         }
@@ -2811,18 +3290,66 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         content.addView(filterRow)
 
+        val legendScroll = HorizontalScrollView(host).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 0, 0, dp(12))
+            }
+        }
         val legendRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(10))
         }
-        legendRow.addView(TextView(host).apply {
-            text = "✓ Completed / Met   ✕ Stopped Early / Missed   • In Progress   — Not Scheduled"
-            textSize = 11f
-            setTextColor(tintedColor(themeCoordinator.textColor, 140))
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-        })
-        content.addView(legendRow)
+
+        fun addLegendChip(symbol: String, label: String, symColor: Int) {
+            val chip = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                background = if (isDark) {
+                    themeCoordinator.createGlassChip(tintedColor(symColor, 35), 8f)
+                } else {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(8).toFloat()
+                        setColor(tintedColor(symColor, 20))
+                        setStroke(dp(1), tintedColor(symColor, 60))
+                    }
+                }
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, 0, dp(6), 0)
+                }
+            }
+            chip.addView(TextView(host).apply {
+                text = symbol
+                setTextColor(symColor)
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setPadding(0, 0, dp(4), 0)
+            })
+            chip.addView(TextView(host).apply {
+                text = label
+                setTextColor(if (isDark) tintedColor(themeCoordinator.textColor, 200) else 0xFF334155.toInt())
+                textSize = 10.5f
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            })
+            legendRow.addView(chip)
+        }
+
+        val legendGreen = if (isDark) 0xFF22C55E.toInt() else 0xFF047857.toInt()
+        val legendRed = if (isDark) 0xFFEF4444.toInt() else 0xFFDC2626.toInt()
+        addLegendChip("\u2713", "Completed", legendGreen)
+        addLegendChip("\u2715", "Missed", legendRed)
+        addLegendChip("\u25CB", "In Progress", plannerPrimary)
+        addLegendChip("—", "Not Scheduled", if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
+        legendScroll.addView(legendRow)
+        content.addView(legendScroll)
 
         renderMatrix(selectedRangeDays)
         content.addView(matrixContainer)
@@ -3549,7 +4076,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         dialog.show()
     }
 
-    private fun showGoalDetailFloatingCard(item: Any) {
+    private fun showGoalDetailFloatingCard(item: Any, onRefresh: (() -> Unit)? = null) {
         val dialog = Dialog(host)
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
 
@@ -3560,6 +4087,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val itemNote: String
         val itemTargetMins: Int
         val itemIsDeleted: Boolean
+        val itemSubjectId: String?
+        val itemSubTopic: String?
+        val itemScheduledDays: List<Int>
+        val itemCreatedAt: Long
 
         when (item) {
             is MatrixGoalItem -> {
@@ -3568,6 +4099,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 itemNote = item.note
                 itemTargetMins = item.targetMinutes
                 itemIsDeleted = item.isDeleted
+                itemSubjectId = item.subjectId
+                itemSubTopic = item.subTopic
+                itemScheduledDays = item.scheduledDays
+                itemCreatedAt = item.createdAt
             }
             is PlannerGoal -> {
                 itemId = item.id
@@ -3575,6 +4110,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 itemNote = item.note
                 itemTargetMins = item.targetMinutes
                 itemIsDeleted = false
+                itemSubjectId = item.subjectId
+                itemSubTopic = item.subTopic
+                itemScheduledDays = item.scheduledDays
+                itemCreatedAt = item.createdAt
             }
             else -> {
                 itemId = runCatching { item.javaClass.getDeclaredField("id").apply { isAccessible = true }.get(item) as String }.getOrNull()
@@ -3587,6 +4126,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     ?: runCatching { item.javaClass.getMethod("getTargetMinutes").invoke(item) as Int }.getOrNull() ?: 0
                 itemIsDeleted = runCatching { item.javaClass.getDeclaredField("isDeleted").apply { isAccessible = true }.get(item) as Boolean }.getOrNull()
                     ?: runCatching { item.javaClass.getMethod("isDeleted").invoke(item) as Boolean }.getOrNull() ?: false
+                itemSubjectId = null
+                itemSubTopic = null
+                itemScheduledDays = emptyList()
+                itemCreatedAt = 0L
             }
         }
 
@@ -3603,13 +4146,14 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
 
         // 1. FIXED Header Tag
-        content.addView(TextView(host).apply {
+        val headerTag = TextView(host).apply {
             text = if (itemIsDeleted) "ARCHIVED GOAL" else "GOAL DETAILS"
-            setTextColor(plannerSecondary)
+            setTextColor(if (itemIsDeleted) 0xFFF59E0B.toInt() else plannerSecondary)
             textSize = 11f
             letterSpacing = 0.15f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        })
+        }
+        content.addView(headerTag)
 
         // 2. Scrollable Body Box (Title + Target + Notes)
         val maxCardBodyHeight = dp(240)
@@ -3631,8 +4175,18 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             setTextColor(plannerPrimary)
             textSize = 18f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(0, dp(4), 0, dp(6))
+            setPadding(0, dp(4), 0, dp(4))
         })
+
+        if (itemIsDeleted) {
+            bodyBox.addView(TextView(host).apply {
+                text = "Archived from planner • Past history & completions preserved"
+                setTextColor(if (themeCoordinator.isDarkMode()) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
+                textSize = 12f
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                setPadding(0, 0, 0, dp(6))
+            })
+        }
 
         if (targetMins > 0) {
             bodyBox.addView(TextView(host).apply {
@@ -3688,16 +4242,16 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         })
         content.addView(bodyScroll)
 
-        // 3. FIXED Action Buttons Row at Bottom
+        // 3. Action Buttons Row at Bottom
         val buttonRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(12), 0, 0)
         }
 
         val isDark = themeCoordinator.isDarkMode()
-        if (activeGoal != null) {
-            val historyBtn = TextView(host).apply {
-                text = "Goal History"
+        if (itemIsDeleted) {
+            val mergeBtn = TextView(host).apply {
+                text = "Merge Progress"
                 setTextColor(Color.WHITE)
                 textSize = 12f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -3706,41 +4260,539 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     setColor(plannerPrimary)
                 }
                 gravity = Gravity.CENTER
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { setMargins(0, 0, dp(8), 0) }
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                layoutParams = LinearLayout.LayoutParams(0, dp(44), 1.25f).apply {
+                    rightMargin = dp(6)
+                }
                 setOnClickListener {
                     dialog.dismiss()
-                    showGoalHistoryDialog(activeGoal)
+                    showMergeGoalDialog(itemId, itemTitle) {
+                        onRefresh?.invoke()
+                    }
                 }
             }
-            buttonRow.addView(historyBtn)
-        }
+            buttonRow.addView(mergeBtn)
 
-        val closeBtn = TextView(host).apply {
-            text = "Close"
-            setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
-            textSize = 12f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = if (isDark) {
-                themeCoordinator.createGlassChip(if (activeGoal != null) Color.argb(40, 255, 255, 255) else plannerPrimary, 20f)
-            } else {
-                GradientDrawable().apply {
-                    cornerRadius = dp(20).toFloat()
-                    setColor(0xFFF1F5F9.toInt())
-                    setStroke(dp(1), 0xFFCBD5E1.toInt())
+            val restoreBtn = TextView(host).apply {
+                text = "Restore"
+                setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                background = if (isDark) {
+                    themeCoordinator.createGlassChip(Color.argb(45, 56, 189, 248), 20f)
+                } else {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
+                        setColor(0xFFE0F2FE.toInt())
+                        setStroke(dp(1), 0xFF38BDF8.toInt())
+                    }
+                }
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(10), dp(8), dp(10))
+                layoutParams = LinearLayout.LayoutParams(0, dp(44), 0.95f).apply {
+                    rightMargin = dp(6)
+                }
+                setOnClickListener {
+                    dialog.dismiss()
+                    val restored = PlannerHistoryManager.restoreArchivedGoal(
+                        context = host,
+                        archivedGoalId = itemId,
+                        title = itemTitle,
+                        note = itemNote,
+                        targetMinutes = itemTargetMins,
+                        subjectId = itemSubjectId,
+                        subTopic = itemSubTopic,
+                        scheduledDays = itemScheduledDays,
+                        createdAt = itemCreatedAt
+                    )
+                    if (restored) {
+                        AppToast.show(host, "Restored '$itemTitle' to active planner")
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                            CloudSyncManager.syncDataToCloud(host)
+                        }
+                        onRefresh?.invoke()
+                    } else {
+                        AppToast.show(host, "Goal is already active in planner")
+                    }
                 }
             }
-            gravity = Gravity.CENTER
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            layoutParams = LinearLayout.LayoutParams(if (activeGoal != null) 0 else LinearLayout.LayoutParams.MATCH_PARENT, dp(44), 1f)
-            setOnClickListener { dialog.dismiss() }
+            buttonRow.addView(restoreBtn)
+
+            val closeBtn = TextView(host).apply {
+                text = "Close"
+                setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                background = if (isDark) {
+                    themeCoordinator.createGlassChip(Color.argb(35, 255, 255, 255), 20f)
+                } else {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
+                        setColor(0xFFF1F5F9.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                    }
+                }
+                gravity = Gravity.CENTER
+                setPadding(dp(8), dp(10), dp(8), dp(10))
+                layoutParams = LinearLayout.LayoutParams(0, dp(44), 0.8f)
+                setOnClickListener { dialog.dismiss() }
+            }
+            buttonRow.addView(closeBtn)
+            content.addView(buttonRow)
+
+            val permDeleteBtn = TextView(host).apply {
+                text = "Permanently Delete History"
+                setTextColor(0xFFEF4444.toInt())
+                textSize = 11.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                gravity = Gravity.CENTER
+                setPadding(0, dp(14), 0, dp(2))
+                setOnClickListener {
+                    dialog.dismiss()
+                    showDeletePlannerGoalMatrixDialog(itemId, itemTitle) {
+                        onRefresh?.invoke()
+                    }
+                }
+            }
+            content.addView(permDeleteBtn)
+        } else {
+            if (activeGoal != null) {
+                val historyBtn = TextView(host).apply {
+                    text = "Goal History"
+                    setTextColor(Color.WHITE)
+                    textSize = 12f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
+                        setColor(plannerPrimary)
+                    }
+                    gravity = Gravity.CENTER
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { setMargins(0, 0, dp(8), 0) }
+                    setOnClickListener {
+                        dialog.dismiss()
+                        showGoalHistoryDialog(activeGoal)
+                    }
+                }
+                buttonRow.addView(historyBtn)
+            }
+
+            val closeBtn = TextView(host).apply {
+                text = "Close"
+                setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                background = if (isDark) {
+                    themeCoordinator.createGlassChip(if (activeGoal != null) Color.argb(40, 255, 255, 255) else plannerPrimary, 20f)
+                } else {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(20).toFloat()
+                        setColor(0xFFF1F5F9.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                    }
+                }
+                gravity = Gravity.CENTER
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                layoutParams = LinearLayout.LayoutParams(if (activeGoal != null) 0 else LinearLayout.LayoutParams.MATCH_PARENT, dp(44), 1f)
+                setOnClickListener { dialog.dismiss() }
+            }
+            buttonRow.addView(closeBtn)
+            content.addView(buttonRow)
         }
-        buttonRow.addView(closeBtn)
-        content.addView(buttonRow)
 
         dialog.setContentView(content)
         dialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
         dialog.window?.setLayout((host.resources.displayMetrics.widthPixels * 0.88f).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.show()
+    }
+
+    private fun showMergeGoalDialog(
+        fromGoalId: String,
+        fromGoalTitle: String,
+        onSuccess: () -> Unit
+    ) {
+        val isDark = themeCoordinator.isDarkMode()
+        val (plannerPrimary, plannerSecondary) = resolvePlannerColors()
+        val textColor = themeCoordinator.textColor
+
+        val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val goalsJson = prefs.getString("session_goals_json", "[]") ?: "[]"
+        val activeGoals = loadSessionGoalsFromJson(goalsJson).filterNot { it.id == fromGoalId }
+
+        if (activeGoals.isEmpty()) {
+            DialogFactory.showInfoDialog(
+                context = host,
+                themeCoordinator = themeCoordinator,
+                title = "No Active Goals Found",
+                message = "There are no active goals currently in your planner. Please create an active goal first before merging past history."
+            )
+            return
+        }
+
+        val dialog = Dialog(host)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val content = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(28f)
+            setPadding(dp(22), dp(20), dp(22), dp(18))
+        }
+
+        content.addView(TextView(host).apply {
+            text = "MERGE GOAL HISTORY"
+            setTextColor(plannerSecondary)
+            textSize = 11f
+            letterSpacing = 0.15f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+
+        content.addView(TextView(host).apply {
+            text = "Merge '$fromGoalTitle' into..."
+            setTextColor(plannerPrimary)
+            textSize = 17f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(0, dp(4), 0, dp(4))
+        })
+
+        content.addView(TextView(host).apply {
+            text = "Select an active goal below. All past completed days, checkmarks, and tracked study hours will combine seamlessly into it."
+            setTextColor(tintedColor(textColor, if (isDark) 180 else 160))
+            textSize = 12.5f
+            setLineSpacing(dp(2).toFloat(), 1.05f)
+            setPadding(0, 0, 0, dp(14))
+        })
+
+        val listScroll = ScrollView(host).apply {
+            isFillViewport = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(220)
+            )
+        }
+
+        val listContainer = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        for (active in activeGoals) {
+            val sub = if (!active.subjectId.isNullOrBlank() && active.subjectId != "all") {
+                SubjectTagManager.resolveSubject(host, active.subjectId)
+            } else null
+
+            val subColor = sub?.let { runCatching { Color.parseColor(it.colorHex) }.getOrNull() } ?: plannerPrimary
+
+            val row = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                val rowMask = GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(Color.WHITE)
+                }
+                val rowContent = if (isDark) {
+                    themeCoordinator.createGlassChip(Color.argb(25, 255, 255, 255), 14f)
+                } else {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(0xFFF8FAFC.toInt())
+                        setStroke(dp(1), 0xFFE2E8F0.toInt())
+                    }
+                }
+                background = RippleDrawable(
+                    ColorStateList.valueOf(tintedColor(plannerPrimary, 40)),
+                    rowContent,
+                    rowMask
+                )
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    DialogFactory.showConfirmationDialog(
+                        context = host,
+                        themeCoordinator = themeCoordinator,
+                        title = "Confirm Merge?",
+                        message = "Merge all history from '$fromGoalTitle' into '${active.title}'?\n\nThis will combine all past checkmarks, study records, and streaks into '${active.title}'. '$fromGoalTitle' will be removed from your archived list.",
+                        positiveText = "Merge History",
+                        negativeText = "Cancel",
+                        onConfirm = {
+                            PlannerHistoryManager.mergeGoalHistory(
+                                context = host,
+                                fromGoalId = fromGoalId,
+                                toGoalId = active.id,
+                                toGoalTitle = active.title
+                            )
+                            AppToast.show(host, "Merged '$fromGoalTitle' into '${active.title}'")
+                            dialog.dismiss()
+                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                CloudSyncManager.syncDataToCloud(host)
+                            }
+                            onSuccess()
+                        }
+                    )
+                }
+            }
+
+            val iconPill = FrameLayout(host).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                    rightMargin = dp(10)
+                }
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(tintedColor(subColor, if (isDark) 40 else 25))
+                }
+            }
+            iconPill.addView(ImageView(host).apply {
+                setImageResource(R.drawable.ic_merge)
+                imageTintList = ColorStateList.valueOf(subColor)
+                layoutParams = FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER)
+            })
+            row.addView(iconPill)
+
+            val textCol = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            textCol.addView(TextView(host).apply {
+                text = active.title
+                setTextColor(if (isDark) themeCoordinator.textColor else 0xFF0F172A.toInt())
+                textSize = 14f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            val detailDesc = StringBuilder()
+            if (active.targetMinutes > 0) detailDesc.append("${active.targetMinutes}m daily target")
+            if (sub != null) {
+                if (detailDesc.isNotEmpty()) detailDesc.append(" • ")
+                detailDesc.append(sub.name)
+            }
+            if (detailDesc.isNotEmpty()) {
+                textCol.addView(TextView(host).apply {
+                    text = detailDesc.toString()
+                    setTextColor(tintedColor(textColor, if (isDark) 140 else 150))
+                    textSize = 11f
+                    typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                })
+            }
+            row.addView(textCol)
+            listContainer.addView(row)
+        }
+        listScroll.addView(listContainer)
+        content.addView(listScroll)
+
+        val closeBtn = TextView(host).apply {
+            text = "Cancel"
+            setTextColor(tintedColor(textColor, if (isDark) 180 else 160))
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
+                topMargin = dp(8)
+            }
+            setOnClickListener { dialog.dismiss() }
+        }
+        content.addView(closeBtn)
+
+        dialog.setContentView(content)
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout((host.resources.displayMetrics.widthPixels * 0.92f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        dialog.show()
+    }
+
+    private fun showArchivedGoalActionMenu(item: MatrixGoalItem, onRefresh: () -> Unit) {
+        val isDark = themeCoordinator.isDarkMode()
+        val (plannerPrimary, plannerSecondary) = resolvePlannerColors()
+        val textColor = themeCoordinator.textColor
+
+        val dialog = Dialog(host)
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
+
+        val content = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(26f)
+            setPadding(dp(20), dp(18), dp(20), dp(16))
+        }
+
+        content.addView(TextView(host).apply {
+            text = "ARCHIVED GOAL OPTIONS"
+            setTextColor(plannerSecondary)
+            textSize = 11f
+            letterSpacing = 0.15f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+
+        content.addView(TextView(host).apply {
+            text = item.title
+            setTextColor(plannerPrimary)
+            textSize = 17f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(0, dp(4), 0, dp(14))
+        })
+
+        fun createOptionRow(iconRes: Int, iconTint: Int, title: String, subtitle: String, onClick: () -> Unit): View {
+            val row = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                val rowMask = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(Color.WHITE)
+                }
+                val rowContent = if (isDark) {
+                    themeCoordinator.createGlassChip(Color.argb(25, 255, 255, 255), 12f)
+                } else {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(12).toFloat()
+                        setColor(0xFFF8FAFC.toInt())
+                        setStroke(dp(1), 0xFFE2E8F0.toInt())
+                    }
+                }
+                background = RippleDrawable(
+                    ColorStateList.valueOf(tintedColor(iconTint, 40)),
+                    rowContent,
+                    rowMask
+                )
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(8)
+                }
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    dialog.dismiss()
+                    onClick()
+                }
+            }
+
+            val iconPill = FrameLayout(host).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                    rightMargin = dp(10)
+                }
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(tintedColor(iconTint, if (isDark) 40 else 25))
+                }
+            }
+            iconPill.addView(ImageView(host).apply {
+                setImageResource(iconRes)
+                imageTintList = ColorStateList.valueOf(iconTint)
+                layoutParams = FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER)
+            })
+            row.addView(iconPill)
+
+            val textCol = LinearLayout(host).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            textCol.addView(TextView(host).apply {
+                text = title
+                setTextColor(textColor)
+                textSize = 13.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            })
+            textCol.addView(TextView(host).apply {
+                text = subtitle
+                setTextColor(tintedColor(textColor, if (isDark) 140 else 160))
+                textSize = 11f
+                typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            })
+            row.addView(textCol)
+
+            return row
+        }
+
+        // 1. Merge into Active Goal
+        content.addView(createOptionRow(
+            R.drawable.ic_merge,
+            plannerPrimary,
+            "Merge into Active Goal",
+            "Combine this goal's past history with another active goal"
+        ) {
+            showMergeGoalDialog(item.id, item.title, onRefresh)
+        })
+
+        // 2. Restore to Planner
+        val restoreColor = if (isDark) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt()
+        content.addView(createOptionRow(
+            R.drawable.ic_restore,
+            restoreColor,
+            "Restore to Planner",
+            "Re-activate this goal into your daily planner"
+        ) {
+            DialogFactory.showConfirmationDialog(
+                context = host,
+                themeCoordinator = themeCoordinator,
+                title = "Restore Goal to Planner?",
+                message = "Restore '${item.title}' back to your active daily planner with all of its existing progress intact?",
+                positiveText = "Restore",
+                negativeText = "Cancel",
+                onConfirm = {
+                    val restored = PlannerHistoryManager.restoreArchivedGoal(
+                        context = host,
+                        archivedGoalId = item.id,
+                        title = item.title,
+                        note = item.note,
+                        targetMinutes = item.targetMinutes,
+                        subjectId = item.subjectId,
+                        subTopic = item.subTopic,
+                        scheduledDays = item.scheduledDays,
+                        createdAt = item.createdAt
+                    )
+                    if (restored) {
+                        AppToast.show(host, "Restored '${item.title}' to active planner")
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                            CloudSyncManager.syncDataToCloud(host)
+                        }
+                        onRefresh()
+                    } else {
+                        AppToast.show(host, "Goal is already active in planner")
+                    }
+                }
+            )
+        })
+
+        // 3. Delete from History
+        val dangerRed = 0xFFEF4444.toInt()
+        content.addView(createOptionRow(
+            R.drawable.ic_trash,
+            dangerRed,
+            "Delete from History",
+            "Permanently erase all past records of this goal"
+        ) {
+            showDeletePlannerGoalMatrixDialog(item.id, item.title, onRefresh)
+        })
+
+        val cancelBtn = TextView(host).apply {
+            text = "Cancel"
+            setTextColor(tintedColor(textColor, if (isDark) 180 else 160))
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
+                topMargin = dp(4)
+            }
+            setOnClickListener { dialog.dismiss() }
+        }
+        content.addView(cancelBtn)
+
+        dialog.setContentView(content)
+        dialog.window?.apply {
+            setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            setLayout((host.resources.displayMetrics.widthPixels * 0.90f).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
         dialog.show()
     }
 

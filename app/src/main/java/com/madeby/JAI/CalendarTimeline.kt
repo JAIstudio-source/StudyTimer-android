@@ -273,7 +273,8 @@ class CalendarTimeline(private val host: MainActivity) {
                 val hrs = monthFocus / 3600
                 val mins = (monthFocus % 3600) / 60
                 summaryRow.addView(TextView(this).apply {
-                    text = "${hrs}h ${mins}m Total Study"
+                    val monthShort = SimpleDateFormat("MMM", Locale.getDefault()).format(anchor.time)
+                    text = "${hrs}h ${mins}m in $monthShort"
                     setTextColor(themeCoordinator.primaryColor)
                     textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)

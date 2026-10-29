@@ -30,14 +30,18 @@ android {
         checkReleaseBuilds = false
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     defaultConfig {
         applicationId = "com.madeby.JAI"
         
         minSdk = 28
         targetSdk = 34
         
-        versionCode = 49
-        versionName = "3.3.5"
+        versionCode = 50
+        versionName = "3.3.6"
 
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -48,6 +52,7 @@ android {
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${secret("GOOGLE_WEB_CLIENT_ID")}\"")
         buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"${secret("TELEGRAM_BOT_TOKEN")}\"")
         buildConfigField("String", "TELEGRAM_CHAT_ID", "\"${secret("TELEGRAM_CHAT_ID")}\"")
+        buildConfigField("boolean", "STUDY_ROOM_ENABLED", "false")
     }
 
     signingConfigs {
@@ -110,6 +115,7 @@ dependencies {
     implementation("androidx.browser:browser:1.8.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test.ext:junit:1.1.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.3.0")
 }

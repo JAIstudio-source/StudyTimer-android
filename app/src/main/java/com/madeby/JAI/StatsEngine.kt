@@ -23,9 +23,7 @@ class StatsEngine(private val context: Context) {
             if (prefs.contains("daily_goal_minutes")) {
                 val m = prefs.getInt("daily_goal_minutes", 0)
                 if (m > 0) {
-                    val s = m * 60L
-                    prefs.edit().putLong("daily_goal_secs", s).apply()
-                    return s
+                    return m * 60L
                 }
             }
             return DEFAULT_DAILY_GOAL_SECS
@@ -45,7 +43,7 @@ class StatsEngine(private val context: Context) {
     fun recalculateStreak(todayExtra: Long = prefs.getLong("accumulatedStudy", 0L)) {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
-        val streakGoalBased = prefs.getBoolean("streak_uses_daily_goal", false)
+        val streakGoalBased = prefs.getBoolean("streak_uses_daily_goal", true)
         val frozenDates = StreakCalculator.getFrozenDates(context)
 
         val streak = StreakCalculator.currentStreak(
@@ -363,11 +361,11 @@ class StatsEngine(private val context: Context) {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayStr = sdf.format(Date())
         val allKeys = prefs.all.keys.toList()
-        val focusKeys = allKeys.filter { it.endsWith("_focus_total") }
+        val totalKeys = allKeys.filter { it.endsWith("_focus_total") || it.endsWith("_break_total") }
         val entries = TimelineLogger.load(context)
 
         val timelineDates = entries.map { sdf.format(Date(it.timestamp)) }.toSet()
-        val allDates = (focusKeys.map { it.removeSuffix("_focus_total") } + timelineDates).toSet()
+        val allDates = (totalKeys.map { it.removeSuffix("_focus_total").removeSuffix("_break_total") } + timelineDates).toSet()
 
         val editor = prefs.edit()
         var modified = false
@@ -384,25 +382,13 @@ class StatsEngine(private val context: Context) {
             val storedFocus = prefs.safeLong(key, 0L)
             val storedBreak = prefs.safeLong(breakKey, 0L)
 
-            // Never destroy stored focus or break time if timeline was incomplete! Backfill missing timeline blocks.
-            if (storedFocus > trueFocusSum) {
-                val missingFocusSecs = storedFocus - trueFocusSum
-                TimelineLogger.appendBlockForDay(context, dateStr, missingFocusSecs, "MANUAL_FOCUS")
-            }
-
-            if (storedBreak > trueBreakSum) {
-                val missingBreakSecs = storedBreak - trueBreakSum
-                TimelineLogger.appendBlockForDay(context, dateStr, missingBreakSecs, "MANUAL_BREAK")
-            }
-
-            // Re-read updated entries after backfilling missing timeline blocks
-            val updatedEntries = TimelineLogger.load(context)
-            val (updatedSessions, updatedBreaks) = dayBlocks(dateStr, updatedEntries)
-            val finalFocusSum = maxOf(storedFocus, updatedSessions.filter { !it.running }.sumOf { it.secs })
-            val finalBreakSum = maxOf(storedBreak, updatedBreaks.filter { !it.running }.sumOf { it.secs })
+            val finalFocusSum = trueFocusSum
+            val finalBreakSum = trueBreakSum
 
             if (storedFocus != finalFocusSum || storedBreak != finalBreakSum) {
-                android.util.Log.i("StatsEngine", "Self-healing day totals for $dateStr: storedFocus=$storedFocus -> finalFocusSum=$finalFocusSum")
+                runCatching {
+                    android.util.Log.i("StatsEngine", "Self-healing day totals for $dateStr: storedFocus=$storedFocus -> finalFocusSum=$finalFocusSum, storedBreak=$storedBreak -> finalBreakSum=$finalBreakSum")
+                }
                 editor.putLong(key, finalFocusSum)
                 editor.putLong(breakKey, finalBreakSum)
                 modified = true
@@ -424,13 +410,17 @@ class StatsEngine(private val context: Context) {
         val breakKey = "${dateStr}_break_total"
         val storedFocus = prefs.safeLong(focusKey, 0L)
         val storedBreak = prefs.safeLong(breakKey, 0L)
-        val effectiveFocus = maxOf(storedFocus, focusSum)
-        val effectiveBreak = maxOf(storedBreak, breakSum)
+        val effectiveFocus = focusSum
+        val effectiveBreak = breakSum
         if (storedFocus != effectiveFocus || storedBreak != effectiveBreak) {
-            prefs.edit()
-                .putLong(focusKey, effectiveFocus)
-                .putLong(breakKey, effectiveBreak)
-                .apply()
+            val editor = prefs.edit()
+            if (storedFocus != effectiveFocus) {
+                editor.putLong(focusKey, effectiveFocus)
+            }
+            if (storedBreak != effectiveBreak) {
+                editor.putLong(breakKey, effectiveBreak)
+            }
+            editor.apply()
         }
         TimelineLogger.reconcileSubjectDurationsFromTimeline(context, dateStr)
     }
@@ -465,14 +455,22 @@ class StatsEngine(private val context: Context) {
         val todayFocus = FocusTimeProvider.getTodayFocusSeconds(context)
         val todayBreak = prefs.getLong("${todayStr}_break_total", 0L) + currentBreakSecs
 
-        var total7 = 0L
-        for (i in 0 until 7) {
-            val cal = Calendar.getInstance(); cal.add(Calendar.DAY_OF_YEAR, -i)
-            val d = sdf.format(cal.time)
-            total7 += prefs.getLong("${d}_focus_total", 0L)
-            if (d == todayStr) total7 += currentSessionSecs
+        val avg7 = run {
+            var total7 = 0L
+            var activeDays = 0
+            for (i in 0 until 7) {
+                val cal = Calendar.getInstance(); cal.add(Calendar.DAY_OF_YEAR, -i)
+                val d = sdf.format(cal.time)
+                var dayTotal = prefs.getLong("${d}_focus_total", 0L)
+                if (d == todayStr) dayTotal += currentSessionSecs
+                total7 += dayTotal
+                if (dayTotal > 0L) {
+                    activeDays++
+                }
+            }
+            // Average per active day in the last 7 days, not calendar day.
+            if (activeDays > 0) total7 / activeDays else 0L
         }
-        val avg7 = total7 / 7
 
         val yesterdayCal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
         val yesterdaySecs = prefs.getLong("${sdf.format(yesterdayCal.time)}_focus_total", 0L)
@@ -501,7 +499,7 @@ class StatsEngine(private val context: Context) {
         totalLifeBreak += currentBreakSecs
         val totalLife = totalLifeFocus + totalLifeBreak
 
-        val streakGoalBased = prefs.getBoolean("streak_uses_daily_goal", false)
+        val streakGoalBased = prefs.getBoolean("streak_uses_daily_goal", true)
 
         val activeDays = dayFocus.keys.count { d ->
             val f = dayFocus[d] ?: 0L
@@ -607,17 +605,10 @@ class StatsEngine(private val context: Context) {
         }
 
         val showHeatmap = prefs.getBoolean("show_focus_heatmap", true)
-        val showPattern = prefs.getBoolean("show_focus_pattern", true)
+
         val showPieChart = prefs.getBoolean("show_subject_pie_chart", true)
 
         val timeline = TimelineLogger.load(context)
-        val nowMs = System.currentTimeMillis()
-        val blockSecs7 = buildFocusBlockArray(timeline, 7, nowMs, todayStr)
-        val blockSecs30 = buildFocusBlockArray(timeline, 30, nowMs, todayStr)
-        val maxBlock7 = blockSecs7.maxOrNull() ?: 0L
-        val maxBlock30 = blockSecs30.maxOrNull() ?: 0L
-        val patternTotal7 = blockSecs7.sum()
-        val patternTotal30 = blockSecs30.sum()
 
         val monthSdf = SimpleDateFormat("MMM yyyy", Locale.getDefault())
         val monthAgg = LinkedHashMap<String, MonthBucket>()
@@ -641,61 +632,9 @@ class StatsEngine(private val context: Context) {
             totalLifeFocus, totalLifeBreak, totalLife, longestStreak, activeDays,
             bestWeekdayName, bestWeekdaySecs, bestDayLabel, bestDaySecs, bestDayDateStr, bestWeekLabel, bestWeekSecs,
             thisWeek, prevWeek, goalHits, hasAnySessions,
-            showHeatmap, showPattern, showPieChart, heatmapData, blockSecs7, maxBlock7, blockSecs30, maxBlock30,
-            patternTotal7, patternTotal30,
+            showHeatmap, showPieChart, heatmapData,
             dayFocus, monthBuckets, allHistKeys, entriesByDay
         )
-    }
-
-    private fun buildFocusBlockArray(
-        timeline: List<TimelineEntry>,
-        windowDays: Int,
-        nowMs: Long,
-        todayStr: String
-    ): LongArray {
-        val arr = LongArray(12)
-        val windowStart = Calendar.getInstance().apply {
-            add(Calendar.DAY_OF_YEAR, -windowDays)
-            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-        val loopCal = Calendar.getInstance()
-        fun addFocusInterval(startMs: Long, endMs: Long) {
-            var s = max(startMs, windowStart)
-            val e = min(endMs, nowMs)
-            while (s < e) {
-                loopCal.timeInMillis = s
-                val block = loopCal.get(Calendar.HOUR_OF_DAY) / 2
-                loopCal.add(Calendar.HOUR_OF_DAY, 1)
-                loopCal.set(Calendar.MINUTE, 0); loopCal.set(Calendar.SECOND, 0); loopCal.set(Calendar.MILLISECOND, 0)
-                val nextHour = loopCal.timeInMillis
-                val segEnd = min(e, nextHour)
-                arr[block] += (segEnd - s) / 1000L
-                s = segEnd
-            }
-        }
-        val timerState = prefs.safeString("timerState", "IDLE") ?: "IDLE"
-        val isTimerStudying = timerState == "STUDYING"
-        for (i in 1 until timeline.size) {
-            if (timeline[i - 1].state != "STUDYING" && timeline[i - 1].state != "MANUAL_FOCUS") continue
-            addFocusInterval(timeline[i - 1].timestamp, timeline[i].timestamp)
-        }
-        timeline.lastOrNull()?.let { last ->
-            if ((last.state == "STUDYING" || last.state == "MANUAL_FOCUS") && isTimerStudying) {
-                val cappedNowMs = min(nowMs, last.timestamp + 14400_000L)
-                addFocusInterval(last.timestamp, cappedNowMs)
-            }
-        }
-        val manualFocusToday = prefs.getLong("${todayStr}_focus_manual", 0L)
-        if (manualFocusToday != 0L) {
-            if (manualFocusToday > 0L) {
-                addFocusInterval(nowMs - manualFocusToday * 1000L, nowMs)
-            } else {
-                val calNow = Calendar.getInstance()
-                val block = calNow.get(Calendar.HOUR_OF_DAY) / 2
-                arr[block] = max(0L, arr[block] + manualFocusToday)
-            }
-        }
-        return arr
     }
 
     fun buildHeatmapData(): Map<String, Long> {

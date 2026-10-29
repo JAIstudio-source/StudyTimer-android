@@ -142,11 +142,46 @@ object AppBlockerManager {
     @Volatile
     private var cachedBlockedPackages: Set<String>? = null
 
+    fun parseStringSet(raw: String?): Set<String> {
+        if (raw.isNullOrBlank()) return emptySet()
+        val set = mutableSetOf<String>()
+        try {
+            val trimmed = raw.trim()
+            if (trimmed.startsWith("[")) {
+                val jsonArr = org.json.JSONArray(trimmed)
+                for (i in 0 until jsonArr.length()) {
+                    val s = jsonArr.optString(i)
+                    if (s.isNotBlank()) set.add(s)
+                }
+            } else {
+                trimmed.removeSurrounding("[", "]")
+                    .split(",")
+                    .map { it.trim().removeSurrounding("\"").removeSurrounding("'") }
+                    .filter { it.isNotEmpty() }
+                    .forEach { set.add(it) }
+            }
+        } catch (_: Exception) {
+            raw.replace("[", "").replace("]", "")
+                .split(",")
+                .map { it.trim().removeSurrounding("\"").removeSurrounding("'") }
+                .filter { it.isNotEmpty() }
+                .forEach { set.add(it) }
+        }
+        return set
+    }
+
     fun getBlockedPackages(context: Context): Set<String> {
         val cached = cachedBlockedPackages
         if (cached != null) return cached
         val prefs = getPrefs(context)
-        val set = prefs.getStringSet(KEY_BLOCKED_PACKAGES, null) ?: emptySet()
+        val set = try {
+            prefs.getStringSet(KEY_BLOCKED_PACKAGES, null) ?: emptySet()
+        } catch (_: ClassCastException) {
+            val raw = runCatching { prefs.getString(KEY_BLOCKED_PACKAGES, null) }.getOrNull()
+            val parsed = parseStringSet(raw)
+            prefs.edit().remove(KEY_BLOCKED_PACKAGES).putStringSet(KEY_BLOCKED_PACKAGES, parsed).apply()
+            parsed
+        }
         cachedBlockedPackages = set
         return set
     }
@@ -249,7 +284,14 @@ object AppBlockerManager {
 
         val prefs = getPrefs(context)
         val isFirstInit = !prefs.getBoolean(KEY_INITIALIZED, false)
-        val savedBlocked = prefs.getStringSet(KEY_BLOCKED_PACKAGES, null)
+        val savedBlocked = try {
+            prefs.getStringSet(KEY_BLOCKED_PACKAGES, null)
+        } catch (_: ClassCastException) {
+            val raw = runCatching { prefs.getString(KEY_BLOCKED_PACKAGES, null) }.getOrNull()
+            val parsed = parseStringSet(raw)
+            prefs.edit().remove(KEY_BLOCKED_PACKAGES).putStringSet(KEY_BLOCKED_PACKAGES, parsed).apply()
+            parsed
+        }
 
         val appItems = mutableListOf<AppItem>()
         val defaultBlockedSet = mutableSetOf<String>()

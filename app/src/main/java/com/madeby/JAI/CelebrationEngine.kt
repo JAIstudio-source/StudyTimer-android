@@ -25,11 +25,13 @@ object CelebrationEngine {
     private const val PREFS_NAME = "studytimer_celebration_prefs"
     private const val KEY_LAST_CELEBRATED_STREAK = "last_celebrated_streak"
     private const val KEY_LAST_CELEBRATED_GOAL_DATE = "last_celebrated_goal_date"
+    private const val KEY_LAST_CELEBRATED_STREAK_DATE = "last_celebrated_streak_date"
 
     fun checkAndCelebrate(
         activity: MainActivity,
         todayTotalSecs: Long,
         dailyGoalSecs: Long,
+        streakTargetSecs: Long,
         currentStreak: Int
     ) {
         val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -39,8 +41,10 @@ object CelebrationEngine {
         val lastGoalDate = prefs.getString(KEY_LAST_CELEBRATED_GOAL_DATE, null)
         val isNewGoalAchieved = goalReachedToday && lastGoalDate != todayStr
 
+        val streakReachedToday = todayTotalSecs >= streakTargetSecs && streakTargetSecs > 0
+        val lastStreakDate = prefs.getString(KEY_LAST_CELEBRATED_STREAK_DATE, null)
         val lastStreak = prefs.safeInt(KEY_LAST_CELEBRATED_STREAK, 0)
-        val isStreakIncreased = currentStreak > lastStreak && currentStreak > 0
+        val isStreakIncreased = streakReachedToday && currentStreak > 0 && lastStreakDate != todayStr
         val isNewStreakMilestone = isStreakIncreased && (currentStreak in listOf(7, 14, 21, 28, 50, 75, 100) || currentStreak % 50 == 0)
 
         if (isNewGoalAchieved || isStreakIncreased) {
@@ -48,14 +52,28 @@ object CelebrationEngine {
                 prefs.edit().putString(KEY_LAST_CELEBRATED_GOAL_DATE, todayStr).apply()
             }
             if (isStreakIncreased) {
-                prefs.edit().putInt(KEY_LAST_CELEBRATED_STREAK, currentStreak).apply()
+                prefs.edit()
+                    .putString(KEY_LAST_CELEBRATED_STREAK_DATE, todayStr)
+                    .putInt(KEY_LAST_CELEBRATED_STREAK, currentStreak)
+                    .apply()
             }
 
+            val oldStreak = if (lastStreak > 0 && lastStreak < currentStreak) lastStreak else (currentStreak - 1).coerceAtLeast(0)
+
             activity.runOnUiThread {
-                if (isNewStreakMilestone) {
+                if (isNewGoalAchieved && isStreakIncreased) {
+                    val onStreakDismiss: () -> Unit = {
+                        showCelebrationDialog(activity, isGoalAchieved = true, streak = currentStreak)
+                    }
+                    if (isNewStreakMilestone) {
+                        showCelebrationDialog(activity, isGoalAchieved = false, streak = currentStreak, onDismiss = onStreakDismiss)
+                    } else {
+                        StreakUpAnimationDialog.show(activity, oldStreak = oldStreak, newStreak = currentStreak, onDismiss = onStreakDismiss)
+                    }
+                } else if (isNewStreakMilestone) {
                     showCelebrationDialog(activity, isGoalAchieved = false, streak = currentStreak)
                 } else if (isStreakIncreased) {
-                    StreakUpAnimationDialog.show(activity, oldStreak = lastStreak, newStreak = currentStreak)
+                    StreakUpAnimationDialog.show(activity, oldStreak = oldStreak, newStreak = currentStreak)
                 } else if (isNewGoalAchieved) {
                     showCelebrationDialog(activity, isGoalAchieved = true, streak = currentStreak)
                 }
@@ -141,7 +159,8 @@ object CelebrationEngine {
     internal fun showCelebrationDialog(
         activity: MainActivity,
         isGoalAchieved: Boolean,
-        streak: Int
+        streak: Int,
+        onDismiss: (() -> Unit)? = null
     ) {
         if (activity.isFinishing || activity.isDestroyed) return
         try {
@@ -339,6 +358,10 @@ object CelebrationEngine {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 activity.window.decorView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+            }
+
+            if (onDismiss != null) {
+                dialog.setOnDismissListener { onDismiss.invoke() }
             }
 
             dialog.show()

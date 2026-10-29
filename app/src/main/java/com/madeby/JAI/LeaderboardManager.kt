@@ -821,21 +821,15 @@ object LeaderboardManager {
             }
         }
 
-        val startMs = startCal.timeInMillis
-        val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-
-        // Sum developer-authorized bonus for all dates in range
-        var devBonus = 0L
-        val scanCal = Calendar.getInstance().apply { timeInMillis = startMs }
+        var totalVerifiedSecs = 0L
+        val scanCal = Calendar.getInstance().apply { timeInMillis = startCal.timeInMillis }
         val todayCal = Calendar.getInstance().apply { timeInMillis = now.timeInMillis }
         while (!scanCal.after(todayCal)) {
             val dStr = sdf.format(scanCal.time)
-            devBonus += prefs.getLong("dev_leaderboard_bonus_secs_$dStr", 0L)
+            totalVerifiedSecs += getRealTimerFocusSecondsForDate(context, dStr)
             scanCal.add(Calendar.DAY_OF_YEAR, 1)
         }
-
-        val baseFocusSecs = FocusTimeProvider.getFocusSecondsForPeriod(context, period)
-        return (baseFocusSecs + devBonus).coerceAtLeast(0L)
+        return totalVerifiedSecs.coerceAtLeast(0L)
     }
 
     /**

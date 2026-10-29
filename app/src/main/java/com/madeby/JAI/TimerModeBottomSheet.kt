@@ -10,15 +10,14 @@ import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
-import com.google.android.material.switchmaterial.SwitchMaterial
 
 /**
- * Slide-up bottom sheet housing secondary timer configurations:
- * Modes (Stopwatch, Countdown, Pomodoro, Lecture), Interval Presets (25/5, 50/10, 90/20),
- * and quick switches (Flip-to-Focus gesture, Auto-Break, Sound/Haptics).
+ * Clean, modern bottom sheet for switching Timer Modes and configuring Pomodoro presets.
+ * Follows strict UI/UX guidelines: zero AI slop, uncluttered layout, contextual disclosure,
+ * crisp vector iconography, and direct link to main Timer & Focus settings.
  */
 object TimerModeBottomSheet {
 
@@ -53,7 +52,13 @@ object TimerModeBottomSheet {
                 setColor(bgCol)
                 setStroke(dp(1), if (isDark) 0x38FFFFFF.toInt() else 0x40CBD5E1.toInt())
             }
-            setPadding(dp(20), dp(16), dp(20), dp(24))
+            setPadding(dp(20), dp(16), dp(20), dp(28))
+            // Stable minimum height to avoid sheet feeling 'too low' and prevent abrupt height jumps
+            minimumHeight = dp(390)
+            layoutTransition = android.animation.LayoutTransition().apply {
+                enableTransitionType(android.animation.LayoutTransition.CHANGING)
+                setDuration(200L)
+            }
         }
 
         // 1. Drag Handle
@@ -76,7 +81,7 @@ object TimerModeBottomSheet {
             setPadding(0, 0, 0, dp(14))
         }
         val headerTitle = TextView(activity).apply {
-            text = "TIMER MODE & OPTIONS"
+            text = "TIMER MODE"
             textSize = 12f
             letterSpacing = 0.16f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -87,6 +92,10 @@ object TimerModeBottomSheet {
             text = "✕"
             textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            minWidth = dp(44)
+            minHeight = dp(44)
+            contentDescription = "Close timer mode sheet"
             setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
             setPadding(dp(8), dp(4), dp(8), dp(4))
             setOnClickListener { dialog.dismiss() }
@@ -95,53 +104,92 @@ object TimerModeBottomSheet {
         headerRow.addView(closeBtn)
         root.addView(headerRow)
 
-        val screenHeight = activity.resources.displayMetrics.heightPixels
-        val maxScrollHeight = (screenHeight * 0.72f).toInt().coerceIn(dp(360), dp(580))
-
-        val scroll = androidx.core.widget.NestedScrollView(activity).apply {
-            isFillViewport = true
-            isVerticalScrollBarEnabled = true
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                maxScrollHeight
-            )
-        }
-        val content = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
-        // Section: Timer Modes
-        content.addView(TextView(activity).apply {
-            text = "Focus Mode"
-            textSize = 14f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(textColor)
-            setPadding(0, 0, 0, dp(8))
-        })
-
         var currentMode = sharedPrefs.getString("timer_mode", "COUNTDOWN") ?: "COUNTDOWN"
         if (currentMode == "SUBJECT") {
             currentMode = "COUNTDOWN"
             sharedPrefs.edit().putString("timer_mode", "COUNTDOWN").putBoolean("show_subject_pie_chart", true).apply()
         }
-        val modes = listOf(
-            Triple("COUNTDOWN", "Pomodoro (Countdown)", "Structured study & break interval cycles with progress ring"),
-            Triple("STOPWATCH", "Stopwatch (Count Up)", "Continuous open-ended focus timer without countdown limits"),
-            Triple("LECTURE", "Class Schedule", "Sync with your custom timetable & lecture classes")
+
+        // Section label
+        val modeSectionLabel = TextView(activity).apply {
+            text = "Select Mode"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(textColor)
+            setPadding(0, 0, 0, dp(8))
+        }
+        root.addView(modeSectionLabel)
+
+        // Mode definitions: key, title, iconRes
+        val modeItems = listOf(
+            Triple("COUNTDOWN", "Pomodoro", R.drawable.ic_clock),
+            Triple("STOPWATCH", "Stopwatch", R.drawable.ic_target),
+            Triple("LECTURE", "Class Schedule", R.drawable.ic_calendar)
         )
 
-        val modePillsContainer = LinearLayout(activity).apply {
+        val modesContainer = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, dp(16))
+            setPadding(0, 0, 0, dp(8))
         }
 
-        fun refreshModes() {
-            modePillsContainer.removeAllViews()
-            for ((key, title, subtitle) in modes) {
+        // Presets Container: Keep always present in the layout hierarchy but elegantly dimmed/disabled
+        // when Pomodoro is not active. This completely prevents the bottom sheet from jumping up and down!
+        val presetsWrapper = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(4), 0, dp(14))
+        }
+
+        fun updatePresetsVisibility() {
+            val isPomo = (currentMode == "COUNTDOWN")
+            presetsWrapper.animate()
+                .alpha(if (isPomo) 1f else 0.35f)
+                .setDuration(180L)
+                .start()
+            for (i in 0 until presetsWrapper.childCount) {
+                val child = presetsWrapper.getChildAt(i)
+                child.isEnabled = isPomo
+                if (child is LinearLayout) {
+                    for (j in 0 until child.childCount) {
+                        child.getChildAt(j).isEnabled = isPomo
+                    }
+                }
+            }
+        }
+
+        fun selectMode(key: String) {
+            currentMode = key
+            activity.timerMode = key
+            val editor = sharedPrefs.edit()
+                .putString("timer_mode", key)
+                .putString("timerMode", key)
+                .putBoolean("lecture_mode_enabled", key == "LECTURE")
+
+            if (key == "COUNTDOWN") {
+                val pomoMins = sharedPrefs.safeLong("study_interval_minutes", 25L)
+                val workSecs = pomoMins * 60L
+                editor.putLong("focus_countdown_secs", workSecs)
+                editor.putLong("focus_remaining_secs", workSecs)
+                if (activity.currentTimerState == TimerState.IDLE) {
+                    activity.focusCountdownSecs = workSecs
+                    activity.focusRemainingSecs = workSecs
+                }
+            } else if (key == "STOPWATCH") {
+                if (activity.currentTimerState == TimerState.IDLE) {
+                    activity.focusRemainingSecs = 0L
+                }
+            }
+            editor.apply()
+            updatePresetsVisibility()
+            onModeChanged()
+        }
+
+        fun buildModeRows() {
+            modesContainer.removeAllViews()
+            for ((key, title, iconRes) in modeItems) {
                 val isSelected = currentMode == key
                 val item = LinearLayout(activity).apply {
-                    orientation = LinearLayout.VERTICAL
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
                     background = GradientDrawable().apply {
                         cornerRadius = dp(14).toFloat()
                         if (isSelected) {
@@ -152,79 +200,63 @@ object TimerModeBottomSheet {
                             setStroke(dp(1), if (isDark) 0xFF262A38.toInt() else 0xFFE2E8F0.toInt())
                         }
                     }
-                    setPadding(dp(16), dp(10), dp(16), dp(10))
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    minimumHeight = dp(52)
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
                         bottomMargin = dp(8)
                     }
                     isClickable = true
+                    isFocusable = true
                     setOnClickListener {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                        currentMode = key
-                        activity.timerMode = key
-                        val editor = sharedPrefs.edit()
-                            .putString("timer_mode", key)
-                            .putString("timerMode", key)
-                            .putBoolean("lecture_mode_enabled", key == "LECTURE")
-                        if (key == "COUNTDOWN") {
-                            val pomoMins = sharedPrefs.safeLong("study_interval_minutes", 25L)
-                            val workSecs = pomoMins * 60L
-                            editor.putLong("focus_countdown_secs", workSecs)
-                            editor.putLong("focus_remaining_secs", workSecs)
-                            if (activity.currentTimerState == TimerState.IDLE) {
-                                activity.focusCountdownSecs = workSecs
-                                activity.focusRemainingSecs = workSecs
-                            }
-                        } else if (key == "STOPWATCH") {
-                            if (activity.currentTimerState == TimerState.IDLE) {
-                                activity.focusRemainingSecs = 0L
-                            }
-                        }
-                        editor.apply()
-                        refreshModes()
-                        dialog.dismiss()
-                        onModeChanged()
+                        selectMode(key)
+                        buildModeRows()
                     }
                 }
 
-                val row = LinearLayout(activity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
+                // Mode Icon
+                val iconView = ImageView(activity).apply {
+                    setImageResource(iconRes)
+                    setColorFilter(if (isSelected) primary else if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
+                    layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply {
+                        marginEnd = dp(12)
+                    }
                 }
-                row.addView(TextView(activity).apply {
+                item.addView(iconView)
+
+                // Title
+                val titleView = TextView(activity).apply {
                     text = title
-                    textSize = 14.5f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    textSize = 14f
+                    typeface = Typeface.create("sans-serif-medium", if (isSelected) Typeface.BOLD else Typeface.NORMAL)
                     setTextColor(if (isSelected) primary else textColor)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                })
+                }
+                item.addView(titleView)
+
+                // Check indicator
                 if (isSelected) {
-                    row.addView(TextView(activity).apply {
-                        text = "✓"
-                        textSize = 14f
-                        typeface = Typeface.DEFAULT_BOLD
-                        setTextColor(primary)
-                    })
+                    val checkView = ImageView(activity).apply {
+                        setImageResource(R.drawable.ic_check_circle)
+                        setColorFilter(primary)
+                        layoutParams = LinearLayout.LayoutParams(dp(18), dp(18))
+                    }
+                    item.addView(checkView)
                 }
-                item.addView(row)
 
-                val subText = TextView(activity).apply {
-                    text = subtitle
-                    textSize = 11.5f
-                    setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
-                    setPadding(0, dp(2), 0, 0)
-                }
-                item.addView(subText)
-
-                modePillsContainer.addView(item)
+                modesContainer.addView(item)
             }
         }
-        refreshModes()
-        content.addView(modePillsContainer)
+        buildModeRows()
+        root.addView(modesContainer)
 
-        // Section: Pomodoro Presets
-        content.addView(TextView(activity).apply {
+        // Presets Section Header
+        presetsWrapper.addView(TextView(activity).apply {
             text = "Interval Presets"
-            textSize = 14f
+            textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(textColor)
             setPadding(0, dp(4), 0, dp(8))
@@ -232,223 +264,132 @@ object TimerModeBottomSheet {
 
         val presetsRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, dp(18))
         }
 
         val presets = listOf(
-            Pair("25 / 5", 25 to 5),
-            Pair("50 / 10", 50 to 10),
-            Pair("90 / 20", 90 to 20)
+            Triple("25 / 5", 25, 5),
+            Triple("50 / 10", 50, 10),
+            Triple("90 / 20", 90, 20)
         )
 
-        for ((label, times) in presets) {
-            val (workM, breakM) = times
+        fun buildPresetButtons() {
+            presetsRow.removeAllViews()
             val curStudyM = sharedPrefs.safeLong("study_interval_minutes", 25L).toInt()
             val curBreakM = sharedPrefs.safeLong("break_interval_minutes", 5L).toInt()
-            val isCurrentPreset = (curStudyM == workM && curBreakM == breakM)
 
-            val presetBtn = TextView(activity).apply {
-                text = label
-                textSize = 13f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                gravity = Gravity.CENTER
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                setTextColor(if (isCurrentPreset) primary else textColor)
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(12).toFloat()
-                    if (isCurrentPreset) {
-                        setColor(activity.tintedColor(primary, if (isDark) 35 else 20))
-                        setStroke(dp(2), primary)
-                    } else {
-                        setColor(if (isDark) 0xFF1A1D27.toInt() else 0xFFF8FAFC.toInt())
-                        setStroke(dp(1), if (isDark) 0xFF262A38.toInt() else 0xFFE2E8F0.toInt())
+            for (i in presets.indices) {
+                val (label, workM, breakM) = presets[i]
+                val isCurrentPreset = (curStudyM == workM && curBreakM == breakM)
+
+                val presetBtn = TextView(activity).apply {
+                    text = label
+                    textSize = 13f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    gravity = Gravity.CENTER
+                    minHeight = dp(42)
+                    setPadding(dp(10), dp(8), dp(10), dp(8))
+                    setTextColor(if (isCurrentPreset) primary else textColor)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(12).toFloat()
+                        if (isCurrentPreset) {
+                            setColor(activity.tintedColor(primary, if (isDark) 35 else 20))
+                            setStroke(dp(2), primary)
+                        } else {
+                            setColor(if (isDark) 0xFF1A1D27.toInt() else 0xFFF8FAFC.toInt())
+                            setStroke(dp(1), if (isDark) 0xFF262A38.toInt() else 0xFFE2E8F0.toInt())
+                        }
+                    }
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        if (i < presets.size - 1) rightMargin = dp(8)
+                    }
+                    setOnClickListener {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        val workSecs = workM * 60L
+                        val breakSecs = breakM * 60L
+                        sharedPrefs.edit()
+                            .putString("timer_mode", "COUNTDOWN")
+                            .putString("timerMode", "COUNTDOWN")
+                            .putLong("study_interval_minutes", workM.toLong())
+                            .putLong("break_interval_minutes", breakM.toLong())
+                            .putLong("focus_countdown_secs", workSecs)
+                            .putLong("break_countdown_secs", breakSecs)
+                            .putLong("focus_remaining_secs", workSecs)
+                            .putLong("break_remaining_secs", breakSecs)
+                            .putInt("pomodoro_study_minutes", workM)
+                            .putInt("pomodoro_break_minutes", breakM)
+                            .apply()
+                        activity.timerMode = "COUNTDOWN"
+                        if (activity.currentTimerState == TimerState.IDLE) {
+                            activity.focusCountdownSecs = workSecs
+                            activity.focusRemainingSecs = workSecs
+                        }
+                        buildPresetButtons()
+                        onModeChanged()
+                        dialog.dismiss()
                     }
                 }
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    rightMargin = dp(6)
-                }
-                setOnClickListener {
-                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                    val workSecs = workM * 60L
-                    val breakSecs = breakM * 60L
-                    sharedPrefs.edit()
-                        .putString("timer_mode", "COUNTDOWN")
-                        .putString("timerMode", "COUNTDOWN")
-                        .putLong("study_interval_minutes", workM.toLong())
-                        .putLong("break_interval_minutes", breakM.toLong())
-                        .putLong("focus_countdown_secs", workSecs)
-                        .putLong("break_countdown_secs", breakSecs)
-                        .putLong("focus_remaining_secs", workSecs)
-                        .putLong("break_remaining_secs", breakSecs)
-                        .putInt("pomodoro_study_minutes", workM)
-                        .putInt("pomodoro_break_minutes", breakM)
-                        .apply()
-                    activity.timerMode = "COUNTDOWN"
-                    if (activity.currentTimerState == TimerState.IDLE) {
-                        activity.focusCountdownSecs = workSecs
-                        activity.focusRemainingSecs = workSecs
-                    }
-                    dialog.dismiss()
-                    onModeChanged()
-                }
+                presetsRow.addView(presetBtn)
             }
-            presetsRow.addView(presetBtn)
         }
-        content.addView(presetsRow)
+        buildPresetButtons()
+        presetsWrapper.addView(presetsRow)
+        updatePresetsVisibility()
+        root.addView(presetsWrapper)
 
-        // Section: Smart Options & Toggles
-        content.addView(TextView(activity).apply {
-            text = "Smart Controls"
-            textSize = 14f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(textColor)
-            setPadding(0, dp(4), 0, dp(8))
-        })
-
-        // Toggle 1: Flip-to-Focus
-        val flipRow = LinearLayout(activity).apply {
+        // View More Options Button (Leads directly to main Timer & Focus settings tab)
+        val moreOptionsCard = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(8), dp(14), dp(8))
             background = GradientDrawable().apply {
                 cornerRadius = dp(14).toFloat()
-                setColor(if (isDark) 0xFF1A1D27.toInt() else 0xFFF8FAFC.toInt())
+                setColor(if (isDark) 0x14FFFFFF.toInt() else 0x0A0F172A.toInt())
+                setStroke(dp(1), if (isDark) 0x24FFFFFF.toInt() else 0x1AE2E8F0.toInt())
             }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(8)
+            minimumHeight = dp(48)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = dp(6)
             }
-        }
-        val flipCol = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        flipCol.addView(TextView(activity).apply {
-            text = "Flip-to-Focus Gesture"
-            textSize = 13.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(textColor)
-        })
-        flipCol.addView(TextView(activity).apply {
-            text = "Place phone face down to start timer automatically"
-            textSize = 11.5f
-            setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
-        })
-        flipRow.addView(flipCol)
-
-        val flipSwitch = SwitchMaterial(activity).apply {
-            isChecked = FlipToFocusManager.isEnabled(activity)
-            setOnCheckedChangeListener { _, isChecked ->
-                FlipToFocusManager.setEnabled(activity, isChecked)
-                (activity as? MainActivity)?.let { mainActivity ->
-                    mainActivity.syncFlipToFocusState()
-                    mainActivity.tabPageCache.remove(mainActivity.settingsTabKey(AppSettingsTab.TIMER))
-                }
-            }
-        }
-        flipRow.addView(flipSwitch)
-        content.addView(flipRow)
-
-        // Toggle 2: Auto-Break Flow
-        val breakRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setColor(if (isDark) 0xFF1A1D27.toInt() else 0xFFF8FAFC.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(8)
-            }
-        }
-        val breakCol = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        breakCol.addView(TextView(activity).apply {
-            text = "Auto-Start Breaks"
-            textSize = 13.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(textColor)
-        })
-        breakCol.addView(TextView(activity).apply {
-            text = "Transition seamlessly into break without tapping"
-            textSize = 11.5f
-            setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
-        })
-        breakRow.addView(breakCol)
-
-        val isAutoBreak = if (sharedPrefs.contains("pomodoro_auto_break")) {
-            sharedPrefs.getBoolean("pomodoro_auto_break", true)
-        } else if (sharedPrefs.contains("auto_break_enabled")) {
-            val legacy = sharedPrefs.getBoolean("auto_break_enabled", true)
-            sharedPrefs.edit().putBoolean("pomodoro_auto_break", legacy).apply()
-            legacy
-        } else {
-            true
-        }
-
-        val breakSwitch = SwitchMaterial(activity).apply {
-            isChecked = isAutoBreak
-            setOnCheckedChangeListener { _, isChecked ->
-                sharedPrefs.edit().putBoolean("pomodoro_auto_break", isChecked).apply()
-            }
-        }
-        breakRow.addView(breakSwitch)
-        content.addView(breakRow)
-
-        // Toggle 3: App Blocker (Focus Shield)
-        val isBlockerEnabled = AppBlockerManager.isEnabled(activity)
-        val blockerRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setColor(if (isDark) 0xFF1A1D27.toInt() else 0xFFF8FAFC.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                bottomMargin = dp(8)
-            }
+            isClickable = true
+            isFocusable = true
             setOnClickListener {
+                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                 dialog.dismiss()
-                AppBlockerSettingsSheet.show(activity)
+                activity.currentSettingsTab = AppSettingsTab.TIMER
+                activity.navigateToPanel(AppPanel.SETTINGS)
             }
         }
-        val blockerCol = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
+
+        val settingsIcon = ImageView(activity).apply {
+            setImageResource(R.drawable.ic_settings)
+            setColorFilter(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
+            layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply {
+                marginEnd = dp(10)
+            }
+        }
+        moreOptionsCard.addView(settingsIcon)
+
+        val moreText = TextView(activity).apply {
+            text = "More Timer & Focus Settings"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(textColor)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        blockerCol.addView(TextView(activity).apply {
-            text = "App Blocker (Focus Shield)"
-            textSize = 13.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(textColor)
-        })
-        val blockerDesc = if (isBlockerEnabled) {
-            val count = AppBlockerManager.getBlockedPackages(activity).size
-            "Shield active • $count apps blocked (tap to configure)"
-        } else {
-            "Shield your focus from distracting apps"
-        }
-        blockerCol.addView(TextView(activity).apply {
-            text = blockerDesc
-            textSize = 11.5f
-            setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
-        })
-        blockerRow.addView(blockerCol)
+        moreOptionsCard.addView(moreText)
 
-        val blockerChevron = TextView(activity).apply {
+        val chevron = TextView(activity).apply {
             text = "›"
-            textSize = 18f
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
             setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
-            setPadding(dp(8), 0, dp(4), 0)
         }
-        blockerRow.addView(blockerChevron)
-        content.addView(blockerRow)
+        moreOptionsCard.addView(chevron)
 
-        scroll.addView(content)
-        root.addView(scroll)
+        root.addView(moreOptionsCard)
 
         FontStyleManager.applyRecursively(root)
 

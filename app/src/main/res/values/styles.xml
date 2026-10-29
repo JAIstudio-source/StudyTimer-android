@@ -8,6 +8,10 @@
         <item name="android:statusBarColor">#000000</item>
         <item name="android:navigationBarColor">#000000</item>
         <item name="android:windowBackground">#000000</item>
+        <item name="android:defaultFocusHighlightEnabled">false</item>
+        <item name="colorControlHighlight">@android:color/transparent</item>
+        <item name="android:colorControlHighlight">@android:color/transparent</item>
+        <item name="switchStyle">@style/CleanSwitchStyle</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="Theme.MaterialComponents.NoActionBar">
@@ -17,6 +21,16 @@
         <item name="android:statusBarColor">#000000</item>
         <item name="android:navigationBarColor">#000000</item>
         <item name="android:windowBackground">#000000</item>
+        <item name="android:defaultFocusHighlightEnabled">false</item>
+        <item name="colorControlHighlight">@android:color/transparent</item>
+        <item name="android:colorControlHighlight">@android:color/transparent</item>
+        <item name="switchStyle">@style/CleanSwitchStyle</item>
+    </style>
+
+    <style name="CleanSwitchStyle" parent="Widget.MaterialComponents.CompoundButton.Switch">
+        <item name="android:background">@null</item>
+        <item name="android:defaultFocusHighlightEnabled">false</item>
+        <item name="android:focusable">false</item>
     </style>
 
     <style name="DialogScaleAnimation" parent="@android:style/Animation.Dialog">
@@ -55,5 +69,12 @@
         <item name="android:background">@android:color/transparent</item>
     </style>
 
-</resources>
+    <style name="FullScreenOnboardingDialogTheme" parent="Theme.MaterialComponents.NoActionBar">
+        <item name="android:windowIsFloating">false</item>
+        <item name="android:windowBackground">@drawable/bg_login_gradient</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowAnimationStyle">@style/DialogScaleAnimation</item>
+    </style>
 
+</resources>

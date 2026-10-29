@@ -30,7 +30,29 @@ data class UserProfile(
 object ProfileManager {
     private const val PREFS_NAME = "StudyTimerPrefs"
     private const val KEY_PROFILE_JSON = "__user_profile__"
+    private const val KEY_REJECTION_ACKNOWLEDGED = "profile_rejection_acknowledged"
     private const val TAG = "ProfileManager"
+
+    fun isRejectionAcknowledged(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_REJECTION_ACKNOWLEDGED, false)
+    }
+
+    fun acknowledgeRejection(context: Context) {
+        getPrefs(context).edit().putBoolean(KEY_REJECTION_ACKNOWLEDGED, true).apply()
+        val current = getProfile(context)
+        if (current.moderationStatus == ModerationStatus.REJECTED || current.rejectionReason != null) {
+            val updated = current.copy(
+                moderationStatus = ModerationStatus.APPROVED,
+                rejectionReason = null,
+                updatedAt = System.currentTimeMillis()
+            )
+            saveProfile(context, updated)
+        }
+    }
+
+    fun resetRejectionAcknowledgment(context: Context) {
+        getPrefs(context).edit().putBoolean(KEY_REJECTION_ACKNOWLEDGED, false).apply()
+    }
 
     private fun getPrefs(context: Context): SharedPreferences {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -57,7 +79,7 @@ object ProfileManager {
             val statusStr = json.optString("moderationStatus", json.optString("displayNameStatus", "APPROVED"))
             val status = when (statusStr.uppercase()) {
                 "PENDING", "PENDING_APPROVAL" -> ModerationStatus.PENDING_APPROVAL
-                "REJECTED" -> ModerationStatus.REJECTED
+                "REJECTED" -> if (isRejectionAcknowledged(context)) ModerationStatus.APPROVED else ModerationStatus.REJECTED
                 "NONE" -> ModerationStatus.NONE
                 else -> ModerationStatus.APPROVED
             }
@@ -255,7 +277,7 @@ object ProfileManager {
             val statusStr = profileJsonObj.optString("moderationStatus", profileJsonObj.optString("profileStatus", profileJsonObj.optString("displayNameStatus", "APPROVED")))
             val status = when (statusStr.uppercase()) {
                 "PENDING", "PENDING_APPROVAL" -> ModerationStatus.PENDING_APPROVAL
-                "REJECTED" -> ModerationStatus.REJECTED
+                "REJECTED" -> if (isRejectionAcknowledged(context)) ModerationStatus.APPROVED else ModerationStatus.REJECTED
                 "NONE" -> ModerationStatus.NONE
                 else -> ModerationStatus.APPROVED
             }

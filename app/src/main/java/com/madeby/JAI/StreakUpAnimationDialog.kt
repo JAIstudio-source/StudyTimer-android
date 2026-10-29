@@ -40,7 +40,7 @@ object StreakUpAnimationDialog {
         var alpha: Float = 1f
     )
 
-    fun show(activity: MainActivity, oldStreak: Int, newStreak: Int) {
+    fun show(activity: MainActivity, oldStreak: Int, newStreak: Int, onDismiss: (() -> Unit)? = null) {
         if (activity.isFinishing || activity.isDestroyed) return
         try {
             val dialog = Dialog(activity)
@@ -310,6 +310,10 @@ object StreakUpAnimationDialog {
                     }
                     .start()
             }, 650L)
+
+            if (onDismiss != null) {
+                dialog.setOnDismissListener { onDismiss.invoke() }
+            }
 
             dialog.show()
         } catch (_: Exception) {}

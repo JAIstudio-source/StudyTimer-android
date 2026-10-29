@@ -721,6 +721,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    internal fun dp(value: Float): Int = (value * resources.displayMetrics.density).toInt()
+    internal fun dpF(value: Float): Float = value * resources.displayMetrics.density
 
     internal fun lightenColor(color: Int, amount: Float): Int {
         val hsv = FloatArray(3)
@@ -3459,6 +3461,7 @@ class MainActivity : AppCompatActivity() {
                 activity = this,
                 todayTotalSecs = totalTodayFocus,
                 dailyGoalSecs = dailyGoal,
+                streakTargetSecs = dailyGoal,
                 currentStreak = streak
             )
         }

@@ -18,15 +18,7 @@ object PlannerThemeHelper {
         Color.argb(alpha, Color.red(color), Color.green(color), Color.blue(color))
 
     fun resolvePlannerColors(context: Context, themeCoordinator: ThemeCoordinator): Pair<Int, Int> {
-        val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        return when (prefs.getString("planner_theme_preset", "DEFAULT")) {
-            "EMERALD" -> Pair(0xFF10B981.toInt(), 0xFFF59E0B.toInt())
-            "VIOLET" -> Pair(0xFF8B5CF6.toInt(), 0xFF06B6D4.toInt())
-            "OCEAN" -> Pair(0xFF06B6D4.toInt(), 0xFFFF6B6B.toInt())
-            "SUNSET" -> Pair(0xFFF97316.toInt(), 0xFF10B981.toInt())
-            "MIDNIGHT" -> Pair(0xFFEAB308.toInt(), 0xFFEC4899.toInt())
-            else -> Pair(themeCoordinator.accentColor, themeCoordinator.secondaryColor)
-        }
+        return Pair(themeCoordinator.primaryColor, themeCoordinator.secondaryColor)
     }
 
     fun resolvePlannerAccentColor(context: Context, themeCoordinator: ThemeCoordinator): Int =

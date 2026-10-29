@@ -398,16 +398,229 @@ object PlannerHistoryManager {
                             put("goalId", s.goalId)
                             put("title", s.title)
                             put("targetMinutes", s.targetMinutes)
+                            put("actualMinutes", s.actualMinutes)
                             put("completed", s.completed)
                             put("checkedAt", s.checkedAt)
                             put("isAchieved", s.isAchieved)
+                            if (s.subjectId != null) put("subjectId", s.subjectId)
+                            if (s.subTopic != null) put("subTopic", s.subTopic)
+                            put("note", s.note)
+                            if (s.scheduledDays.isNotEmpty()) {
+                                put("scheduledDays", JSONArray(s.scheduledDays))
+                            }
                         })
                     }
                     editor.putString(key, array.toString())
                 }
             }
         }
+        val dailyStr = prefs.getString(KEY_DAILY_GOAL_DURATIONS, "{}") ?: "{}"
+        try {
+            val dailyJson = JSONObject(dailyStr)
+            var modified = false
+            val dateKeys = dailyJson.keys()
+            while (dateKeys.hasNext()) {
+                val dKey = dateKeys.next()
+                val dayObj = dailyJson.optJSONObject(dKey) ?: continue
+                if (dayObj.has(goalId)) {
+                    dayObj.remove(goalId)
+                    modified = true
+                }
+            }
+            if (modified) {
+                editor.putString(KEY_DAILY_GOAL_DURATIONS, dailyJson.toString())
+            }
+        } catch (_: Exception) {}
         editor.apply()
+    }
+
+    /**
+     * Merges all historical completion records, snapshots, and recorded study durations
+     * from a deleted / archived goal into a target active goal.
+     */
+    fun mergeGoalHistory(context: Context, fromGoalId: String, toGoalId: String, toGoalTitle: String) {
+        if (fromGoalId.isBlank() || toGoalId.isBlank() || fromGoalId == toGoalId) return
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        var earliestDate: Long = 0L
+
+        val allKeys = prefs.all.keys
+        for (key in allKeys) {
+            if (key.endsWith(SNAPSHOT_KEY_SUFFIX)) {
+                val rawJson = prefs.getString(key, null) ?: continue
+                val snapshots = parseSnapshots(rawJson)
+                val fromSnap = snapshots.firstOrNull { it.goalId == fromGoalId } ?: continue
+
+                val dateStr = key.removeSuffix(SNAPSHOT_KEY_SUFFIX)
+                val parsedDate = runCatching { sdf.parse(dateStr) }.getOrNull()
+                if (parsedDate != null) {
+                    if (earliestDate == 0L || parsedDate.time < earliestDate) {
+                        earliestDate = parsedDate.time
+                    }
+                }
+                if (fromSnap.checkedAt > 0L) {
+                    if (earliestDate == 0L || fromSnap.checkedAt < earliestDate) {
+                        earliestDate = fromSnap.checkedAt
+                    }
+                }
+
+                val toSnap = snapshots.firstOrNull { it.goalId == toGoalId }
+                val updatedList = mutableListOf<PlannerGoalSnapshot>()
+
+                if (toSnap != null) {
+                    // Both goals have records on this date: combine them into toSnap
+                    for (s in snapshots) {
+                        if (s.goalId == fromGoalId) {
+                            // Omit fromSnap (merged into toSnap)
+                        } else if (s.goalId == toGoalId) {
+                            val mergedCompleted = toSnap.completed || fromSnap.completed
+                            val mergedAchieved = toSnap.isAchieved || fromSnap.isAchieved
+                            val mergedActualMins = maxOf(toSnap.actualMinutes, fromSnap.actualMinutes)
+                            val mergedCheckedAt = if (toSnap.checkedAt > 0L) toSnap.checkedAt else fromSnap.checkedAt
+                            updatedList.add(
+                                toSnap.copy(
+                                    completed = mergedCompleted,
+                                    isAchieved = mergedAchieved,
+                                    actualMinutes = mergedActualMins,
+                                    checkedAt = mergedCheckedAt
+                                )
+                            )
+                        } else {
+                            updatedList.add(s)
+                        }
+                    }
+                } else {
+                    // Only fromGoalId existed on this date: reassign to toGoalId and toGoalTitle
+                    for (s in snapshots) {
+                        if (s.goalId == fromGoalId) {
+                            updatedList.add(
+                                s.copy(
+                                    goalId = toGoalId,
+                                    title = toGoalTitle
+                                )
+                            )
+                        } else {
+                            updatedList.add(s)
+                        }
+                    }
+                }
+
+                val array = JSONArray()
+                for (s in updatedList) {
+                    array.put(JSONObject().apply {
+                        put("goalId", s.goalId)
+                        put("title", s.title)
+                        put("targetMinutes", s.targetMinutes)
+                        put("actualMinutes", s.actualMinutes)
+                        put("completed", s.completed)
+                        put("checkedAt", s.checkedAt)
+                        put("isAchieved", s.isAchieved)
+                        if (s.subjectId != null) put("subjectId", s.subjectId)
+                        if (s.subTopic != null) put("subTopic", s.subTopic)
+                        put("note", s.note)
+                        if (s.scheduledDays.isNotEmpty()) {
+                            val daysArr = JSONArray()
+                            s.scheduledDays.forEach { daysArr.put(it) }
+                            put("scheduledDays", daysArr)
+                        }
+                    })
+                }
+                editor.putString(key, array.toString())
+            }
+        }
+
+        // Merge daily goal durations recorded under the old goal ID
+        val dailyStr = prefs.getString(KEY_DAILY_GOAL_DURATIONS, "{}") ?: "{}"
+        try {
+            val dailyJson = JSONObject(dailyStr)
+            var modifiedDurations = false
+            val dateKeys = dailyJson.keys()
+            while (dateKeys.hasNext()) {
+                val dKey = dateKeys.next()
+                val dayObj = dailyJson.optJSONObject(dKey) ?: continue
+                if (dayObj.has(fromGoalId)) {
+                    val fromSecs = dayObj.optLong(fromGoalId, 0L)
+                    val toSecs = dayObj.optLong(toGoalId, 0L)
+                    dayObj.put(toGoalId, toSecs + fromSecs)
+                    dayObj.remove(fromGoalId)
+                    modifiedDurations = true
+                }
+            }
+            if (modifiedDurations) {
+                editor.putString(KEY_DAILY_GOAL_DURATIONS, dailyJson.toString())
+            }
+        } catch (_: Exception) {}
+
+        // Extend target goal createdAt if the merged goal has older records
+        if (earliestDate > 0L) {
+            val activeJson = prefs.getString("session_goals_json", "[]") ?: "[]"
+            try {
+                val activeArr = JSONArray(activeJson)
+                var modifiedActive = false
+                for (i in 0 until activeArr.length()) {
+                    val obj = activeArr.getJSONObject(i)
+                    if (obj.optString("id") == toGoalId) {
+                        val curCreated = obj.optLong("createdAt", 0L)
+                        if (curCreated == 0L || earliestDate < curCreated) {
+                            obj.put("createdAt", earliestDate)
+                            modifiedActive = true
+                        }
+                    }
+                }
+                if (modifiedActive) {
+                    editor.putString("session_goals_json", activeArr.toString())
+                }
+            } catch (_: Exception) {}
+        }
+
+        editor.apply()
+    }
+
+    /**
+     * Restores an archived/deleted goal back into the active goals list (today's planner).
+     */
+    fun restoreArchivedGoal(
+        context: Context,
+        archivedGoalId: String,
+        title: String,
+        note: String = "",
+        targetMinutes: Int = 0,
+        subjectId: String? = null,
+        subTopic: String? = null,
+        scheduledDays: List<Int> = emptyList(),
+        createdAt: Long = 0L
+    ): Boolean {
+        if (archivedGoalId.isBlank()) return false
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val activeJson = prefs.getString("session_goals_json", "[]") ?: "[]"
+        return try {
+            val arr = JSONArray(activeJson)
+            for (i in 0 until arr.length()) {
+                if (arr.getJSONObject(i).optString("id") == archivedGoalId) {
+                    return false // already active
+                }
+            }
+            val newGoalObj = JSONObject().apply {
+                put("id", archivedGoalId)
+                put("title", title)
+                put("note", note)
+                put("targetMinutes", targetMinutes)
+                put("completed", false)
+                put("checkedAt", 0L)
+                put("createdAt", if (createdAt > 0L) createdAt else System.currentTimeMillis())
+                if (subjectId != null) put("subjectId", subjectId)
+                if (subTopic != null) put("subTopic", subTopic)
+                if (scheduledDays.isNotEmpty()) {
+                    put("scheduledDays", JSONArray(scheduledDays))
+                }
+            }
+            arr.put(newGoalObj)
+            prefs.edit().putString("session_goals_json", arr.toString()).apply()
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun computeGoalInsights(

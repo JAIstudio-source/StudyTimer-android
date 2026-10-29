@@ -453,20 +453,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
             }
 
-            if (themeCoordinator.isGlassStyle() && !pureWhiteTimerEnabled() && !isPomoWhite) {
-                val glowAlpha = when {
-                    themeCoordinator.activeBgMode == "OLED" -> 0.22f
-                    themeCoordinator.activeBgMode == "LIGHT" -> 0.3f
-                    else -> 0.38f
-                }
-                val timerGlow = ImageView(this).apply {
-                    setImageDrawable(themeCoordinator.createGlowBlob(themeCoordinator.primaryColor))
-                    alpha = glowAlpha
-                    layoutParams = FrameLayout.LayoutParams(if (isLandscape) dp(420) else dp(360), if (isLandscape) dp(420) else dp(360), Gravity.CENTER)
-                }
-                centerClocksWrapper.addView(timerGlow)
-            }
-
             val savedTimerMode = sharedPrefs.getString("timer_mode", "SUBJECT") ?: "SUBJECT"
             val isPomodoro = (savedTimerMode == "COUNTDOWN")
             timerRing = TimerRingView(this).apply {
