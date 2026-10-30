@@ -1,16 +1,13 @@
 package com.madeby.JAI
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.PathMeasure
-import android.view.animation.DecelerateInterpolator
-import android.view.animation.OvershootInterpolator
+import android.graphics.RectF
 import androidx.appcompat.widget.AppCompatButton
+import kotlin.math.PI
 import kotlin.math.min
 
 class HoldRingButton(context: Context) : AppCompatButton(context) {
@@ -19,29 +16,23 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
         setWillNotDraw(false)
     }
 
-    private var decayAnimator: ValueAnimator? = null
+    private var decayAnimator: android.animation.ValueAnimator? = null
 
     var progress: Float = 0f
         set(value) {
             val clamped = value.coerceIn(0f, 1f)
             if (field != clamped) {
                 field = clamped
-                invalidate()
+                postInvalidateOnAnimation()
             }
         }
-
-    fun startHold() {
-        decayAnimator?.cancel()
-        decayAnimator = null
-        progress = 0f
-    }
 
     fun animateProgressToZero(durationMs: Long = 220L) {
         decayAnimator?.cancel()
         if (progress <= 0f) return
-        decayAnimator = ValueAnimator.ofFloat(progress, 0f).apply {
+        decayAnimator = android.animation.ValueAnimator.ofFloat(progress, 0f).apply {
             duration = durationMs
-            interpolator = DecelerateInterpolator()
+            interpolator = android.view.animation.DecelerateInterpolator()
             addUpdateListener { anim ->
                 progress = anim.animatedValue as Float
             }
@@ -61,11 +52,11 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
         animate().scaleX(if (pressed) 0.96f else 1.0f)
             .scaleY(if (pressed) 0.96f else 1.0f)
             .setDuration(if (pressed) 90L else 220L)
-            .setInterpolator(if (pressed) DecelerateInterpolator() else OvershootInterpolator(1.3f))
+            .setInterpolator(if (pressed) android.view.animation.DecelerateInterpolator() else android.view.animation.OvershootInterpolator(1.3f))
             .start()
     }
 
-    private val strokePx = 4.5f * resources.displayMetrics.density
+    private val strokePx = 3.5f * resources.displayMetrics.density
 
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
@@ -82,10 +73,10 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
     }
 
     private val fullPath = Path()
-    private val pathMeasure = PathMeasure()
+    private val drawPath = Path()
+    private val pathMeasure = android.graphics.PathMeasure()
     private var lastMeasuredW = 0
     private var lastMeasuredH = 0
-    private var totalPathLen = 0f
 
     private fun rebuildFullPath(w: Int, h: Int) {
         if (w <= 0 || h <= 0) return
@@ -94,28 +85,15 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
         val top = inset
         val right = w - inset
         val bottom = h - inset
-        val innerW = right - left
-        val innerH = bottom - top
-        if (innerW <= 0f || innerH <= 0f) return
 
-        val r = min(innerH / 2f, innerW / 2f)
-        val cx = (left + right) / 2f
+        // 20dp corner radius matching the outlined button shape
+        val cornerRadius = min(20f * resources.displayMetrics.density, min(w, h) / 2f)
 
         fullPath.reset()
-        // Start top-center, progress clockwise around the capsule
-        fullPath.moveTo(cx, top)
-        fullPath.lineTo(right - r, top)
-        fullPath.arcTo(right - 2f * r, top, right, top + 2f * r, 270f, 90f, false)
-        fullPath.lineTo(right, bottom - r)
-        fullPath.arcTo(right - 2f * r, bottom - 2f * r, right, bottom, 0f, 90f, false)
-        fullPath.lineTo(left + r, bottom)
-        fullPath.arcTo(left, bottom - 2f * r, left + 2f * r, bottom, 90f, 90f, false)
-        fullPath.lineTo(left, top + r)
-        fullPath.arcTo(left, top, left + 2f * r, top + 2f * r, 180f, 90f, false)
-        fullPath.close()
+        val rectF = RectF(left, top, right, bottom)
+        fullPath.addRoundRect(rectF, cornerRadius, cornerRadius, Path.Direction.CW)
 
         pathMeasure.setPath(fullPath, false)
-        totalPathLen = pathMeasure.length
         lastMeasuredW = w
         lastMeasuredH = h
     }
@@ -127,21 +105,27 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
+        drawProgressRing(canvas)
+    }
+
+    private fun drawProgressRing(canvas: Canvas) {
         if (progress <= 0.001f) return
-        if (lastMeasuredW != width || lastMeasuredH != height || totalPathLen <= 0f) {
+        if (lastMeasuredW != width || lastMeasuredH != height) {
             rebuildFullPath(width, height)
         }
-        if (totalPathLen <= 0f) return
+        val len = pathMeasure.length
+        if (len <= 0f) return
 
-        // 1. Subtle perimeter track
+        // Subtle background track
         trackPaint.color = (ringColor and 0x00FFFFFF) or 0x33000000
         canvas.drawPath(fullPath, trackPaint)
 
-        // 2. Hardware-accelerated native DashPathEffect progress sweep
+        // Active progress ring
         paint.color = ringColor
-        val drawLen = (totalPathLen * progress).coerceIn(0f, totalPathLen)
-        paint.pathEffect = DashPathEffect(floatArrayOf(drawLen, totalPathLen), 0f)
-        canvas.drawPath(fullPath, paint)
+        drawPath.reset()
+        if (pathMeasure.getSegment(0f, len * progress, drawPath, true)) {
+            canvas.drawPath(drawPath, paint)
+        }
     }
 
     override fun onDetachedFromWindow() {

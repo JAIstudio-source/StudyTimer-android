@@ -629,7 +629,6 @@ class MainActivity : AppCompatActivity() {
         isHoldingStop = false
         if (::stopBtn.isInitialized) {
             stopBtn.isPressed = false
-            stopBtn.text = "Finish Session"
             stopBtn.animateProgressToZero()
         }
         handler.removeCallbacks(holdToEndRunnable)
@@ -637,7 +636,7 @@ class MainActivity : AppCompatActivity() {
 
     internal val holdToEndRunnable = object : Runnable {
         override fun run() {
-            if (isDestroyed || !isHoldingStop || !::stopBtn.isInitialized) {
+            if (isDestroyed || !isHoldingStop || !::stopBtn.isInitialized || !stopBtn.isPressed) {
                 resetHoldToEnd()
                 return
             }
@@ -3118,9 +3117,9 @@ class MainActivity : AppCompatActivity() {
                     mainBtn.background = outlinedButtonBackground()
                 }
 
-                // Slot 2 (Right): Terminal Action - FINISH SESSION
+                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Finish Session"
+                stopBtn.text = "Hold to Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3147,7 +3146,7 @@ class MainActivity : AppCompatActivity() {
                 pauseBtn.setOnClickListener { handleStateToggle() }
                 mainBtn.visibility = View.GONE
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Finish Session"
+                stopBtn.text = "Hold to Finish"
                 stopBtn.ringColor = themeCoordinator.primaryColor
                 checkAndShowLecturePrompt()
             }
@@ -3198,9 +3197,9 @@ class MainActivity : AppCompatActivity() {
                     mainBtn.background = outlinedButtonBackground()
                 }
 
-                // Slot 2 (Right): Terminal Action - FINISH SESSION
+                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Finish Session"
+                stopBtn.text = "Hold to Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3261,9 +3260,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 mainBtn.setOnClickListener { handleStateToggle() }
 
-                // Slot 2 (Right): Terminal Action - FINISH SESSION
+                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Finish Session"
+                stopBtn.text = "Hold to Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
