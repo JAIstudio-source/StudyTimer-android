@@ -24,7 +24,6 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
             if (field != clamped) {
                 field = clamped
                 invalidate()
-                postInvalidateOnAnimation()
             }
         }
 
@@ -57,76 +56,95 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
             .start()
     }
 
-    private val strokePx = 3.5f * resources.displayMetrics.density
+    private val strokePx = 4.5f * resources.displayMetrics.density
 
+    // Subtle background track so user sees the progress path instantly on press
     private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = strokePx
         strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
     }
 
+    // Active progress stroke
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeWidth = strokePx
         strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
     }
 
-    private val fullPath = Path()
-    private val drawPath = Path()
-    private val pathMeasure = android.graphics.PathMeasure()
-    private var lastMeasuredW = 0
-    private var lastMeasuredH = 0
-
-    private fun rebuildFullPath(w: Int, h: Int) {
-        if (w <= 0 || h <= 0) return
-        val inset = strokePx / 2f + 1f
-        val left = inset
-        val top = inset
-        val right = w - inset
-        val bottom = h - inset
-
-        // 20dp corner radius matching the outlined button shape
-        val cornerRadius = min(20f * resources.displayMetrics.density, min(w, h) / 2f)
-
-        fullPath.reset()
-        val rectF = RectF(left, top, right, bottom)
-        fullPath.addRoundRect(rectF, cornerRadius, cornerRadius, Path.Direction.CW)
-
-        pathMeasure.setPath(fullPath, false)
-        lastMeasuredW = w
-        lastMeasuredH = h
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        rebuildFullPath(w, h)
-    }
+    private val cornerRadius = 80f * resources.displayMetrics.density
+    private val ringPath = Path()
+    private val cornerRect = RectF()
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        drawProgressRing(canvas)
-    }
+        if (progress <= 0.005f) return
 
-    private fun drawProgressRing(canvas: Canvas) {
-        if (progress <= 0.001f) return
-        if (lastMeasuredW != width || lastMeasuredH != height) {
-            rebuildFullPath(width, height)
-        }
-        val len = pathMeasure.length
-        if (len <= 0f) return
+        val inset = strokePx / 2f + 1f
+        val left = inset
+        val top = inset
+        val right = width - inset
+        val bottom = height - inset
+        val w = right - left
+        val h = bottom - top
+        if (w <= 0f || h <= 0f) return
 
-        // Subtle background track
+        val r = min(cornerRadius, min(w, h) / 2f)
+        val arcLen = (PI * r / 2f).toFloat()
+        val edgeW = (w - 2f * r).coerceAtLeast(0f)
+        val edgeH = (h - 2f * r).coerceAtLeast(0f)
+        val totalLen = 2f * (edgeW + edgeH) + 4f * arcLen
+        if (totalLen <= 0f) return
+
+        // 1. Draw subtle background track along the full perimeter
         trackPaint.color = (ringColor and 0x00FFFFFF) or 0x33000000
-        canvas.drawPath(fullPath, trackPaint)
+        cornerRect.set(left, top, right, bottom)
+        ringPath.reset()
+        ringPath.addRoundRect(cornerRect, r, r, Path.Direction.CW)
+        canvas.drawPath(ringPath, trackPaint)
 
-        // Active progress ring
+        // 2. Draw active progress ring path with hardware-safe explicit geometry
         paint.color = ringColor
-        drawPath.reset()
-        if (pathMeasure.getSegment(0f, len * progress, drawPath, true)) {
-            canvas.drawPath(drawPath, paint)
+        var remaining = progress * totalLen
+        ringPath.reset()
+
+        fun lineSegment(fullLen: Float, startX: Float, startY: Float, endX: Float, endY: Float) {
+            if (remaining <= 0f || fullLen <= 0f) return
+            if (remaining >= fullLen) {
+                ringPath.moveTo(startX, startY)
+                ringPath.lineTo(endX, endY)
+                remaining -= fullLen
+            } else {
+                val t = remaining / fullLen
+                ringPath.moveTo(startX, startY)
+                ringPath.lineTo(startX + (endX - startX) * t, startY + (endY - startY) * t)
+                remaining = 0f
+            }
         }
+
+        fun cornerArc(l: Float, t: Float, rVal: Float, b: Float, startAngle: Float) {
+            if (remaining <= 0f || arcLen <= 0f) return
+            cornerRect.set(l, t, rVal, b)
+            if (remaining >= arcLen) {
+                ringPath.addArc(cornerRect, startAngle, 90f)
+                remaining -= arcLen
+            } else {
+                ringPath.addArc(cornerRect, startAngle, (remaining / arcLen) * 90f)
+                remaining = 0f
+            }
+        }
+
+        // Clockwise perimeter starting from top edge just after top-left corner
+        lineSegment(edgeW, left + r, top, right - r, top)
+        cornerArc(right - 2f * r, top, right, top + 2f * r, 270f)
+        lineSegment(edgeH, right, top + r, right, bottom - r)
+        cornerArc(right - 2f * r, bottom - 2f * r, right, bottom, 0f)
+        lineSegment(edgeW, right - r, bottom, left + r, bottom)
+        cornerArc(left, bottom - 2f * r, left + 2f * r, bottom, 90f)
+        lineSegment(edgeH, left, bottom - r, left, top + r)
+        cornerArc(left, top, left + 2f * r, top + 2f * r, 180f)
+
+        canvas.drawPath(ringPath, paint)
     }
 
     override fun onDetachedFromWindow() {
