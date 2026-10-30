@@ -2,6 +2,7 @@ package com.madeby.JAI
 
 import android.app.DatePickerDialog
 import android.app.Dialog
+import android.app.TimePickerDialog
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -70,14 +71,31 @@ class CalendarTimeline(private val host: MainActivity) {
             }
 
             // Card Section Header
-            calendarCard.addView(TextView(this).apply {
+            val headerRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(14))
+            }
+            headerRow.addView(TextView(this).apply {
                 text = "MONTHLY STUDY HISTORY"
                 setTextColor(themeCoordinator.primaryColor)
                 textSize = 11f
                 letterSpacing = 0.18f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(0, 0, 0, dp(14))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
+            headerRow.addView(TextView(this).apply {
+                text = "+ Add Past Session"
+                setTextColor(themeCoordinator.primaryColor)
+                textSize = 11f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 35), 10f)
+                setPadding(dp(10), dp(4), dp(10), dp(4))
+                setOnClickListener {
+                    DeveloperToolsHelper.showAdjustTodayTimeDialog(this@with, themeCoordinator, isDeveloperExtended = false)
+                }
+            })
+            calendarCard.addView(headerRow)
 
             // Navigation Row
             val navRow = LinearLayout(this).apply {
@@ -745,6 +763,11 @@ class CalendarTimeline(private val host: MainActivity) {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val dp = { v: Int -> (v * activity.resources.displayMetrics.density).toInt() }
 
+        val scroll = ScrollView(activity).apply {
+            isFillViewport = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+        }
+
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             background = themeCoordinator.createDialogBackground(28f)
@@ -763,17 +786,17 @@ class CalendarTimeline(private val host: MainActivity) {
 
         val breakdown = ExamCountdownManager.getCountdownBreakdown(exam.targetTimestampMs)
 
-        // Title Bar
-        val titleBar = LinearLayout(activity).apply {
+        // 1. Header (Title + Close Button)
+        val headerRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(14))
+            setPadding(0, 0, 0, dp(10))
         }
 
         val titleView = TextView(activity).apply {
             text = exam.title
-            setTextColor(examColor)
-            textSize = 17f
+            setTextColor(Color.WHITE)
+            textSize = 17.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
@@ -787,36 +810,68 @@ class CalendarTimeline(private val host: MainActivity) {
             setOnClickListener { dialog.dismiss() }
         }
 
-        titleBar.addView(titleView)
-        titleBar.addView(closeBtn)
-        root.addView(titleBar)
+        headerRow.addView(titleView)
+        headerRow.addView(closeBtn)
+        root.addView(headerRow)
 
-        val dateDisplay = try {
-            val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(exam.targetDateStr)
-            SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(parsed ?: Date())
-        } catch (_: Exception) {
-            exam.targetDateStr
-        }
-
-        val dateCard = TextView(activity).apply {
-            text = "Exam Date: $dateDisplay"
-            setTextColor(themeCoordinator.textColor)
-            textSize = 12.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 25), 12f)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+        // 2. Info Row (Subject pill with dot + Target date & time)
+        val infoRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 18), 12f)
+            setPadding(dp(12), dp(9), dp(12), dp(9))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(0, 0, 0, dp(14))
             }
         }
-        root.addView(dateCard)
 
-        // Detailed Countdown Cards Row
+        val subjectDotColor = linkedSubject?.let {
+            try { Color.parseColor(it.colorHex) } catch (_: Exception) { examColor }
+        } ?: Color.parseColor("#94A3B8")
+
+        val dotView = View(activity).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(subjectDotColor)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply {
+                setMargins(0, 0, dp(7), 0)
+            }
+        }
+
+        val subjectNameView = TextView(activity).apply {
+            text = linkedSubject?.name ?: "General Study"
+            setTextColor(themeCoordinator.textColor)
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val dateDisplay = try {
+            val sdf = SimpleDateFormat("dd MMM yyyy · hh:mm a", Locale.getDefault())
+            sdf.format(Date(exam.targetTimestampMs))
+        } catch (_: Exception) {
+            exam.targetDateStr
+        }
+
+        val dateText = TextView(activity).apply {
+            text = dateDisplay
+            setTextColor(host.tintedColor(themeCoordinator.textColor, 180))
+            textSize = 11.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        }
+
+        infoRow.addView(dotView)
+        infoRow.addView(subjectNameView)
+        infoRow.addView(dateText)
+        root.addView(infoRow)
+
+        // 3. Countdown Metrics Row
         if (!breakdown.isPast && !breakdown.isToday) {
-            val gridContainer = LinearLayout(activity).apply {
+            val metricsRow = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(14))
+                    setMargins(0, 0, 0, dp(6))
                 }
             }
 
@@ -824,7 +879,7 @@ class CalendarTimeline(private val host: MainActivity) {
                 return LinearLayout(activity).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER
-                    background = themeCoordinator.createGlassChip(host.tintedColor(examColor, 35), 14f)
+                    background = themeCoordinator.createGlassChip(host.tintedColor(examColor, 34), 14f)
                     setPadding(dp(6), dp(10), dp(6), dp(10))
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                         setMargins(dp(3), 0, dp(3), 0)
@@ -833,15 +888,15 @@ class CalendarTimeline(private val host: MainActivity) {
                     addView(TextView(activity).apply {
                         text = value
                         setTextColor(Color.WHITE)
-                        textSize = 17f
+                        textSize = 18f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         gravity = Gravity.CENTER
                     })
 
                     addView(TextView(activity).apply {
                         text = label
-                        setTextColor(host.tintedColor(themeCoordinator.textColor, 180))
-                        textSize = 10f
+                        setTextColor(host.tintedColor(themeCoordinator.textColor, 170))
+                        textSize = 9.5f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         gravity = Gravity.CENTER
                         setPadding(0, dp(2), 0, 0)
@@ -850,68 +905,171 @@ class CalendarTimeline(private val host: MainActivity) {
             }
 
             if (breakdown.monthsPart > 0) {
-                gridContainer.addView(createMetricPill(breakdown.monthsPart.toString(), "MONTHS"))
+                metricsRow.addView(createMetricPill(breakdown.monthsPart.toString(), "MONTHS"))
             }
-            gridContainer.addView(createMetricPill(breakdown.daysPart.toString(), "DAYS"))
-            gridContainer.addView(createMetricPill(breakdown.hoursPart.toString(), "HOURS"))
-            gridContainer.addView(createMetricPill(breakdown.minsPart.toString(), "MINS"))
-            root.addView(gridContainer)
+            metricsRow.addView(createMetricPill(breakdown.daysPart.toString(), "DAYS"))
+            metricsRow.addView(createMetricPill(breakdown.hoursPart.toString(), "HOURS"))
+            metricsRow.addView(createMetricPill(breakdown.minsPart.toString(), "MINS"))
+            root.addView(metricsRow)
+
+            val totalRemainingText = TextView(activity).apply {
+                val weeksStr = String.format(Locale.US, "%.1f", breakdown.totalWeeks)
+                text = "${breakdown.totalDays} Total Days Remaining · $weeksStr Weeks"
+                setTextColor(host.tintedColor(themeCoordinator.textColor, 160))
+                textSize = 11.5f
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(12))
+            }
+            root.addView(totalRemainingText)
         } else if (breakdown.isToday) {
-            val todayBanner = TextView(activity).apply {
-                text = "Exam is today! Good luck."
-                setTextColor(Color.parseColor("#10B981"))
-                textSize = 14f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setPadding(0, 0, 0, dp(14))
+            val todayBanner = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                background = themeCoordinator.createGlassChip(Color.parseColor("#10B981"), 14f)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                    setMargins(0, 0, 0, dp(14))
+                }
+
+                addView(TextView(activity).apply {
+                    text = "Exam Is Today"
+                    setTextColor(Color.parseColor("#10B981"))
+                    textSize = 15f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    gravity = Gravity.CENTER
+                })
+
+                addView(TextView(activity).apply {
+                    text = "Stay calm, stay focused, and do your best."
+                    setTextColor(themeCoordinator.textColor)
+                    alpha = 0.8f
+                    textSize = 11.5f
+                    gravity = Gravity.CENTER
+                    setPadding(0, dp(2), 0, 0)
+                })
             }
             root.addView(todayBanner)
         } else {
             val passedBanner = TextView(activity).apply {
-                text = "Exam date passed ${breakdown.daysAgo} days ago"
+                text = "Exam passed ${breakdown.daysAgo} days ago"
                 setTextColor(Color.parseColor("#94A3B8"))
-                textSize = 13.5f
+                textSize = 13f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                gravity = Gravity.CENTER
                 setPadding(0, 0, 0, dp(14))
             }
             root.addView(passedBanner)
         }
 
+        // 4. Study Preparation Progress Card
+        val subDurations = SubjectTagManager.getSubjectDurations(activity)
+        val loggedSecs = if (linkedSubject != null) (subDurations[linkedSubject.id] ?: 0L) else 0L
+        val hoursLogged = loggedSecs / 3600
+        val minsLogged = (loggedSecs % 3600) / 60
+
+        val prepCard = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 14), 12f)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(12))
+            }
+
+            addView(TextView(activity).apply {
+                text = "PREPARATION PROGRESS"
+                setTextColor(themeCoordinator.primaryColor)
+                textSize = 10f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                letterSpacing = 0.05f
+            })
+
+            val prepDetail = if (linkedSubject != null) {
+                if (loggedSecs > 0) {
+                    "${hoursLogged}h ${minsLogged}m studied for ${linkedSubject.name} so far"
+                } else {
+                    "No study sessions logged yet for ${linkedSubject.name}"
+                }
+            } else {
+                "General study · Link a subject to track dedicated hours"
+            }
+
+            addView(TextView(activity).apply {
+                text = prepDetail
+                setTextColor(themeCoordinator.textColor)
+                textSize = 12.5f
+                setPadding(0, dp(3), 0, 0)
+            })
+        }
+        root.addView(prepCard)
+
+        // 5. Notes / Syllabus Card
         if (!exam.notes.isNullOrBlank()) {
             val notesCard = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
-                background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 18), 12f)
-                setPadding(dp(12), dp(10), dp(12), dp(10))
+                background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 14), 12f)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     setMargins(0, 0, 0, dp(14))
                 }
+
+                addView(TextView(activity).apply {
+                    text = "SYLLABUS & REVISION NOTES"
+                    setTextColor(themeCoordinator.primaryColor)
+                    textSize = 10f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    letterSpacing = 0.05f
+                })
+
+                addView(TextView(activity).apply {
+                    text = exam.notes
+                    setTextColor(themeCoordinator.textColor)
+                    textSize = 12.5f
+                    setPadding(0, dp(4), 0, 0)
+                })
             }
-            notesCard.addView(TextView(activity).apply {
-                text = "Notes / Syllabus:"
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 11.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            })
-            notesCard.addView(TextView(activity).apply {
-                text = exam.notes
-                setTextColor(themeCoordinator.textColor)
-                textSize = 12.5f
-                setPadding(0, dp(4), 0, 0)
-            })
             root.addView(notesCard)
         }
 
-        // Action Buttons Row (Edit / Delete)
+        // 6. Primary Action: Start Studying
+        val startStudyBtn = Button(activity).apply {
+            text = "START STUDYING FOR THIS EXAM"
+            setTextColor(Color.WHITE)
+            textSize = 12.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(examColor)
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46)).apply {
+                setMargins(0, 0, 0, dp(10))
+            }
+            setOnClickListener {
+                if (linkedSubject != null) {
+                    SubjectTagManager.setSelectedSubject(activity, linkedSubject.id)
+                    SubjectTagManager.setSelectedSubTopic(activity, linkedSubject.id, null)
+                } else {
+                    SubjectTagManager.setSelectedSubject(activity, "general")
+                    SubjectTagManager.setSelectedSubTopic(activity, "general", null)
+                }
+                dialog.dismiss()
+                activity.navigateToPanel(AppPanel.FOCUS)
+                AppToast.show(activity, "Focus set to ${linkedSubject?.name ?: exam.title}")
+            }
+        }
+        root.addView(startStudyBtn)
+
+        // 7. Secondary Action Row: Edit Details / Delete
         val actionRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
         val editBtn = Button(activity).apply {
-            text = "Edit / Rename"
+            text = "Edit Details"
             setTextColor(Color.WHITE)
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 50), 12f)
+            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 40), 12f)
             layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply {
                 setMargins(0, 0, dp(6), 0)
             }
@@ -926,10 +1084,7 @@ class CalendarTimeline(private val host: MainActivity) {
             setTextColor(Color.WHITE)
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
-                setColor(Color.parseColor("#EF4444"))
-            }
+            background = themeCoordinator.createGlassChip(host.tintedColor(Color.parseColor("#EF4444"), 45), 12f)
             layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply {
                 setMargins(dp(6), 0, 0, 0)
             }
@@ -956,7 +1111,8 @@ class CalendarTimeline(private val host: MainActivity) {
         actionRow.addView(deleteBtn)
         root.addView(actionRow)
 
-        dialog.setContentView(root)
+        scroll.addView(root)
+        dialog.setContentView(scroll)
         dialog.window?.apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
             setGravity(Gravity.CENTER)
@@ -979,120 +1135,177 @@ class CalendarTimeline(private val host: MainActivity) {
             setPadding(dp(22), dp(20), dp(22), dp(20))
         }
 
-        val title = TextView(activity).apply {
-            text = if (existing != null) "Edit Exam" else "Add Exam Countdown"
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 16.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        // Title Bar with Close Button
+        val titleBar = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, dp(14))
         }
-        root.addView(title)
 
-        // Exam Title Input
+        val titleView = TextView(activity).apply {
+            text = if (existing != null) "Edit Exam Countdown" else "Add Exam Countdown"
+            setTextColor(themeCoordinator.primaryColor)
+            textSize = 17f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val closeBtn = TextView(activity).apply {
+            text = "✕"
+            textSize = 16f
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.6f
+            setPadding(dp(8), dp(4), dp(4), dp(4))
+            setOnClickListener { dialog.dismiss() }
+        }
+
+        titleBar.addView(titleView)
+        titleBar.addView(closeBtn)
+        root.addView(titleBar)
+
+        // 1. Exam Name
         val titleInput = EditText(activity).apply {
             hint = "Exam Name (e.g. Mathematics Final)"
             setText(existing?.title ?: "")
             setTextColor(themeCoordinator.textColor)
-            setHintTextColor(host.tintedColor(themeCoordinator.textColor, 100))
-            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 30), 12f)
+            setHintTextColor(host.tintedColor(themeCoordinator.textColor, 90))
+            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 25), 12f)
             setPadding(dp(14), dp(12), dp(14), dp(12))
             textSize = 13.5f
+            isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
+                setMargins(0, 0, 0, dp(12))
             }
         }
         root.addView(titleInput)
 
-        // Target Date Picker
+        // 2. Exam Date
         val cal = Calendar.getInstance()
         if (existing != null) {
             cal.timeInMillis = existing.targetTimestampMs
         } else {
             cal.add(Calendar.DAY_OF_YEAR, 7) // default 1 week ahead
+            cal.set(Calendar.HOUR_OF_DAY, 9)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
         }
 
+        val sdf = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault())
+
         val dateBtn = TextView(activity).apply {
-            val sdf = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault())
-            text = "Exam Date: ${sdf.format(cal.time)}"
+            text = "Exam Date: ${sdf.format(cal.time)} ▾"
             setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 50), 12f)
-            setPadding(dp(14), dp(11), dp(14), dp(11))
+            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 45), 12f)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
+                setMargins(0, 0, 0, dp(12))
             }
-        }
-
-        dateBtn.setOnClickListener {
-            DatePickerDialog(
-                activity,
-                R.style.AmoledPickerDialogTheme,
-                { _, year, month, dayOfMonth ->
-                    cal.set(Calendar.YEAR, year)
-                    cal.set(Calendar.MONTH, month)
-                    cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                    cal.set(Calendar.HOUR_OF_DAY, 9)
-                    cal.set(Calendar.MINUTE, 0)
-                    cal.set(Calendar.SECOND, 0)
-                    val sdf = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault())
-                    dateBtn.text = "Exam Date: ${sdf.format(cal.time)}"
-                },
-                cal.get(Calendar.YEAR),
-                cal.get(Calendar.MONTH),
-                cal.get(Calendar.DAY_OF_MONTH)
-            ).show()
+            setOnClickListener {
+                DatePickerDialog(
+                    activity,
+                    R.style.AmoledPickerDialogTheme,
+                    { _, year, month, dayOfMonth ->
+                        cal.set(Calendar.YEAR, year)
+                        cal.set(Calendar.MONTH, month)
+                        cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                        text = "Exam Date: ${sdf.format(cal.time)} ▾"
+                    },
+                    cal.get(Calendar.YEAR),
+                    cal.get(Calendar.MONTH),
+                    cal.get(Calendar.DAY_OF_MONTH)
+                ).show()
+            }
         }
         root.addView(dateBtn)
 
-        // Subject Link Picker
+        // 3. Subject Selector
         val allSubjects = SubjectTagManager.getAllSubjects(activity)
         var selectedSubject: SubjectTag? = allSubjects.find { it.id == existing?.subjectId }
 
-        val subjectBtn = TextView(activity).apply {
-            text = "Subject: ${selectedSubject?.name ?: "General / No Subject"}"
-            setTextColor(themeCoordinator.textColor)
+        val subjectBtn = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 25), 12f)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, dp(12))
+            }
+        }
+
+        val subjectDot = View(activity).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(9), dp(9)).apply {
+                setMargins(0, 0, dp(8), 0)
+            }
+        }
+
+        val subjectText = TextView(activity).apply {
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 30), 12f)
-            setPadding(dp(14), dp(11), dp(14), dp(11))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
+            setTextColor(themeCoordinator.textColor)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val arrowText = TextView(activity).apply {
+            text = "▾"
+            textSize = 13f
+            setTextColor(host.tintedColor(themeCoordinator.textColor, 180))
+        }
+
+        fun updateSubjectUI() {
+            val dotColor = selectedSubject?.let {
+                try { Color.parseColor(it.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+            } ?: Color.parseColor("#94A3B8")
+
+            subjectDot.background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(dotColor)
             }
-            setOnClickListener {
-                DeveloperToolsHelper.showThemedSubjectPickerModal(
-                    activity = activity,
-                    themeCoordinator = themeCoordinator,
-                    title = "Link to Subject Tag",
-                    includeGeneral = true,
-                    includeCreateOption = false,
-                    onSelected = { sub ->
-                        selectedSubject = sub
-                        text = "Subject: ${sub?.name ?: "General / No Subject"}"
-                    }
-                )
-            }
+            subjectText.text = "Subject: ${selectedSubject?.name ?: "General / No Subject"}"
+        }
+
+        updateSubjectUI()
+
+        subjectBtn.addView(subjectDot)
+        subjectBtn.addView(subjectText)
+        subjectBtn.addView(arrowText)
+
+        subjectBtn.setOnClickListener {
+            DeveloperToolsHelper.showThemedSubjectPickerModal(
+                activity = activity,
+                themeCoordinator = themeCoordinator,
+                title = "Link to Subject Tag",
+                includeGeneral = true,
+                includeCreateOption = false,
+                onSelected = { sub ->
+                    selectedSubject = sub
+                    updateSubjectUI()
+                }
+            )
         }
         root.addView(subjectBtn)
 
-        // Notes Input
+        // 4. Notes / Syllabus
         val notesInput = EditText(activity).apply {
             hint = "Notes / Syllabus (optional)"
             setText(existing?.notes ?: "")
             setTextColor(themeCoordinator.textColor)
-            setHintTextColor(host.tintedColor(themeCoordinator.textColor, 100))
-            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 30), 12f)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            setHintTextColor(host.tintedColor(themeCoordinator.textColor, 90))
+            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.textColor, 25), 12f)
+            setPadding(dp(14), dp(11), dp(14), dp(11))
             textSize = 12.5f
+            maxLines = 3
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(0, 0, 0, dp(16))
             }
         }
         root.addView(notesInput)
 
-        // Save Button
+        // 5. Save Button
         val saveBtn = Button(activity).apply {
-            text = if (existing != null) "Save Changes" else "Start Countdown"
+            text = if (existing != null) "SAVE CHANGES" else "START COUNTDOWN"
             setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1113,10 +1326,10 @@ class CalendarTimeline(private val host: MainActivity) {
                 val colorHex = selectedSubject?.colorHex
 
                 if (existing != null) {
-                    val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                    val sdfIso = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                     val updated = existing.copy(
                         title = enteredTitle,
-                        targetDateStr = sdf.format(Date(targetMs)),
+                        targetDateStr = sdfIso.format(Date(targetMs)),
                         targetTimestampMs = targetMs,
                         subjectId = selectedSubject?.id,
                         colorHex = colorHex,

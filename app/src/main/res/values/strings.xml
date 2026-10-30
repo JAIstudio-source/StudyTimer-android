@@ -1,4 +1,4 @@
-<resources>
+﻿<resources>
     <string name="app_name">StudyTimer</string>
 
     <!-- Backup & export -->
@@ -266,7 +266,13 @@
     <string name="notif_goal_text">You reached your study goal of %1$dh %2$dm today. Amazing work!</string>
     <string name="channel_completion_name">Study Session Complete</string>
     <string name="channel_completion_desc">Notifies you when your study timer countdown finishes</string>
-    <string name="channel_control_name">Active Study Timer</string>
+    <string name="channel_control_name">Study Timer Control</string>
+    <string name="channel_inactivity_name">Timer Inactivity Alerts</string>
+    <string name="channel_inactivity_desc">Prompts to confirm activity during long continuous sessions to prevent runaway timers</string>
+    <string name="channel_milestones_name">Streak &amp; Milestone Alerts</string>
+    <string name="channel_milestones_desc">Celebrations when reaching new streak records or study milestones</string>
+    <string name="channel_lecture_name">Class Schedule Reminders</string>
+    <string name="channel_lecture_desc">Notifications when scheduled classes or lectures begin</string>
     <string name="channel_control_desc">Shows active study and break timers in your status bar</string>
 
     <!-- Goal reminder -->
@@ -274,6 +280,10 @@
     <string name="goal_channel_desc">Evening reminder when your daily study goal is almost complete</string>
     <string name="goal_reminder_title">Your daily study goal is waiting</string>
     <string name="goal_reminder_text">You\'ve studied %1$dh %2$dm so far today. Your goal is %3$s.</string>
+
+    <!-- Festival greetings -->
+    <string name="channel_festivals_name">Festival Greetings</string>
+    <string name="channel_festivals_desc">Warm wishes and motivation on major festivals</string>
 
     <!-- Widget -->
     <string name="widget_today">Today: %1$dh %2$dm</string>

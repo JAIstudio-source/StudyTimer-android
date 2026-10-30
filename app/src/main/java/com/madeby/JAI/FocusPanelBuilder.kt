@@ -299,11 +299,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     }
                 }
 
-                val topicIcon = TextView(this).apply {
-                    text = "📖 "
-                    textSize = 10.5f
-                }
-                topicPill.addView(topicIcon)
+
 
                 val topicText = TextView(this).apply {
                     text = topicLabel
@@ -624,15 +620,17 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             stopBtn = HoldRingButton(this).apply {
-                text = "Hold to Finish"
+                text = "Finish Session"
                 ringColor = themeCoordinator.primaryColor
                 setTextColor(themeCoordinator.textColor)
-                textSize = 14f
-                letterSpacing = 0.02f
+                textSize = 12f
+                isSingleLine = true
+                maxLines = 1
+                letterSpacing = 0.01f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 isSoundEffectsEnabled = false
                 background = outlinedButtonBackground()
-                setPadding(dp(12), dp(10), dp(12), dp(10))
+                setPadding(dp(4), dp(10), dp(4), dp(10))
                 minimumHeight = dp(48)
                 layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(160) else 0, dp(48), if (isLandscape) 0f else 1f).apply {
                     if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(4), 0, dp(4), 0)
@@ -643,6 +641,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                             holdStartTime = SystemClock.uptimeMillis()
                             isHoldingStop = true
                             v.isPressed = true
+                            text = "Hold to Finish"
                             progress = 0f
                             handler.removeCallbacks(holdToEndRunnable)
                             handler.post(holdToEndRunnable)
@@ -652,7 +651,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
                         MotionEvent.ACTION_UP -> {
                             val elapsed = SystemClock.uptimeMillis() - holdStartTime
                             if (elapsed < 500L) {
-                                AppToast.show(host, "Hold for 0.5s to finish session")
                                 try { v.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK) } catch (_: Exception) {}
                                 v.animate().translationX(-8f).setDuration(40).withEndAction {
                                     v.animate().translationX(8f).setDuration(40).withEndAction {
@@ -668,7 +666,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
                             true
                         }
                         MotionEvent.ACTION_MOVE -> {
-                            if (event.x < 0f || event.y < 0f || event.x > v.width || event.y > v.height) {
+                            val slop = android.view.ViewConfiguration.get(context).scaledTouchSlop
+                            if (event.x < -slop || event.y < -slop || event.x > v.width + slop || event.y > v.height + slop) {
                                 resetHoldToEnd()
                             }
                             true

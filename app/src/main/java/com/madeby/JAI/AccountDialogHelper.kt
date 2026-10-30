@@ -71,7 +71,9 @@ class AccountDialogHelper(private val activity: MainActivity) {
             setPadding(0, dp(6), 0, dp(14))
         })
 
-        val currentName = AuthManager.getUserName(activity) ?: ""
+        val currentName = ProfileManager.getEffectiveDisplayName(activity).takeIf { !it.equals("Student", ignoreCase = true) }
+            ?: AuthManager.getUserName(activity)
+            ?: ""
         val inputEdit = EditText(activity).apply {
             setText(currentName)
             hint = "Enter your name"
@@ -106,6 +108,15 @@ class AccountDialogHelper(private val activity: MainActivity) {
                 val newName = inputEdit.text.toString().trim()
                 if (newName.isNotEmpty()) {
                     AuthManager.updateUserName(activity, newName)
+                    val curProfile = ProfileManager.getProfile(activity)
+                    ProfileManager.saveProfile(
+                        activity,
+                        curProfile.copy(
+                            displayName = newName,
+                            lastApprovedDisplayName = newName,
+                            moderationStatus = ModerationStatus.APPROVED
+                        )
+                    )
                     activity.tabPageCache.remove(activity.settingsTabKey(AppSettingsTab.PROFILE))
                     activity.navigateToPanel(AppPanel.SETTINGS)
                     kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
@@ -131,7 +142,8 @@ class AccountDialogHelper(private val activity: MainActivity) {
         dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
 
         val size = (activity.resources.displayMetrics.widthPixels * 0.72f).toInt()
-        val userName = AuthManager.getUserName(activity)
+        val userName = ProfileManager.getEffectiveDisplayName(activity).takeIf { !it.equals("Student", ignoreCase = true) }
+            ?: AuthManager.getUserName(activity)
         val userEmail = AuthManager.getUserEmail(activity)
         val avatarBitmap = LocalAvatarManager.getCircularAvatarBitmap(activity, size)
 

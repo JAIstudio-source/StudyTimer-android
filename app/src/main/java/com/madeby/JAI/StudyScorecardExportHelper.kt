@@ -436,7 +436,7 @@ class StudyScorecardExportHelper(private val host: MainActivity) {
         cardContent.addView(reportTitle)
 
         // --- STUDENT INFO & STREAK ROW ---
-        val studentName = ProfileManager.getProfile(host).displayName.ifBlank { "Student" }
+        val studentName = ProfileManager.getEffectiveDisplayName(host).ifBlank { "Student" }
         val streakCount = snap.streak
 
         val infoBox = LinearLayout(host).apply {

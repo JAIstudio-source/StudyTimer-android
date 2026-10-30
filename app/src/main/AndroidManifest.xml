@@ -1,4 +1,4 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -108,6 +108,15 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="com.madeby.JAI.ACTION_LECTURE_START" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".FestivalReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="com.madeby.JAI.ACTION_CHECK_FESTIVAL" />
             </intent-filter>
         </receiver>
 

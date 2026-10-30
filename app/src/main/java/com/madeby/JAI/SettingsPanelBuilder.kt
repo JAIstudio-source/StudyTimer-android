@@ -2328,9 +2328,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 chartsCard.addView(createSettingsRowWithView(createCustomDonutIcon(), "Donut Chart Style", "Modern ring chart with center stats", donutChartSwitch))
                 layout.addView(chartsCard)
 
-                layout.addView(createSectionLabel("DATA CORRECTIONS"))
+                layout.addView(createSectionLabel("PAST SESSIONS"))
                 val dataCard = createSettingsCard()
-                val adjustRow = createSettingsRow("", "Adjust Today's Study Time", "Add missed minutes or correct today's total", createActionChip("Adjust ›"))
+                val adjustRow = createSettingsRow("", "Add Past Session", "Log missed study time or correct today's total", createActionChip("Add"))
                 adjustRow.setOnClickListener {
                     HapticFeedbackHelper.performMicroHaptic(host, it)
                     DeveloperToolsHelper.showAdjustTodayTimeDialog(host, themeCoordinator, isDeveloperExtended = false)
@@ -2568,7 +2568,23 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 reminderTimeContainer.addView(createDivider())
                 reminderTimeContainer.addView(timeRow)
                 reminderCard.addView(reminderTimeContainer)
-                layout.addView(reminderCard)
+                                reminderCard.addView(createDivider())
+
+                val festivalGreetingsEnabled = sharedPrefs.getBoolean(FestivalManager.PREF_FESTIVAL_GREETINGS_ENABLED, true)
+                val festivalSwitch = SwitchMaterial(this).apply {
+                    isChecked = festivalGreetingsEnabled
+                    setOnCheckedChangeListener { _, isChecked ->
+                        HapticFeedbackHelper.performMicroHaptic(host)
+                        sharedPrefs.edit().putBoolean(FestivalManager.PREF_FESTIVAL_GREETINGS_ENABLED, isChecked).apply()
+                        if (isChecked) {
+                            FestivalScheduler.schedule(context)
+                        } else {
+                            FestivalScheduler.cancel(context)
+                        }
+                    }
+                }
+                reminderCard.addView(createSettingsRow("", "Festival Greetings", "Warm wishes & motivation on major festivals", festivalSwitch))
+layout.addView(reminderCard)
             }
 
             // ==========================================

@@ -749,8 +749,8 @@ object LeaderboardManager {
         }
         // If entry has no user_id (legacy), fallback to comparing custom name (excluding default generic names)
         if (entry.userId.isBlank()) {
-            val currentName = AuthManager.getUserName(context)?.trim()
-            if (!currentName.isNullOrBlank() && currentName != "Student" && currentName != "Guest") {
+            val currentName = ProfileManager.getEffectiveDisplayName(context).trim()
+            if (currentName.isNotBlank() && currentName != "Student" && currentName != "Guest") {
                 return entry.userName.trim().equals(currentName, ignoreCase = true)
             }
         }

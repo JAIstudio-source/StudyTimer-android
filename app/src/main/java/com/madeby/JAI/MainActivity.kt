@@ -231,11 +231,22 @@ class MainActivity : AppCompatActivity() {
         PlannerStateManager.notifyGoalsChanged()
     }
 
+    internal var isLocalPlannerUpdateInProgress = false
+    internal var pendingPlannerScrollY = 0
+
+    internal fun findPlannerScrollView(): android.widget.ScrollView? {
+        return panelContainer.findViewWithTag<android.widget.ScrollView>("planner_scroll_view")
+    }
+
     private val plannerGoalListener = object : PlannerStateManager.GoalChangeListener {
         override fun onGoalsChanged() {
             runOnUiThread {
                 if (currentPanel == AppPanel.PLANNER) {
-                    buildPlannerPanel()
+                    if (!isLocalPlannerUpdateInProgress) {
+                        buildPlannerPanel()
+                    } else {
+                        updateStatsLiveViews()
+                    }
                 } else if (currentPanel == AppPanel.STATS && currentStatsTab == AppStatsTab.PLANNER) {
                     refreshStatsPanel()
                 } else {
@@ -621,6 +632,7 @@ class MainActivity : AppCompatActivity() {
         isHoldingStop = false
         if (::stopBtn.isInitialized) {
             stopBtn.isPressed = false
+            stopBtn.text = "Finish Session"
             stopBtn.animateProgressToZero()
         }
         handler.removeCallbacks(holdToEndRunnable)
@@ -628,7 +640,7 @@ class MainActivity : AppCompatActivity() {
 
     internal val holdToEndRunnable = object : Runnable {
         override fun run() {
-            if (isDestroyed || !isHoldingStop || !::stopBtn.isInitialized || !stopBtn.isPressed) {
+            if (isDestroyed || !isHoldingStop || !::stopBtn.isInitialized) {
                 resetHoldToEnd()
                 return
             }
@@ -876,6 +888,7 @@ class MainActivity : AppCompatActivity() {
                 .putInt("reminder_hour", 20)
                 .putInt("reminder_minute", 0)
                 .putBoolean("reminder_enabled", true)
+                .putBoolean("festival_greetings_enabled", true)
                 .putBoolean("is_landscape_mode_enabled", true)
                 .putBoolean("true_fullscreen_landscape", true)
                 .putBoolean("keep_screen_on", true)
@@ -909,6 +922,8 @@ class MainActivity : AppCompatActivity() {
                 backupManager.triggerAutoRestoreIfPresent()
                 createNotificationChannel()
                 GoalReminderScheduler.schedule(this)
+                FestivalScheduler.schedule(this)
+                FestivalManager.checkAndNotify(this)
                 migrateHistoricalDailyGoals(this)
                 checkAndResetGoalsForNewDay()
                 triggerAutoSyncIfEligible(force = true)
@@ -1395,6 +1410,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun buildPlannerPanel(target: android.view.ViewGroup = panelContainer) {
+        val existingScroll = target.findViewWithTag<android.widget.ScrollView>("planner_scroll_view")
+        if (existingScroll != null && existingScroll.scrollY > 0) {
+            pendingPlannerScrollY = existingScroll.scrollY
+        }
         PlannerPanelBuilder(this).build(target)
     }
 
@@ -2143,13 +2162,19 @@ class MainActivity : AppCompatActivity() {
             val dayBucket = (System.currentTimeMillis() + TimeZone.getDefault().getOffset(System.currentTimeMillis())) / 86400000L
             if (dayBucket != lastDayBucket) {
                 lastDayBucket = dayBucket
+                val prevTodayStr = cachedTodayStr
                 cachedTodayStr = dateKeyFmt.format(Date())
                 statsDirty = true
                 statsSnapshotCache = null
                 tabPageCache.clear()
+                // Lock yesterday's goal into history if not already sealed
+                if (prevTodayStr.isNotBlank() && !sharedPrefs.contains("${prevTodayStr}_goal_secs")) {
+                    sharedPrefs.edit().putLong("${prevTodayStr}_goal_secs", StatsEngine.getDailyGoalSecs(sharedPrefs)).apply()
+                }
                 if (!sharedPrefs.contains("${cachedTodayStr}_goal_secs")) {
                     sharedPrefs.edit().putLong("${cachedTodayStr}_goal_secs", StatsEngine.getDailyGoalSecs(sharedPrefs)).apply()
                 }
+                GoalHistoryManager.cleanFutureGoalCaches(this)
                 checkAndResetGoalsForNewDay()
                 recalculateStreak()
                 if (currentPanel == AppPanel.STATS) {
@@ -2519,7 +2544,7 @@ class MainActivity : AppCompatActivity() {
                         if (sortedSubjects.isNotEmpty()) {
                             val slicesList = ArrayList<SubjectPieChartView.PieSlice>()
                             for ((subj, secs) in sortedSubjects) {
-                                slicesList.add(SubjectPieChartView.PieSlice(subj.name, subj.iconEmoji, secs.toDouble(), subj.colorHex))
+                                slicesList.add(SubjectPieChartView.PieSlice(subj.name, "", secs.toDouble(), subj.colorHex))
                             }
                             pieChart.setData(slicesList, preserveSelection = true)
                         }
@@ -3128,9 +3153,9 @@ class MainActivity : AppCompatActivity() {
                     mainBtn.background = outlinedButtonBackground()
                 }
 
-                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
+                // Slot 2 (Right): Terminal Action - FINISH SESSION
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Hold to Finish"
+                stopBtn.text = "Finish Session"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3157,7 +3182,7 @@ class MainActivity : AppCompatActivity() {
                 pauseBtn.setOnClickListener { handleStateToggle() }
                 mainBtn.visibility = View.GONE
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Hold to Finish"
+                stopBtn.text = "Finish Session"
                 stopBtn.ringColor = themeCoordinator.primaryColor
                 checkAndShowLecturePrompt()
             }
@@ -3208,9 +3233,9 @@ class MainActivity : AppCompatActivity() {
                     mainBtn.background = outlinedButtonBackground()
                 }
 
-                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
+                // Slot 2 (Right): Terminal Action - FINISH SESSION
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Hold to Finish"
+                stopBtn.text = "Finish Session"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3271,9 +3296,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 mainBtn.setOnClickListener { handleStateToggle() }
 
-                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
+                // Slot 2 (Right): Terminal Action - FINISH SESSION
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Hold to Finish"
+                stopBtn.text = "Finish Session"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3898,7 +3923,13 @@ class MainActivity : AppCompatActivity() {
                                 }
                             }
                         }
+                    } else if (localTs > cloudTs + 1500L) {
+                        android.util.Log.i("MainActivity", "Live auto-sync: Local data ($localTs) is newer than cloud ($cloudTs). Uploading to cloud in background...")
+                        CloudSyncManager.syncDataToCloud(this@MainActivity, force = true)
                     }
+                } else if (remoteMeta == null && rawRecord == null) {
+                    android.util.Log.i("MainActivity", "Live auto-sync: Initializing fresh cloud account with local data...")
+                    CloudSyncManager.syncDataToCloud(this@MainActivity, force = true)
                 }
             } catch (e: Exception) {
                 android.util.Log.w("MainActivity", "Auto-sync check non-fatal exception", e)
@@ -3910,6 +3941,9 @@ class MainActivity : AppCompatActivity() {
         super.onStop()
         hasPlayedStatsEntranceAnimation = false
         CommunityPanelBuilder.cancelActivePolling()
+        if (AuthManager.isLoggedIn(this)) {
+            triggerAutoSyncIfEligible(force = false)
+        }
     }
 
 }

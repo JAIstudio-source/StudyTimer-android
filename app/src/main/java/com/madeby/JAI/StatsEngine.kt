@@ -382,8 +382,16 @@ class StatsEngine(private val context: Context) {
             val storedFocus = prefs.safeLong(key, 0L)
             val storedBreak = prefs.safeLong(breakKey, 0L)
 
-            val finalFocusSum = trueFocusSum
-            val finalBreakSum = trueBreakSum
+            val finalFocusSum = if (storedFocus > 0L && trueFocusSum == 0L) {
+                storedFocus
+            } else {
+                maxOf(storedFocus, trueFocusSum)
+            }
+            val finalBreakSum = if (storedBreak > 0L && trueBreakSum == 0L) {
+                storedBreak
+            } else {
+                maxOf(storedBreak, trueBreakSum)
+            }
 
             if (storedFocus != finalFocusSum || storedBreak != finalBreakSum) {
                 runCatching {
@@ -410,8 +418,8 @@ class StatsEngine(private val context: Context) {
         val breakKey = "${dateStr}_break_total"
         val storedFocus = prefs.safeLong(focusKey, 0L)
         val storedBreak = prefs.safeLong(breakKey, 0L)
-        val effectiveFocus = focusSum
-        val effectiveBreak = breakSum
+        val effectiveFocus = if (storedFocus > 0L && focusSum == 0L) storedFocus else maxOf(storedFocus, focusSum)
+        val effectiveBreak = if (storedBreak > 0L && breakSum == 0L) storedBreak else maxOf(storedBreak, breakSum)
         if (storedFocus != effectiveFocus || storedBreak != effectiveBreak) {
             val editor = prefs.edit()
             if (storedFocus != effectiveFocus) {
@@ -431,10 +439,24 @@ class StatsEngine(private val context: Context) {
         val breakSum = breaks.filter { !it.running }.sumOf { it.secs }
         val focusKey = "${dateStr}_focus_total"
         val breakKey = "${dateStr}_break_total"
+        val storedFocus = prefs.safeLong(focusKey, 0L)
+        val storedBreak = prefs.safeLong(breakKey, 0L)
         val isTimerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE" || prefs.safeLong("accumulatedStudy", 0L) > 0L
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val effectiveFocus = if (isTimerActive && dateStr == todayStr) maxOf(prefs.safeLong(focusKey, 0L), focusSum) else focusSum
-        val effectiveBreak = if (isTimerActive && dateStr == todayStr) maxOf(prefs.safeLong(breakKey, 0L), breakSum) else breakSum
+        val effectiveFocus = if (isTimerActive && dateStr == todayStr) {
+            maxOf(storedFocus, focusSum)
+        } else if (storedFocus > 0L && focusSum == 0L) {
+            storedFocus
+        } else {
+            maxOf(storedFocus, focusSum)
+        }
+        val effectiveBreak = if (isTimerActive && dateStr == todayStr) {
+            maxOf(storedBreak, breakSum)
+        } else if (storedBreak > 0L && breakSum == 0L) {
+            storedBreak
+        } else {
+            maxOf(storedBreak, breakSum)
+        }
 
         prefs.edit()
             .putLong(focusKey, effectiveFocus)

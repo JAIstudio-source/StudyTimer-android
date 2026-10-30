@@ -37,15 +37,9 @@ class StudyWidgetProvider : AppWidgetProvider() {
             val focusToday = prefs.safeLong("${todayStr}_focus_total", 0L) + accumulated
             val streak = prefs.safeInt("current_streak", 0)
             val state = runCatching { TimerState.valueOf(prefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
+            val subject = SubjectTagManager.getSelectedSubject(context)
 
-            val oled = prefs.safeString("activeBgMode", "OLED") == "OLED"
             val light = prefs.safeString("activeBgMode", "OLED") == "LIGHT"
-            val bgColor = when {
-                light -> 0xFFFFFFFF.toInt()
-                oled -> 0xFF121212.toInt()
-                else -> 0xFF1E293B.toInt()
-            }
-            val textColor = if (light) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
             val primary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && prefs.safeBoolean("dynamic_color", false)) {
                 context.getColor(android.R.color.system_accent1_500)
             } else {
@@ -53,29 +47,76 @@ class StudyWidgetProvider : AppWidgetProvider() {
             }
 
             val views = RemoteViews(context.packageName, R.layout.study_widget_layout)
-            views.setTextViewText(R.id.widToday, context.getString(R.string.widget_today, focusToday / 3600, (focusToday % 3600) / 60))
-            views.setTextViewText(R.id.widStreak, context.getString(R.string.widget_streak, streak))
-            views.setTextViewText(R.id.widToggle, when (state) {
-                TimerState.STUDYING -> context.getString(R.string.take_a_break)
-                TimerState.BREAK -> context.getString(R.string.notif_action_resume_focus)
-                TimerState.PAUSED -> context.getString(R.string.resume)
-                else -> context.getString(R.string.start_focus)
-            })
-            views.setInt(R.id.widRoot, "setBackgroundResource", if (light) R.drawable.bg_widget_light else R.drawable.bg_widget_dark)
-            views.setTextColor(R.id.widTitle, primary)
-            views.setTextColor(R.id.widToday, textColor)
-            views.setTextColor(R.id.widStreak, textColor)
-            views.setTextColor(R.id.widToggle, bgColor)
-            views.setInt(R.id.widToggle, "setBackgroundColor", primary)
-            views.setTextColor(R.id.widStop, textColor)
-            views.setInt(R.id.widStop, "setBackgroundColor", 0x33EF4444.toInt())
-            views.setViewVisibility(R.id.widStop, if (state == TimerState.IDLE) android.view.View.GONE else android.view.View.VISIBLE)
 
-            val openIntent = Intent(context, MainActivity::class.java)
+            // Background surface
+            views.setInt(R.id.widRoot, "setBackgroundResource", if (light) R.drawable.bg_widget_light else R.drawable.bg_widget_dark)
+
+            // Header Row
+            views.setTextColor(R.id.widTitle, primary)
+            val subjectLabel = if (subject != null) "• ${subject.name}" else ""
+            views.setTextViewText(R.id.widSubject, subjectLabel)
+            views.setTextViewText(R.id.widStreak, "🔥 ${streak}d streak")
+
+            // Focus Hours & Progress
+            val focusHours = focusToday / 3600
+            val focusMinutes = (focusToday % 3600) / 60
+            views.setTextViewText(R.id.widToday, "${focusHours}h ${focusMinutes}m")
+
+            val goalSecs = prefs.safeLong("${todayStr}_goal_secs", prefs.safeLong("daily_goal_secs", 7200L))
+            val percent = if (goalSecs > 0) ((focusToday.toDouble() / goalSecs.toDouble()) * 100).toInt().coerceIn(0, 100) else 0
+            views.setProgressBar(R.id.widProgress, 100, percent, false)
+
+            val goalText = if (focusToday >= goalSecs) {
+                "Goal complete! ($percent%)"
+            } else {
+                val leftSecs = goalSecs - focusToday
+                val leftH = leftSecs / 3600
+                val leftM = (leftSecs % 3600) / 60
+                "$percent% • ${leftH}h ${leftM}m left"
+            }
+            views.setTextViewText(R.id.widGoalText, goalText)
+
+            // State & Interactive Controls
+            when (state) {
+                TimerState.STUDYING -> {
+                    views.setTextViewText(R.id.widToggle, "⏸ PAUSE")
+                    views.setTextViewText(R.id.widStop, "⏹ END")
+                    views.setViewVisibility(R.id.widStop, android.view.View.VISIBLE)
+                    views.setTextViewText(R.id.widStatusText, "● Focusing")
+                    views.setTextColor(R.id.widStatusText, 0xFF4ADE80.toInt()) // Green
+                }
+                TimerState.PAUSED -> {
+                    views.setTextViewText(R.id.widToggle, "▶ RESUME")
+                    views.setTextViewText(R.id.widStop, "⏹ END")
+                    views.setViewVisibility(R.id.widStop, android.view.View.VISIBLE)
+                    views.setTextViewText(R.id.widStatusText, "● Paused")
+                    views.setTextColor(R.id.widStatusText, 0xFFFACC15.toInt()) // Yellow/Amber
+                }
+                TimerState.BREAK -> {
+                    views.setTextViewText(R.id.widToggle, "▶ RESUME")
+                    views.setTextViewText(R.id.widStop, "⏹ FINISH")
+                    views.setViewVisibility(R.id.widStop, android.view.View.VISIBLE)
+                    views.setTextViewText(R.id.widStatusText, "● On Break")
+                    views.setTextColor(R.id.widStatusText, 0xFF38BDF8.toInt()) // Sky blue
+                }
+                else -> { // IDLE
+                    views.setTextViewText(R.id.widToggle, "▶ START FOCUS")
+                    views.setViewVisibility(R.id.widStop, android.view.View.GONE)
+                    views.setTextViewText(R.id.widStatusText, "Ready to focus")
+                    views.setTextColor(R.id.widStatusText, 0x88FFFFFF.toInt())
+                }
+            }
+
+            // Click Handlers
+            val openIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
             val openPi = PendingIntent.getActivity(
                 context, 1, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             views.setOnClickPendingIntent(R.id.widRoot, openPi)
+            views.setOnClickPendingIntent(R.id.widHeader, openPi)
+            views.setOnClickPendingIntent(R.id.widStatsCol, openPi)
 
             val toggleIntent = Intent(context, StudyWidgetProvider::class.java).apply { action = ACTION_TOGGLE }
             val togglePi = PendingIntent.getBroadcast(
@@ -131,7 +172,7 @@ class StudyWidgetProvider : AppWidgetProvider() {
                 } else {
                     context.startService(serviceIntent)
                 }
-                handler.postDelayed({ refresh(context.applicationContext) }, 1200)
+                handler.postDelayed({ refresh(context.applicationContext) }, 1000)
             }
             ACTION_STOP -> {
                 val serviceIntent = Intent(context, TimerService::class.java).apply {
@@ -142,7 +183,7 @@ class StudyWidgetProvider : AppWidgetProvider() {
                 } else {
                     context.startService(serviceIntent)
                 }
-                handler.postDelayed({ refresh(context.applicationContext) }, 1200)
+                handler.postDelayed({ refresh(context.applicationContext) }, 1000)
             }
         }
     }

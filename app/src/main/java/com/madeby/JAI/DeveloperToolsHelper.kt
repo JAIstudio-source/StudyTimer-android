@@ -3,6 +3,11 @@ package com.madeby.JAI
 import android.app.DatePickerDialog
 import android.app.Dialog
 import android.app.TimePickerDialog
+import androidx.core.widget.NestedScrollView
+import com.google.android.material.bottomsheet.BottomSheetBehavior
+import com.google.android.material.bottomsheet.BottomSheetDialog
+import android.view.HapticFeedbackConstants
+import android.widget.HorizontalScrollView
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
@@ -18,6 +23,11 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.media.RingtoneManager
+import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -117,13 +127,13 @@ object DeveloperToolsHelper {
             setPadding(0, dp(4), 0, dp(8))
         }
 
-        fun createSubjectGridCard(name: String, emoji: String, colorHex: String, tag: SubjectTag?): View {
+        fun createSubjectGridCard(name: String, colorHex: String, tag: SubjectTag?): View {
             val colorInt = try { Color.parseColor(colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
             val card = LinearLayout(activity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 22), 14f)
-                setPadding(dp(10), dp(10), dp(10), dp(10))
+                setPadding(dp(12), dp(10), dp(12), dp(10))
                 layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
                 setOnClickListener {
                     onSelected(tag)
@@ -131,16 +141,12 @@ object DeveloperToolsHelper {
                 }
             }
 
-            val iconBadge = TextView(activity).apply {
-                text = emoji
-                textSize = 14f
-                gravity = Gravity.CENTER
+            val colorDot = View(activity).apply {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
-                    setColor(tintedColor(colorInt, 40))
+                    setColor(colorInt)
                 }
-                setPadding(dp(4), dp(3), dp(4), dp(3))
-                layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(11), dp(11)).apply {
                     setMargins(0, 0, dp(8), 0)
                 }
             }
@@ -155,18 +161,18 @@ object DeveloperToolsHelper {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
-            card.addView(iconBadge)
+            card.addView(colorDot)
             card.addView(label)
             return card
         }
 
-        data class PickerItem(val name: String, val emoji: String, val colorHex: String, val tag: SubjectTag?)
+        data class PickerItem(val name: String, val colorHex: String, val tag: SubjectTag?)
         val pickerItems = mutableListOf<PickerItem>()
         if (includeGeneral) {
-            pickerItems.add(PickerItem("General Focus", "📖", "#6366F1", null))
+            pickerItems.add(PickerItem("General Focus", "#6366F1", null))
         }
         for (sub in subjects) {
-            pickerItems.add(PickerItem(sub.name, sub.iconEmoji, sub.colorHex, sub))
+            pickerItems.add(PickerItem(sub.name, sub.colorHex, sub))
         }
 
         for (i in pickerItems.indices step 2) {
@@ -181,7 +187,7 @@ object DeveloperToolsHelper {
             }
 
             val item1 = pickerItems[i]
-            val card1 = createSubjectGridCard(item1.name, item1.emoji, item1.colorHex, item1.tag)
+            val card1 = createSubjectGridCard(item1.name, item1.colorHex, item1.tag)
             (card1.layoutParams as LinearLayout.LayoutParams).apply {
                 if (i + 1 < pickerItems.size) setMargins(0, 0, dp(4), 0)
             }
@@ -189,7 +195,7 @@ object DeveloperToolsHelper {
 
             if (i + 1 < pickerItems.size) {
                 val item2 = pickerItems[i + 1]
-                val card2 = createSubjectGridCard(item2.name, item2.emoji, item2.colorHex, item2.tag)
+                val card2 = createSubjectGridCard(item2.name, item2.colorHex, item2.tag)
                 (card2.layoutParams as LinearLayout.LayoutParams).apply {
                     setMargins(dp(4), 0, 0, 0)
                 }
@@ -928,14 +934,35 @@ object DeveloperToolsHelper {
                 }, 150)
             })
 
-            addView(devButton("Trigger Streak Level-Up Animation (N ➔ N+1)", "Launches the animated streak count-up level-up popup") {
-                dialog.dismiss()
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    val cur = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 6)
-                    val old = if (cur > 0) cur - 1 else 6
-                    val next = if (cur > 0) cur else 7
-                    StreakUpAnimationDialog.show(activity, oldStreak = old, newStreak = next)
-                }, 150)
+            addView(devButton("Trigger Streak Level-Up Animation (N -> N+1)", "Launches animated count-up popup with tier borders") {
+                val tiers = arrayOf(
+                    "Starter Streak (Day 4 -> 5)",
+                    "Bronze Streak (Day 7 -> 8)",
+                    "Silver Streak (Day 14 -> 15)",
+                    "Gold Streak (Day 21 -> 22)",
+                    "Diamond Streak (Day 28 -> 29)",
+                    "Fire Streak (Day 50 -> 51)",
+                    "Century Streak (Day 100 -> 101)"
+                )
+                val streaks = arrayOf(
+                    Pair(4, 5),
+                    Pair(7, 8),
+                    Pair(14, 15),
+                    Pair(21, 22),
+                    Pair(28, 29),
+                    Pair(50, 51),
+                    Pair(100, 101)
+                )
+                android.app.AlertDialog.Builder(activity)
+                    .setTitle("Select Streak to Preview (N -> N+1)")
+                    .setItems(tiers) { d, which ->
+                        d.dismiss()
+                        dialog.dismiss()
+                        val (oldS, newS) = streaks[which]
+                        StreakUpAnimationDialog.show(activity, oldStreak = oldS, newStreak = newS)
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
             })
 
             addView(devButton("Trigger Milestone Streak Banner", "Preview special milestone celebrations (7, 14, 21, 28, 50, 100 days)") {
@@ -943,6 +970,92 @@ object DeveloperToolsHelper {
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     showStreakTestPicker(activity)
                 }, 150)
+            })
+
+                        addView(devButton("Test Festival Notifications & Variations", "Preview Diwali, Holi, Eid, Christmas, etc. in status bar") {
+                showFestivalTestPicker(activity)
+            })
+
+                        addView(devButton("Trigger Evening Goal Reminder", "Fires the daily goal notification based on today's progress") {
+                val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                val focus = prefs.getLong("${todayStr}_focus_total", 0L) + prefs.getLong("accumulatedStudy", 0L)
+                val goal = prefs.getLong("${todayStr}_goal_secs", prefs.getLong("daily_goal_secs", 7200L))
+
+                val openIntent = Intent(activity, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val openPending = PendingIntent.getActivity(
+                    activity, 0, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                val notif = NotificationCompat.Builder(activity, GoalReminderScheduler.CHANNEL_ID)
+                    .setSmallIcon(R.drawable.ic_flame)
+                    .setContentTitle(activity.getString(R.string.goal_reminder_title))
+                    .setContentText(activity.getString(R.string.goal_reminder_text, focus / 3600, (focus % 3600) / 60, activity.getString(R.string.duration_h_m, goal / 3600, (goal % 3600) / 60)))
+                    .setAutoCancel(true)
+                    .setSound(soundUri)
+                    .setDefaults(NotificationCompat.DEFAULT_SOUND or NotificationCompat.DEFAULT_LIGHTS)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_EVENT)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .setContentIntent(openPending)
+                    .build()
+
+                val nm = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(NotificationHelper.NOTIFICATION_ID_GOAL_REMINDER, notif)
+                Toast.makeText(activity, "Fired Daily Goal Reminder notification!", Toast.LENGTH_SHORT).show()
+            })
+
+            addView(devButton("Trigger Session Complete Notification", "Fires timer countdown finished heads-up alert") {
+                val openIntent = Intent(activity, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val openPending = PendingIntent.getActivity(
+                    activity, 0, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                val notif = NotificationCompat.Builder(activity, NotificationHelper.CHANNEL_COMPLETION)
+                    .setSmallIcon(R.drawable.ic_flame)
+                    .setContentTitle("Study Session Complete")
+                    .setContentText("Great job! Your focus countdown finished successfully.")
+                    .setAutoCancel(true)
+                    .setSound(soundUri)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_EVENT)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .setContentIntent(openPending)
+                    .build()
+
+                val nm = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(NotificationHelper.NOTIFICATION_ID_COMPLETION, notif)
+                Toast.makeText(activity, "Fired Session Complete notification!", Toast.LENGTH_SHORT).show()
+            })
+
+            addView(devButton("Trigger Inactivity / Auto-Pause Alert", "Fires study timer inactivity check notification") {
+                val openIntent = Intent(activity, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val openPending = PendingIntent.getActivity(
+                    activity, 0, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                val notif = NotificationCompat.Builder(activity, NotificationHelper.CHANNEL_INACTIVITY)
+                    .setSmallIcon(R.drawable.ic_flame)
+                    .setContentTitle("Are you still studying?")
+                    .setContentText("StudyTimer was paused due to inactivity. Tap to resume your session.")
+                    .setAutoCancel(true)
+                    .setSound(soundUri)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_EVENT)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .setContentIntent(openPending)
+                    .build()
+
+                val nm = activity.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                nm.notify(NotificationHelper.NOTIFICATION_ID_INACTIVITY_CHECK, notif)
+                Toast.makeText(activity, "Fired Inactivity Alert notification!", Toast.LENGTH_SHORT).show()
             })
 
             addView(devButton("Trigger Haptic Pulse", "Fires study completion haptic vibration waveform") {
@@ -953,6 +1066,179 @@ object DeveloperToolsHelper {
         }
 
         // 5. UI & Theme Overrides
+                // 5. App Blocker & Focus Shield Lab
+        addSection("APP BLOCKER & FOCUS SHIELD LAB", "🛡️") {
+            addView(devButton("Launch Blocker Overlay Simulation", "Tests the full-screen psychological shield for Instagram", Color.parseColor("#EC4899")) {
+                dialog.dismiss()
+                val intent = Intent(activity, BlockerOverlayActivity::class.java).apply {
+                    putExtra(BlockerOverlayActivity.EXTRA_BLOCKED_PACKAGE, "com.instagram.android")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                activity.startActivity(intent)
+            })
+
+            addView(devButton("Seed Mock Distracting Apps List", "Populates Instagram, YouTube, X, Reddit in blocked packages list", Color.parseColor("#8B5CF6")) {
+                val mockBlocked = setOf(
+                    "com.instagram.android",
+                    "com.google.android.youtube",
+                    "com.twitter.android",
+                    "com.reddit.frontpage",
+                    "com.zhiliaoapp.musically"
+                )
+                AppBlockerManager.setBlockedPackages(activity, mockBlocked)
+                AppBlockerManager.setEnabled(activity, true)
+                Toast.makeText(activity, "Seeded 5 mock distracting apps & enabled blocker!", Toast.LENGTH_SHORT).show()
+            })
+
+            addView(devButton("Toggle Blocker Shield (On / Off)", "Quickly arms or disarms the background focus shield") {
+                val newState = !AppBlockerManager.isEnabled(activity)
+                AppBlockerManager.setEnabled(activity, newState)
+                Toast.makeText(activity, if (newState) "Focus Shield Armed" else "Focus Shield Disarmed", Toast.LENGTH_SHORT).show()
+            })
+
+            addView(devButton("Check Blocker Permissions", "Verifies Usage Stats & System Overlay permission status") {
+                val hasUsage = AppBlockerManager.hasUsageStatsPermission(activity)
+                val hasOverlay = AppBlockerManager.hasOverlayPermission(activity)
+                android.app.AlertDialog.Builder(activity)
+                    .setTitle("App Blocker Permissions")
+                    .setMessage("• Usage Stats Access: ${if (hasUsage) "GRANTED" else "NOT GRANTED"}\n• Display Over Other Apps: ${if (hasOverlay) "GRANTED" else "NOT GRANTED"}")
+                    .setPositiveButton("OK", null)
+                    .show()
+            })
+        }
+
+        // 6. Exam Countdown Lab
+        addSection("EXAM COUNTDOWN LAB", "⏳") {
+            addView(devButton("Seed 3 Sample Exam Countdowns", "Populates JEE Main/Finals (14d), Semester Exam (45d), Entrance (90d)", Color.parseColor("#10B981")) {
+                val cal = Calendar.getInstance()
+                val df = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                
+                cal.add(Calendar.DAY_OF_YEAR, 14)
+                val exam1Date = df.format(cal.time)
+                val exam1Ts = cal.timeInMillis
+
+                cal.add(Calendar.DAY_OF_YEAR, 31)
+                val exam2Date = df.format(cal.time)
+                val exam2Ts = cal.timeInMillis
+
+                cal.add(Calendar.DAY_OF_YEAR, 45)
+                val exam3Date = df.format(cal.time)
+                val exam3Ts = cal.timeInMillis
+
+                val sampleExams = listOf(
+                    ExamCountdown(id = "exam_mock_1", title = "Final Semester Examinations", targetDateStr = exam1Date, targetTimestampMs = exam1Ts, colorHex = "#38BDF8", notes = "Cover entire semester syllabus"),
+                    ExamCountdown(id = "exam_mock_2", title = "National Entrance Test", targetDateStr = exam2Date, targetTimestampMs = exam2Ts, colorHex = "#F59E0B", notes = "Speed drills and mock tests"),
+                    ExamCountdown(id = "exam_mock_3", title = "Board & Certification Exam", targetDateStr = exam3Date, targetTimestampMs = exam3Ts, colorHex = "#10B981", notes = "Comprehensive revision")
+                )
+                ExamCountdownManager.saveExams(activity, sampleExams)
+                Toast.makeText(activity, "Seeded 3 upcoming exam countdowns!", Toast.LENGTH_SHORT).show()
+                activity.tabPageCache.clear()
+            })
+
+            addView(devButton("Simulate Exam Day (0 Days Left)", "Sets an exam date to today to test 'Today / Exam Day' urgency badge", Color.parseColor("#EF4444")) {
+                val cal = Calendar.getInstance()
+                val df = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+                val todayStr = df.format(cal.time)
+                val todayExam = listOf(
+                    ExamCountdown(id = "exam_today_test", title = "Physics Major Exam (Today!)", targetDateStr = todayStr, targetTimestampMs = cal.timeInMillis, colorHex = "#EF4444", notes = "Exam takes place today")
+                )
+                ExamCountdownManager.saveExams(activity, todayExam)
+                Toast.makeText(activity, "Set exam countdown to Today!", Toast.LENGTH_SHORT).show()
+                activity.tabPageCache.clear()
+            })
+
+            addView(devButton("Clear All Exam Countdowns", "Removes all saved exam targets from the planner", Color.parseColor("#64748B")) {
+                ExamCountdownManager.saveExams(activity, emptyList())
+                Toast.makeText(activity, "Cleared all exam countdowns", Toast.LENGTH_SHORT).show()
+                activity.tabPageCache.clear()
+            })
+        }
+
+        // 7. Lecture Timetable Lab
+        addSection("LECTURE & TIMETABLE LAB", "📅") {
+            addView(devButton("Seed Weekly Lecture Timetable", "Adds Physics (09:00), Calculus (11:30), Chemistry (14:00) schedule", Color.parseColor("#6366F1")) {
+                val sampleLectures = JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("id", "lec_dev_1")
+                        put("title", "Physics Lecture")
+                        put("startTime", "09:00")
+                        put("endTime", "10:30")
+                        put("enabled", true)
+                        put("subjectId", "physics")
+                    })
+                    put(JSONObject().apply {
+                        put("id", "lec_dev_2")
+                        put("title", "Calculus & Linear Algebra")
+                        put("startTime", "11:30")
+                        put("endTime", "13:00")
+                        put("enabled", true)
+                        put("subjectId", "math")
+                    })
+                    put(JSONObject().apply {
+                        put("id", "lec_dev_3")
+                        put("title", "Organic Chemistry Lab")
+                        put("startTime", "14:00")
+                        put("endTime", "15:30")
+                        put("enabled", true)
+                        put("subjectId", "chemistry")
+                    })
+                }
+                activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
+                    .putString("lecture_schedules_json", sampleLectures.toString())
+                    .putBoolean("lecture_mode_enabled", true)
+                    .apply()
+                LectureScheduleScheduler.scheduleAll(activity)
+                Toast.makeText(activity, "Seeded 3 weekly lectures & armed scheduler!", Toast.LENGTH_SHORT).show()
+                activity.tabPageCache.clear()
+            })
+
+            addView(devButton("Trigger Class Start Notification", "Dispatches class schedule starting alert immediately") {
+                val intent = Intent(activity, LectureScheduleReceiver::class.java).apply {
+                    action = LectureScheduleReceiver.ACTION_LECTURE_START
+                }
+                activity.sendBroadcast(intent)
+                Toast.makeText(activity, "Broadcasted Lecture Start event!", Toast.LENGTH_SHORT).show()
+            })
+
+            addView(devButton("Clear Lecture Schedules", "Wipes all scheduled lecture items", Color.parseColor("#64748B")) {
+                activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
+                    .putString("lecture_schedules_json", "[]")
+                    .apply()
+                LectureScheduleScheduler.cancelAll(activity)
+                Toast.makeText(activity, "Cleared all lecture schedules", Toast.LENGTH_SHORT).show()
+                activity.tabPageCache.clear()
+            })
+        }
+
+        // 8. Updates, Widgets & Scorecard Lab
+        addSection("UPDATES, WIDGETS & SCORECARD LAB", "🚀") {
+            addView(devButton("Simulate 'Update Available' Dialog", "Previews the in-app update prompt with release notes and download CTA", Color.parseColor("#38BDF8")) {
+                dialog.dismiss()
+                val mockUpdate = UpdateInfo(
+                    versionCode = 999,
+                    versionName = "3.0.0-PRO",
+                    url = "https://get-studytimer.vercel.app/?download=true",
+                    apkUrl = "https://raw.githubusercontent.com/JAIstudio-source/StudyTimer/main/StudyTimer-release.apk",
+                    releaseNotes = "• Brand new Festival Notifications system with personalized wishes\n• Enhanced App Blocker Focus Shield with instant audio silencing\n• Expanded Exam Countdowns & Planner Timetable\n• Improved battery efficiency & seamless cloud sync"
+                )
+                activity.showUpdateAvailableDialog(mockUpdate)
+            })
+
+            addView(devButton("Force Home Screen Widget Refresh", "Broadcasts immediate update intent to all pinned StudyTimer widgets", Color.parseColor("#10B981")) {
+                StudyWidgetProvider.refresh(activity)
+                val intent = Intent(activity, StudyWidgetProvider::class.java).apply {
+                    action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                }
+                activity.sendBroadcast(intent)
+                Toast.makeText(activity, "Widget refresh broadcast dispatched!", Toast.LENGTH_SHORT).show()
+            })
+
+            addView(devButton("Preview Shareable Study Scorecard", "Launches graphic scorecard export modal with current stats", Color.parseColor("#EC4899")) {
+                dialog.dismiss()
+                activity.showStudyScorecardExportDialog()
+            })
+        }
+
         addSection("UI & EDGE CASE PREVIEWS", "🎨") {
             addView(devButton("Force Toggle AMOLED / Light Mode", "Instantly swaps color matrix between pitch black and light") {
                 val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
@@ -972,7 +1258,7 @@ object DeveloperToolsHelper {
                 val longSubject = JSONObject().apply {
                     put("id", "custom_long_${System.currentTimeMillis()}")
                     put("name", "Advanced Quantum Thermodynamics & Electro-Optics Lab II")
-                    put("iconEmoji", "🔬")
+                    put("iconEmoji", "")
                     put("colorHex", "#EC4899")
                 }
                 arr.put(longSubject)
@@ -1028,7 +1314,7 @@ object DeveloperToolsHelper {
         var selectedSubject: SubjectTag? = subjects.firstOrNull() // null = untagged general focus
 
         val subjectPickerBtn = TextView(activity).apply {
-            text = "Tag: ${selectedSubject?.iconEmoji ?: "⏱"} ${selectedSubject?.name ?: "No Subject Tag / General"}"
+            text = "Tag: ${selectedSubject?.name ?: "No Subject Tag / General"}"
             setTextColor(themeCoordinator.textColor)
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -1062,15 +1348,15 @@ object DeveloperToolsHelper {
                     selectedSubject = sub
                     customInputContainer.visibility = View.GONE
                     if (sub == null) {
-                        subjectPickerBtn.text = "Tag: ⏱ No Subject Tag / General Focus"
+                        subjectPickerBtn.text = "Tag: No Subject Tag / General Focus"
                     } else {
-                        subjectPickerBtn.text = "Tag: ${sub.iconEmoji} ${sub.name}"
+                        subjectPickerBtn.text = "Tag: ${sub.name}"
                     }
                 },
                 onCreateCustom = {
                     selectedSubject = null
                     customInputContainer.visibility = View.VISIBLE
-                    subjectPickerBtn.text = "Tag: ➕ Custom Subject (Type below)"
+                    subjectPickerBtn.text = "Tag: Custom Subject (Type below)"
                 }
             )
         }
@@ -1307,7 +1593,7 @@ object DeveloperToolsHelper {
                     arr.put(JSONObject().apply {
                         put("id", newId)
                         put("name", inputName)
-                        put("iconEmoji", "📚")
+                        put("iconEmoji", "")
                         put("colorHex", "#38BDF8")
                     })
                     subPrefs.edit().putString("custom_subjects_json", arr.toString()).apply()
@@ -1592,7 +1878,7 @@ object DeveloperToolsHelper {
                 put(JSONObject().apply {
                     put("id", s.id)
                     put("name", s.name)
-                    put("iconEmoji", s.iconEmoji)
+                    put("iconEmoji", "")
                     put("colorHex", s.colorHex)
                 })
             }
@@ -1802,7 +2088,7 @@ object DeveloperToolsHelper {
             showThemedConfirmDialog(
                 activity = activity,
                 themeCoordinator = themeCoordinator,
-                title = "⏱️ Timer Is Running",
+                title = "Timer Is Running",
                 message = "Time can only be adjusted when no timer is running.\n\nPlease pause or finish your active timer session first before adjusting study or break records.",
                 confirmText = "Go to Timer",
                 isDestructive = false,
@@ -1813,11 +2099,7 @@ object DeveloperToolsHelper {
             return
         }
 
-        val dialog = Dialog(activity)
-        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         val dp = { v: Int -> (v * activity.resources.displayMetrics.density).toInt() }
-        val displayMetrics = activity.resources.displayMetrics
-
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         var targetDateStr = initialDate ?: todayStr
 
@@ -1828,71 +2110,137 @@ object DeveloperToolsHelper {
         val subjects = SubjectTagManager.getAllSubjects(activity)
         var selectedSubject: SubjectTag? = subjects.firstOrNull()
 
+        var enteredMins = 30L
+
+        // Timing variables for clock slot
+        var isSpecificTimeSlot = false
+        val timeFmt = SimpleDateFormat("hh:mm a", Locale.getDefault())
+        val startCal = Calendar.getInstance().apply { add(Calendar.MINUTE, -30) }
+        val endCal = Calendar.getInstance()
+
+        val dialog = BottomSheetDialog(activity, R.style.TransparentBottomSheetDialogTheme)
+
+        // Solid, completely opaque bottom sheet background - prevents any screen content bleed-through
+        val isDark = themeCoordinator.isDarkMode()
+        val baseBgColor = if (!isDark) {
+            0xFFFFFFFF.toInt()
+        } else if (themeCoordinator.activeBgMode == "OLED") {
+            0xFF0A0A0C.toInt()
+        } else {
+            0xFF10131C.toInt()
+        }
+
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createDialogBackground(28f)
-            setPadding(dp(20), dp(18), dp(20), dp(18))
-        }
-
-        // Title Bar with Close ✕ button
-        val titleBar = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(10))
-        }
-        val titleText = TextView(activity).apply {
-            text = if (isDeveloperExtended) "🛠️ Adjust Time & Data (Extended)" else "⏱️ Adjust Today's Time"
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 16.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val closeBtn = TextView(activity).apply {
-            text = "✕"
-            textSize = 16f
-            setTextColor(themeCoordinator.textColor)
-            alpha = 0.6f
-            setPadding(dp(10), dp(4), dp(4), dp(4))
-            setOnClickListener { dialog.dismiss() }
-        }
-        titleBar.addView(titleText)
-        titleBar.addView(closeBtn)
-        root.addView(titleBar)
-
-        val scroll = ScrollView(activity).apply {
-            isVerticalScrollBarEnabled = false
-            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            background = GradientDrawable().apply {
+                cornerRadii = floatArrayOf(
+                    dp(28).toFloat(), dp(28).toFloat(),
+                    dp(28).toFloat(), dp(28).toFloat(),
+                    0f, 0f, 0f, 0f
+                )
+                setColor(baseBgColor)
+                setStroke(dp(1), if (isDark) 0x2EFFFFFF else 0x1E000000)
+            }
+            setPadding(dp(20), dp(12), dp(20), dp(20))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        val content = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
+
+        // Top Drag Handle
+        val dragHandle = View(activity).apply {
+            background = GradientDrawable().apply {
+                setColor(if (isDark) 0x33FFFFFF else 0x22000000)
+                cornerRadius = dp(3).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(4)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
+                bottomMargin = dp(14)
+            }
+        }
+        root.addView(dragHandle)
+
+        // Header Row (Title + Subtitle + Close ✕)
+        val headerRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, dp(12))
         }
 
-        // Developer Leaderboard Sync Toggle (if developer mode)
+        val headerTextCol = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+
+        val titleView = TextView(activity).apply {
+            text = if (isDeveloperExtended) "Adjust Time & Data (Extended)" else "Add Past Session"
+            textSize = 18f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+        }
+        val subView = TextView(activity).apply {
+            text = "Log missed study time or correct today's session"
+            textSize = 12f
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+        }
+        headerTextCol.addView(titleView)
+        headerTextCol.addView(subView)
+        headerRow.addView(headerTextCol)
+
+        val closeBtn = TextView(activity).apply {
+            text = "✕"
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.6f
+            setPadding(dp(10), dp(6), dp(6), dp(6))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { dialog.dismiss() }
+        }
+        headerRow.addView(closeBtn)
+        root.addView(headerRow)
+
+        // Nested Scrollable Content
+        val screenHeight = activity.resources.displayMetrics.heightPixels
+        val maxScrollHeight = (screenHeight * 0.75f).toInt().coerceIn(dp(400), dp(680))
+
+        val scrollView = NestedScrollView(activity).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                maxScrollHeight
+            )
+        }
+
+        val content = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        // Leaderboard toggle (developer only)
         val leaderboardToggleBtn = TextView(activity).apply {
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(10), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
+                bottomMargin = dp(10)
             }
             visibility = if (isDeveloperExtended) View.VISIBLE else View.GONE
         }
         fun updateLeaderboardToggleUI() {
             if (syncLeaderboard) {
-                leaderboardToggleBtn.text = "🏆 Sync to Public Leaderboard: ENABLED"
+                leaderboardToggleBtn.text = "Sync to Public Leaderboard: ENABLED"
                 leaderboardToggleBtn.setTextColor(Color.WHITE)
                 leaderboardToggleBtn.background = GradientDrawable().apply {
                     cornerRadius = dp(12).toFloat()
                     setColor(Color.parseColor("#10B981"))
                 }
             } else {
-                leaderboardToggleBtn.text = "🏆 Sync to Public Leaderboard: DISABLED"
+                leaderboardToggleBtn.text = "Sync to Public Leaderboard: DISABLED"
                 leaderboardToggleBtn.setTextColor(tintedColor(themeCoordinator.textColor, 160))
                 leaderboardToggleBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 12f)
             }
@@ -1904,251 +2252,332 @@ object DeveloperToolsHelper {
         updateLeaderboardToggleUI()
         content.addView(leaderboardToggleBtn)
 
-        // 1. Category Switcher: Focus vs Break
+        // 1. Top Category Switcher (Focus vs Break)
         val categoryRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 14f)
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 22), 14f)
             setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
+                bottomMargin = dp(10)
             }
         }
 
         val focusTab = TextView(activity).apply {
-            text = "⏱️ Study Focus"
-            textSize = 12.5f
+            text = "Study Focus"
+            textSize = 13f
             gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(8), dp(10), dp(8), dp(10))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
         val breakTab = TextView(activity).apply {
-            text = "☕ Break Time"
-            textSize = 12.5f
+            text = "Break Time"
+            textSize = 13f
             gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(8), dp(10), dp(8), dp(10))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-
         categoryRow.addView(focusTab)
         categoryRow.addView(breakTab)
         content.addView(categoryRow)
 
-        // 2. Date Information / Selector
-        val dateCard = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
-            }
-        }
-
-        val dateLabel = TextView(activity).apply {
-            textSize = 12f
-            setTextColor(themeCoordinator.textColor)
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        dateCard.addView(dateLabel)
-
-        var updateUI: () -> Unit = {}
-
-        if (isDeveloperExtended) {
-            val pickDateBtn = TextView(activity).apply {
-                text = "📅 Pick Date ▾"
-                textSize = 11.5f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(8).toFloat()
-                    setColor(Color.parseColor("#38BDF8"))
-                }
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                setOnClickListener {
-                    val cal = Calendar.getInstance()
-                    try {
-                        SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(targetDateStr)?.let {
-                            cal.time = it
-                        }
-                    } catch (_: Exception) {}
-
-                    DatePickerDialog(
-                        activity,
-                        getPickerThemeRes(),
-                        { _, year, month, dayOfMonth ->
-                            targetDateStr = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
-                            activity.runOnUiThread { updateUI() }
-                        },
-                        cal.get(Calendar.YEAR),
-                        cal.get(Calendar.MONTH),
-                        cal.get(Calendar.DAY_OF_MONTH)
-                    ).show()
-                }
-            }
-            dateCard.addView(pickDateBtn)
-        }
-        content.addView(dateCard)
-
-        // 3. Action Mode Toggle (Add vs Deduct vs Set)
-        val modeToggleRow = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 14f)
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
-            }
-        }
-
-        val addBtn = TextView(activity).apply {
-            text = "➕ Add"
-            textSize = 11.5f
-            gravity = Gravity.CENTER
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(6), dp(8), dp(6), dp(8))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val deductBtn = TextView(activity).apply {
-            text = "➖ Deduct"
-            textSize = 11.5f
-            gravity = Gravity.CENTER
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(6), dp(8), dp(6), dp(8))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-
-        val setBtn = TextView(activity).apply {
-            text = "🎯 Set Total"
-            textSize = 11.5f
-            gravity = Gravity.CENTER
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(6), dp(8), dp(6), dp(8))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            visibility = if (isDeveloperExtended) View.VISIBLE else View.GONE
-        }
-
-        modeToggleRow.addView(addBtn)
-        modeToggleRow.addView(deductBtn)
-        if (isDeveloperExtended) modeToggleRow.addView(setBtn)
-        content.addView(modeToggleRow)
-
-        // 3.5 Input Method Toggle: By Duration (Minutes) vs By Clock Wheel (Pick Time of Day)
-        var isClockWheelMode = false
-        val timeFmt = SimpleDateFormat("hh:mm a", Locale.getDefault())
-        val startCal = Calendar.getInstance()
-        val endCal = Calendar.getInstance().apply { add(Calendar.MINUTE, 30) }
-
-        val inputMethodRow = LinearLayout(activity).apply {
+        // 2. Action Mode Switcher (Add Time vs Deduct Time)
+        val modeRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 18), 12f)
             setPadding(dp(3), dp(3), dp(3), dp(3))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(8))
+                bottomMargin = dp(12)
             }
         }
 
-        val byDurationTab = TextView(activity).apply {
-            text = "⏱️ By Duration"
-            textSize = 11.5f
+        val addModeBtn = TextView(activity).apply {
+            text = "+ Add Time"
+            textSize = 12f
             gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(6), dp(7), dp(6), dp(7))
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        val byClockWheelTab = TextView(activity).apply {
-            text = "🕒 Clock Wheel (Time of Day)"
-            textSize = 11.5f
+        val deductModeBtn = TextView(activity).apply {
+            text = "- Deduct Time"
+            textSize = 12f
             gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(6), dp(7), dp(6), dp(7))
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        inputMethodRow.addView(byDurationTab)
-        inputMethodRow.addView(byClockWheelTab)
-        content.addView(inputMethodRow)
-
-        // Preset Chips Container (for Duration mode)
-        val presetContainer = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setPadding(0, 0, 0, dp(8))
+        val setModeBtn = TextView(activity).apply {
+            text = "Set Exact"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            visibility = if (isDeveloperExtended) View.VISIBLE else View.GONE
         }
-        content.addView(presetContainer)
+        modeRow.addView(addModeBtn)
+        modeRow.addView(deductModeBtn)
+        if (isDeveloperExtended) modeRow.addView(setModeBtn)
+        content.addView(modeRow)
 
-        // Minutes Input Field (for Duration mode)
-        val minutesInput = EditText(activity).apply {
-            hint = "Enter minutes (e.g. 30)"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER
-            setText("30")
-            setTextColor(themeCoordinator.textColor)
-            setHintTextColor(tintedColor(themeCoordinator.textColor, 100))
-            textSize = 14.5f
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(8))
-            }
-        }
-        content.addView(minutesInput)
-
-        // Clock Wheel Start & End Pickers Container (for Clock Wheel mode)
-        val clockWheelContainer = LinearLayout(activity).apply {
+        // 3. Hero Duration Display Card
+        val heroCard = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            visibility = View.GONE
-            setPadding(0, 0, 0, dp(8))
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = themeCoordinator.createCardBackground(18f)
+            setPadding(dp(16), dp(16), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(12)
+            }
         }
 
-        val clockWheelRow = LinearLayout(activity).apply {
+        val heroLabel = TextView(activity).apply {
+            text = "DURATION TO ADD"
+            textSize = 11f
+            letterSpacing = 0.08f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(tintedColor(themeCoordinator.textColor, 140))
+        }
+        heroCard.addView(heroLabel)
+
+        // Stepper Row: [-15m] [ 01h : 30m ] [+15m]
+        val stepperRow = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(8), 0, dp(12))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
 
+        var updateUI: () -> Unit = {}
+
+        fun createStepperBtn(label: String, onClick: () -> Unit): TextView {
+            return TextView(activity).apply {
+                text = label
+                textSize = 13f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(themeCoordinator.textColor)
+                gravity = Gravity.CENTER
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    onClick()
+                }
+            }
+        }
+
+        val stepMinusBtn = createStepperBtn("-15m") {
+            enteredMins = (enteredMins - 15L).coerceAtLeast(0L)
+            updateUI()
+        }
+
+        val heroDurationText = TextView(activity).apply {
+            text = "00h : 30m"
+            textSize = 32f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.primaryColor)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                val curH = (enteredMins / 60L).toInt()
+                val curM = (enteredMins % 60L).toInt()
+                TimePickerDialog(
+                    activity,
+                    getPickerThemeRes(),
+                    { _, hourOfDay, minute ->
+                        enteredMins = (hourOfDay * 60L + minute).coerceIn(0L, 1440L)
+                        updateUI()
+                    },
+                    curH,
+                    curM,
+                    true
+                ).apply {
+                    setTitle("Set Duration (Hours : Minutes)")
+                }.show()
+            }
+        }
+
+        val stepPlusBtn = createStepperBtn("+15m") {
+            enteredMins = (enteredMins + 15L).coerceAtMost(1440L)
+            updateUI()
+        }
+
+        stepperRow.addView(stepMinusBtn)
+        stepperRow.addView(heroDurationText)
+        stepperRow.addView(stepPlusBtn)
+        heroCard.addView(stepperRow)
+
+        // Quick Preset Chips (+15m, +30m, +45m, +1h, +2h, Reset)
+        val chipsScroll = HorizontalScrollView(activity).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        val chipsContainer = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        chipsScroll.addView(chipsContainer)
+        heroCard.addView(chipsScroll)
+
+        content.addView(heroCard)
+
+        // 4. Subject & Time Slot Attribution Card
+        val metaCard = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createCardBackground(16f)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(12)
+            }
+        }
+
+        // Subject row (visible only in Study Focus mode)
+        val subjectRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(8))
+            isClickable = true
+            isFocusable = true
+        }
+
+        val subjectLabel = TextView(activity).apply {
+            text = "Subject:"
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val subjectChip = TextView(activity).apply {
+            text = "${selectedSubject?.name ?: "General Focus"} ▾"
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.primaryColor)
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 8f)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+        }
+        subjectRow.addView(subjectLabel)
+        subjectRow.addView(subjectChip)
+        subjectRow.setOnClickListener {
+            showThemedSubjectPickerModal(
+                activity = activity,
+                themeCoordinator = themeCoordinator,
+                title = "Attribute to Subject",
+                includeGeneral = true,
+                includeCreateOption = false,
+                onSelected = { sub ->
+                    selectedSubject = sub
+                    subjectChip.text = if (sub == null) {
+                        "General Focus ▾"
+                    } else {
+                        "${sub?.name ?: "General Focus"} ▾"
+                    }
+                    updateUI()
+                }
+            )
+        }
+        metaCard.addView(subjectRow)
+
+        // Divider
+        val metaDivider = View(activity).apply {
+            background = GradientDrawable().apply { setColor(0x18FFFFFF) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                setMargins(0, dp(4), 0, dp(8))
+            }
+        }
+        metaCard.addView(metaDivider)
+
+        // Time slot selection (Ended Just Now vs Custom Time of Day)
+        val timeSlotRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        val timeSlotLabel = TextView(activity).apply {
+            text = "Time Slot:"
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val timeSlotToggle = TextView(activity).apply {
+            text = "Ended Just Now ▾"
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 8f)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+        }
+        timeSlotRow.addView(timeSlotLabel)
+        timeSlotRow.addView(timeSlotToggle)
+        metaCard.addView(timeSlotRow)
+
+        // Custom Time Picker Row (collapsible)
+        val customTimeRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = View.GONE
+            setPadding(0, dp(8), 0, dp(4))
+        }
         val startTimeBtn = TextView(activity).apply {
-            text = "⏰ Start: ${timeFmt.format(startCal.time)} ▾"
+            text = "Start: ${timeFmt.format(startCal.time)} ▾"
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 12f)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 10f)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(0, 0, dp(4), 0)
+                rightMargin = dp(4)
             }
         }
-
         val endTimeBtn = TextView(activity).apply {
-            text = "🏁 End: ${timeFmt.format(endCal.time)} ▾"
+            text = "End: ${timeFmt.format(endCal.time)} ▾"
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 12f)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 10f)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                setMargins(dp(4), 0, 0, 0)
+                leftMargin = dp(4)
             }
         }
+        customTimeRow.addView(startTimeBtn)
+        customTimeRow.addView(endTimeBtn)
+        metaCard.addView(customTimeRow)
 
-        clockWheelRow.addView(startTimeBtn)
-        clockWheelRow.addView(endTimeBtn)
-        clockWheelContainer.addView(clockWheelRow)
-        content.addView(clockWheelContainer)
-
-        fun recalculateFromClockWheel() {
+        fun syncFromClockWheel() {
             var diffMs = endCal.timeInMillis - startCal.timeInMillis
             if (diffMs <= 0) {
-                // If end is before or equal start, advance end by 30 mins
                 endCal.timeInMillis = startCal.timeInMillis + (30 * 60000L)
-                endTimeBtn.text = "🏁 End: ${timeFmt.format(endCal.time)}"
+                endTimeBtn.text = "End: ${timeFmt.format(endCal.time)} ▾"
                 diffMs = 30 * 60000L
             }
-            val mins = (diffMs / 60000L).coerceAtLeast(1L)
-            minutesInput.setText(mins.toString())
+            enteredMins = (diffMs / 60000L).coerceIn(1L, 1440L)
+            updateUI()
+        }
+
+        timeSlotToggle.setOnClickListener {
+            isSpecificTimeSlot = !isSpecificTimeSlot
+            if (isSpecificTimeSlot) {
+                timeSlotToggle.text = "Custom Time ▾"
+                timeSlotToggle.setTextColor(themeCoordinator.primaryColor)
+                customTimeRow.visibility = View.VISIBLE
+                syncFromClockWheel()
+            } else {
+                timeSlotToggle.text = "Ended Just Now ▾"
+                timeSlotToggle.setTextColor(themeCoordinator.textColor)
+                customTimeRow.visibility = View.GONE
+                updateUI()
+            }
         }
 
         startTimeBtn.setOnClickListener {
@@ -2159,9 +2588,8 @@ object DeveloperToolsHelper {
                     startCal.set(Calendar.HOUR_OF_DAY, hourOfDay)
                     startCal.set(Calendar.MINUTE, minute)
                     startCal.set(Calendar.SECOND, 0)
-                    startTimeBtn.text = "⏰ Start: ${timeFmt.format(startCal.time)}"
-                    recalculateFromClockWheel()
-                    updateUI()
+                    startTimeBtn.text = "Start: ${timeFmt.format(startCal.time)} ▾"
+                    syncFromClockWheel()
                 },
                 startCal.get(Calendar.HOUR_OF_DAY),
                 startCal.get(Calendar.MINUTE),
@@ -2177,9 +2605,8 @@ object DeveloperToolsHelper {
                     endCal.set(Calendar.HOUR_OF_DAY, hourOfDay)
                     endCal.set(Calendar.MINUTE, minute)
                     endCal.set(Calendar.SECOND, 0)
-                    endTimeBtn.text = "🏁 End: ${timeFmt.format(endCal.time)}"
-                    recalculateFromClockWheel()
-                    updateUI()
+                    endTimeBtn.text = "End: ${timeFmt.format(endCal.time)} ▾"
+                    syncFromClockWheel()
                 },
                 endCal.get(Calendar.HOUR_OF_DAY),
                 endCal.get(Calendar.MINUTE),
@@ -2187,78 +2614,113 @@ object DeveloperToolsHelper {
             ).show()
         }
 
-        // Subject Selector (Only visible for Study Focus)
-        val subjectPickerBtn = TextView(activity).apply {
-            text = "Subject Tag: ${selectedSubject?.iconEmoji ?: "📖"} ${selectedSubject?.name ?: "General Focus"}"
-            setTextColor(themeCoordinator.textColor)
-            textSize = 13f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 12f)
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+        content.addView(metaCard)
+
+        // 5. Date Card (Developer mode only)
+        val dateCard = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 12f)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
+                bottomMargin = dp(12)
+            }
+            visibility = View.VISIBLE
+        }
+        val dateLabel = TextView(activity).apply {
+            textSize = 12f
+            setTextColor(themeCoordinator.textColor)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val pickDateBtn = TextView(activity).apply {
+            text = "Pick Date ▾"
+            textSize = 11.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(Color.WHITE)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(Color.parseColor("#38BDF8"))
+            }
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            setOnClickListener {
+                val cal = Calendar.getInstance()
+                try {
+                    SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(targetDateStr)?.let {
+                        cal.time = it
+                    }
+                } catch (_: Exception) {}
+
+                DatePickerDialog(
+                    activity,
+                    getPickerThemeRes(),
+                    { _, year, month, dayOfMonth ->
+                        targetDateStr = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, dayOfMonth)
+                        activity.runOnUiThread { updateUI() }
+                    },
+                    cal.get(Calendar.YEAR),
+                    cal.get(Calendar.MONTH),
+                    cal.get(Calendar.DAY_OF_MONTH)
+                ).show()
             }
         }
+        dateCard.addView(dateLabel)
+        dateCard.addView(pickDateBtn)
+        content.addView(dateCard)
 
-        subjectPickerBtn.setOnClickListener {
-            showThemedSubjectPickerModal(
-                activity = activity,
-                themeCoordinator = themeCoordinator,
-                title = "Attribute to Subject",
-                includeGeneral = true,
-                includeCreateOption = false,
-                onSelected = { sub ->
-                    selectedSubject = sub
-                    if (sub == null) {
-                        subjectPickerBtn.text = "Subject Tag: 📖 General Focus (Untagged)"
-                    } else {
-                        subjectPickerBtn.text = "Subject Tag: ${sub.iconEmoji} ${sub.name}"
-                    }
-                    updateUI()
-                }
-            )
-        }
-        content.addView(subjectPickerBtn)
-
-        // Live Calculation Summary Preview Card
+        // 6. Live Impact & Goal Progress Card
         val summaryCard = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            background = themeCoordinator.createCardBackground(18f)
+            background = themeCoordinator.createCardBackground(16f)
             setPadding(dp(14), dp(12), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(14))
+                bottomMargin = dp(14)
             }
         }
 
+        val summaryHeader = TextView(activity).apply {
+            text = "RECORD IMPACT"
+            textSize = 10f
+            letterSpacing = 0.08f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(tintedColor(themeCoordinator.textColor, 120))
+            setPadding(0, 0, 0, dp(4))
+        }
         val summaryCurrentText = TextView(activity).apply {
             textSize = 12f
             setTextColor(themeCoordinator.textColor)
-            alpha = 0.7f
+            alpha = 0.75f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setPadding(0, 0, 0, dp(4))
         }
-
         val summaryResultText = TextView(activity).apply {
-            textSize = 13f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-        }
-
-        summaryCard.addView(summaryCurrentText)
-        summaryCard.addView(summaryResultText)
-        content.addView(summaryCard)
-
-        // Apply Button
-        val applyBtn = Button(activity).apply {
-            text = "APPLY ADJUSTMENT"
-            setTextColor(Color.WHITE)
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
+        }
+        val summaryGoalText = TextView(activity).apply {
+            textSize = 11.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+            setTextColor(tintedColor(themeCoordinator.textColor, 150))
+            setPadding(0, dp(4), 0, 0)
+        }
+        summaryCard.addView(summaryHeader)
+        summaryCard.addView(summaryCurrentText)
+        summaryCard.addView(summaryResultText)
+        summaryCard.addView(summaryGoalText)
+        content.addView(summaryCard)
+
+        // 7. Apply Action CTA Button
+        val applyBtn = Button(activity).apply {
+            text = "+ LOG 30m TO FOCUS"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50))
         }
         content.addView(applyBtn)
 
-        scroll.addView(content)
-        root.addView(scroll)
+        scrollView.addView(content)
+        root.addView(scrollView)
 
         updateUI = {
             val isTargetToday = targetDateStr == todayStr
@@ -2283,9 +2745,9 @@ object DeveloperToolsHelper {
             }
 
             dateLabel.text = if (isTargetToday) {
-                "📅 Today • $dateDisplay"
+                "Today • $dateDisplay"
             } else {
-                "📅 Target Date • $dateDisplay ($targetDateStr)"
+                "Date • $dateDisplay"
             }
 
             // Category Tab Styles
@@ -2297,7 +2759,8 @@ object DeveloperToolsHelper {
                 }
                 breakTab.setTextColor(tintedColor(themeCoordinator.textColor, 140))
                 breakTab.background = null
-                subjectPickerBtn.visibility = View.VISIBLE
+                subjectRow.visibility = View.VISIBLE
+                metaDivider.visibility = View.VISIBLE
             } else {
                 breakTab.setTextColor(Color.WHITE)
                 breakTab.background = GradientDrawable().apply {
@@ -2306,95 +2769,108 @@ object DeveloperToolsHelper {
                 }
                 focusTab.setTextColor(tintedColor(themeCoordinator.textColor, 140))
                 focusTab.background = null
-                subjectPickerBtn.visibility = View.GONE
-            }
-
-            // Input Method Tab Styles
-            if (isClockWheelMode) {
-                byClockWheelTab.setTextColor(Color.WHITE)
-                byClockWheelTab.background = GradientDrawable().apply {
-                    cornerRadius = dp(9).toFloat()
-                    setColor(Color.parseColor("#38BDF8"))
-                }
-                byDurationTab.setTextColor(tintedColor(themeCoordinator.textColor, 140))
-                byDurationTab.background = null
-                presetContainer.visibility = View.GONE
-                clockWheelContainer.visibility = View.VISIBLE
-            } else {
-                byDurationTab.setTextColor(Color.WHITE)
-                byDurationTab.background = GradientDrawable().apply {
-                    cornerRadius = dp(9).toFloat()
-                    setColor(themeCoordinator.primaryColor)
-                }
-                byClockWheelTab.setTextColor(tintedColor(themeCoordinator.textColor, 140))
-                byClockWheelTab.background = null
-                presetContainer.visibility = View.VISIBLE
-                clockWheelContainer.visibility = View.GONE
+                subjectRow.visibility = View.GONE
+                metaDivider.visibility = View.GONE
             }
 
             // Action Mode Tab Styles
-            val activeColor = when (actionMode) {
+            val activeActionColor = when (actionMode) {
                 0 -> if (isFocusCategory) themeCoordinator.primaryColor else Color.parseColor("#F43F5E")
-                1 -> Color.parseColor("#EF4444")
+                1 -> Color.parseColor("#F59E0B") // Warm amber warning for deduct
                 else -> Color.parseColor("#38BDF8")
             }
 
-            addBtn.setTextColor(if (actionMode == 0) Color.WHITE else tintedColor(themeCoordinator.textColor, 140))
-            addBtn.background = if (actionMode == 0) GradientDrawable().apply {
-                cornerRadius = dp(10).toFloat(); setColor(activeColor)
+            addModeBtn.setTextColor(if (actionMode == 0) Color.WHITE else tintedColor(themeCoordinator.textColor, 140))
+            addModeBtn.background = if (actionMode == 0) GradientDrawable().apply {
+                cornerRadius = dp(9).toFloat()
+                setColor(if (isFocusCategory) themeCoordinator.primaryColor else Color.parseColor("#F43F5E"))
             } else null
 
-            deductBtn.setTextColor(if (actionMode == 1) Color.WHITE else tintedColor(themeCoordinator.textColor, 140))
-            deductBtn.background = if (actionMode == 1) GradientDrawable().apply {
-                cornerRadius = dp(10).toFloat(); setColor(Color.parseColor("#EF4444"))
+            deductModeBtn.setTextColor(if (actionMode == 1) Color.WHITE else tintedColor(themeCoordinator.textColor, 140))
+            deductModeBtn.background = if (actionMode == 1) GradientDrawable().apply {
+                cornerRadius = dp(9).toFloat()
+                setColor(Color.parseColor("#F59E0B"))
             } else null
 
-            setBtn.setTextColor(if (actionMode == 2) Color.WHITE else tintedColor(themeCoordinator.textColor, 140))
-            setBtn.background = if (actionMode == 2) GradientDrawable().apply {
-                cornerRadius = dp(10).toFloat(); setColor(Color.parseColor("#38BDF8"))
+            setModeBtn.setTextColor(if (actionMode == 2) Color.WHITE else tintedColor(themeCoordinator.textColor, 140))
+            setModeBtn.background = if (actionMode == 2) GradientDrawable().apply {
+                cornerRadius = dp(9).toFloat()
+                setColor(Color.parseColor("#38BDF8"))
             } else null
 
-            // Presets
-            presetContainer.removeAllViews()
-            val presets = when {
+            heroLabel.text = when (actionMode) {
+                0 -> if (isFocusCategory) "DURATION TO ADD (STUDY)" else "DURATION TO ADD (BREAK)"
+                1 -> if (isFocusCategory) "DURATION TO DEDUCT (STUDY)" else "DURATION TO DEDUCT (BREAK)"
+                else -> "SET EXACT TOTAL"
+            }
+
+            // Update Hero Duration display
+            val durH = enteredMins / 60L
+            val durM = enteredMins % 60L
+            heroDurationText.text = String.format(Locale.getDefault(), "%02dh : %02dm", durH, durM)
+            heroDurationText.setTextColor(activeActionColor)
+
+            // Preset chips
+            chipsContainer.removeAllViews()
+            val chipsList = when {
                 actionMode == 2 -> if (isFocusCategory) listOf(0L, 30L, 60L, 120L, 240L) else listOf(0L, 5L, 15L, 30L, 60L)
                 isFocusCategory -> if (actionMode == 0) listOf(15L, 30L, 45L, 60L, 120L) else listOf(10L, 15L, 30L, 45L, 60L)
                 else -> if (actionMode == 0) listOf(5L, 10L, 15L, 20L, 30L) else listOf(5L, 10L, 15L, 20L, 30L)
             }
 
-            for (p in presets) {
-                val chip = Button(activity).apply {
+            for (p in chipsList) {
+                val chip = TextView(activity).apply {
                     val label = if (p >= 60 && p % 60 == 0L) "${p / 60}h" else "${p}m"
                     text = when (actionMode) {
                         0 -> "+$label"
                         1 -> "-$label"
                         else -> label
                     }
-                    textSize = 11f
+                    textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    val chipBgColor = when (actionMode) {
-                        1 -> tintedColor(Color.parseColor("#EF4444"), 40)
-                        2 -> tintedColor(Color.parseColor("#38BDF8"), 40)
-                        else -> tintedColor(themeCoordinator.primaryColor, 40)
+                    setTextColor(activeActionColor)
+                    gravity = Gravity.CENTER
+                    background = themeCoordinator.createGlassChip(tintedColor(activeActionColor, 35), 10f)
+                    setPadding(dp(12), dp(7), dp(12), dp(7))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                        setMargins(0, 0, dp(6), 0)
                     }
-                    val chipTextColor = when (actionMode) {
-                        1 -> Color.parseColor("#EF4444")
-                        2 -> Color.parseColor("#38BDF8")
-                        else -> themeCoordinator.primaryColor
-                    }
-                    setTextColor(chipTextColor)
-                    background = themeCoordinator.createGlassChip(chipBgColor, 10f)
-                    layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply {
-                        setMargins(dp(2), 0, dp(2), 0)
-                    }
+                    isClickable = true
+                    isFocusable = true
                     setOnClickListener {
-                        minutesInput.setText(p.toString())
+                        activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        enteredMins = if (actionMode == 0) {
+                            (enteredMins + p).coerceAtMost(1440L)
+                        } else if (actionMode == 1) {
+                            (enteredMins + p).coerceAtMost(if (isFocusCategory) effectiveFocusMins else effectiveBreakMins)
+                        } else {
+                            p
+                        }
+                        updateUI()
                     }
                 }
-                presetContainer.addView(chip)
+                chipsContainer.addView(chip)
             }
 
-            val enteredMins = minutesInput.text.toString().toLongOrNull() ?: 0L
+            // Reset chip
+            val resetChip = TextView(activity).apply {
+                text = "Reset"
+                textSize = 12f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(tintedColor(themeCoordinator.textColor, 160))
+                gravity = Gravity.CENTER
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 10f)
+                setPadding(dp(12), dp(7), dp(12), dp(7))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                    enteredMins = 0L
+                    updateUI()
+                }
+            }
+            chipsContainer.addView(resetChip)
+
             val enteredSecs = enteredMins * 60L
             val subName = selectedSubject?.name ?: "General Focus"
 
@@ -2405,10 +2881,13 @@ object DeveloperToolsHelper {
 
             var isExceedingDayLimit = false
 
+            // Goal progress
+            val dailyGoalSecs = try { activity.resolveGoalFor(targetDateStr) } catch (_: Exception) { 0L }
+
             if (isFocusCategory) {
                 val curH = effectiveFocusMins / 60L
                 val curM = effectiveFocusMins % 60L
-                summaryCurrentText.text = "• Current Recorded Focus: ${curH}h ${curM}m ($effectiveFocusMins mins)"
+                summaryCurrentText.text = "Current Recorded: ${curH}h ${curM}m (${effectiveFocusMins} mins)"
 
                 val newTotalSecs = when (actionMode) {
                     0 -> effectiveFocusSecs + enteredSecs
@@ -2420,33 +2899,50 @@ object DeveloperToolsHelper {
 
                 if (newTotalSecs > MAX_DAY_SECS || (newTotalSecs + effectiveBreakSecs) > MAX_DAY_SECS) {
                     isExceedingDayLimit = true
-                    summaryResultText.text = "❌ Exceeds 24 hours in a single day!\n• Maximum total allowable focus: ${maxAllowableMins / 60}h ${maxAllowableMins % 60}m ($maxAllowableMins mins)"
+                    summaryResultText.text = "Exceeds 24 hours in a single day!\n• Maximum allowable focus: ${maxAllowableMins / 60}h ${maxAllowableMins % 60}m"
                     summaryResultText.setTextColor(Color.parseColor("#EF4444"))
                     applyBtn.text = "EXCEEDS 24-HOUR LIMIT"
+                    summaryGoalText.visibility = View.GONE
                 } else {
+                    summaryGoalText.visibility = View.VISIBLE
                     when (actionMode) {
                         0 -> {
-                            summaryResultText.text = "✨ Will add ${enteredMins}m to $subName → New Focus Total: ${newH}h ${newM}m"
+                            summaryResultText.text = "${curH}h ${curM}m  ->  ${newH}h ${newM}m  (+${durH}h ${durM}m to $subName)"
                             summaryResultText.setTextColor(themeCoordinator.primaryColor)
-                            applyBtn.text = "ADD ${enteredMins}m TO FOCUS"
+                            applyBtn.text = "+ LOG ${if (durH > 0) "${durH}h ${durM}m" else "${durM}m"} TO FOCUS"
                         }
                         1 -> {
-                            summaryResultText.text = "⚠️ Will deduct ${enteredMins}m from $subName → New Focus Total: ${newH}h ${newM}m"
+                            summaryResultText.text = "${curH}h ${curM}m  ->  ${newH}h ${newM}m  (-${durH}h ${durM}m from $subName)"
                             summaryResultText.setTextColor(Color.parseColor("#F59E0B"))
-                            applyBtn.text = "DEDUCT ${enteredMins}m FROM FOCUS"
+                            applyBtn.text = "DEDUCT ${if (durH > 0) "${durH}h ${durM}m" else "${durM}m"} FROM FOCUS"
                         }
                         else -> {
-                            summaryResultText.text = "🎯 Will set total focus to ${enteredMins}m (${newH}h ${newM}m)"
+                            summaryResultText.text = "Set Total Focus to ${newH}h ${newM}m"
                             summaryResultText.setTextColor(Color.parseColor("#38BDF8"))
                             applyBtn.text = "SET FOCUS TOTAL TO ${enteredMins}m"
                         }
+                    }
+
+                    if (dailyGoalSecs > 0) {
+                        val pct = ((newTotalSecs.toFloat() / dailyGoalSecs.toFloat()) * 100).toInt()
+                        val goalH = dailyGoalSecs / 3600L
+                        val goalM = (dailyGoalSecs % 3600L) / 60L
+                        if (pct >= 100) {
+                            summaryGoalText.text = "Daily Goal: ${newH}h ${newM}m / ${goalH}h ${goalM}m (100% Completed!)"
+                            summaryGoalText.setTextColor(Color.parseColor("#10B981"))
+                        } else {
+                            summaryGoalText.text = "Daily Goal: ${newH}h ${newM}m / ${goalH}h ${goalM}m (${pct}% reached)"
+                            summaryGoalText.setTextColor(tintedColor(themeCoordinator.textColor, 160))
+                        }
+                    } else {
+                        summaryGoalText.visibility = View.GONE
                     }
                 }
             } else {
                 // Break Category
                 val curH = effectiveBreakMins / 60L
                 val curM = effectiveBreakMins % 60L
-                summaryCurrentText.text = "• Current Recorded Break: ${curH}h ${curM}m ($effectiveBreakMins mins)"
+                summaryCurrentText.text = "Current Recorded: ${curH}h ${curM}m (${effectiveBreakMins} mins)"
 
                 val newTotalSecs = when (actionMode) {
                     0 -> effectiveBreakSecs + enteredSecs
@@ -2458,89 +2954,78 @@ object DeveloperToolsHelper {
 
                 if (newTotalSecs > MAX_DAY_SECS || (newTotalSecs + effectiveFocusSecs) > MAX_DAY_SECS) {
                     isExceedingDayLimit = true
-                    summaryResultText.text = "❌ Exceeds 24 hours in a single day!\n• Maximum total allowable break: ${maxAllowableMins / 60}h ${maxAllowableMins % 60}m ($maxAllowableMins mins)"
+                    summaryResultText.text = "Exceeds 24 hours in a single day!\n• Maximum allowable break: ${maxAllowableMins / 60}h ${maxAllowableMins % 60}m"
                     summaryResultText.setTextColor(Color.parseColor("#EF4444"))
                     applyBtn.text = "EXCEEDS 24-HOUR LIMIT"
                 } else {
                     when (actionMode) {
                         0 -> {
-                            summaryResultText.text = "☕ Will add ${enteredMins}m → New Break Total: ${newH}h ${newM}m"
+                            summaryResultText.text = "${curH}h ${curM}m  ->  ${newH}h ${newM}m  (+${durH}h ${durM}m break)"
                             summaryResultText.setTextColor(Color.parseColor("#F43F5E"))
-                            applyBtn.text = "ADD ${enteredMins}m TO BREAK"
+                            applyBtn.text = "+ LOG ${if (durH > 0) "${durH}h ${durM}m" else "${durM}m"} TO BREAK"
                         }
                         1 -> {
-                            summaryResultText.text = "⚠️ Will deduct ${enteredMins}m → New Break Total: ${newH}h ${newM}m"
+                            summaryResultText.text = "${curH}h ${curM}m  ->  ${newH}h ${newM}m  (-${durH}h ${durM}m break)"
                             summaryResultText.setTextColor(Color.parseColor("#F59E0B"))
-                            applyBtn.text = "DEDUCT ${enteredMins}m FROM BREAK"
+                            applyBtn.text = "DEDUCT ${if (durH > 0) "${durH}h ${durM}m" else "${durM}m"} FROM BREAK"
                         }
                         else -> {
-                            summaryResultText.text = "🎯 Will set total break to ${enteredMins}m (${newH}h ${newM}m)"
+                            summaryResultText.text = "🎯 Set Total Break to ${newH}h ${newM}m"
                             summaryResultText.setTextColor(Color.parseColor("#38BDF8"))
                             applyBtn.text = "SET BREAK TOTAL TO ${enteredMins}m"
                         }
                     }
+                    summaryGoalText.visibility = View.GONE
                 }
             }
 
             applyBtn.isEnabled = !isExceedingDayLimit && (enteredMins > 0 || actionMode == 2)
-            applyBtn.alpha = if (applyBtn.isEnabled) 1.0f else 0.5f
+            applyBtn.alpha = if (applyBtn.isEnabled) 1.0f else 0.45f
             applyBtn.background = GradientDrawable().apply {
                 cornerRadius = dp(14).toFloat()
-                setColor(if (isExceedingDayLimit) Color.parseColor("#475569") else activeColor)
+                setColor(if (isExceedingDayLimit) Color.parseColor("#475569") else activeActionColor)
             }
         }
 
-        byDurationTab.setOnClickListener {
-            isClockWheelMode = false
-            updateUI()
-        }
-
-        byClockWheelTab.setOnClickListener {
-            isClockWheelMode = true
-            recalculateFromClockWheel()
-            updateUI()
-        }
-
         focusTab.setOnClickListener {
+            activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             isFocusCategory = true
             updateUI()
         }
         breakTab.setOnClickListener {
+            activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             isFocusCategory = false
             updateUI()
         }
 
-        addBtn.setOnClickListener {
+        addModeBtn.setOnClickListener {
+            activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             actionMode = 0
             updateUI()
         }
-        deductBtn.setOnClickListener {
+        deductModeBtn.setOnClickListener {
+            activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             actionMode = 1
             updateUI()
         }
-        setBtn.setOnClickListener {
+        setModeBtn.setOnClickListener {
+            activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
             actionMode = 2
             updateUI()
         }
 
-        minutesInput.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { updateUI() }
-            override fun afterTextChanged(s: android.text.Editable?) {}
-        })
-
         applyBtn.setOnClickListener {
-            val enteredMins = minutesInput.text.toString().toLongOrNull()
-            if (enteredMins == null || (actionMode != 2 && enteredMins <= 0)) {
-                Toast.makeText(activity, "Please enter a valid number of minutes", Toast.LENGTH_SHORT).show()
+            if (enteredMins <= 0 && actionMode != 2) {
+                Toast.makeText(activity, "Please choose a duration greater than 0m", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
 
             if (enteredMins > 1440L) {
-                Toast.makeText(activity, "Cannot add more than 24 hours (1,440 minutes) to a single day", Toast.LENGTH_LONG).show()
+                Toast.makeText(activity, "Cannot add more than 24 hours to a single day", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
 
+            activity.window?.decorView?.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
             val enteredSecs = enteredMins * 60L
             val isTargetToday = targetDateStr == todayStr
             val now = System.currentTimeMillis()
@@ -2561,14 +3046,13 @@ object DeveloperToolsHelper {
 
                 if (newTotalFocus > MAX_DAY_SECS || (newTotalFocus + currentStoredBreak) > MAX_DAY_SECS) {
                     val maxAllowedMins = ((MAX_DAY_SECS - currentStoredBreak) / 60L).coerceAtLeast(0L)
-                    Toast.makeText(activity, "Cannot exceed 24 hours in a single day. Maximum allowable total study time is ${maxAllowedMins / 60}h ${maxAllowedMins % 60}m ($maxAllowedMins mins).", Toast.LENGTH_LONG).show()
+                    Toast.makeText(activity, "Cannot exceed 24 hours in a single day. Maximum allowable total study time is ${maxAllowedMins / 60}h ${maxAllowedMins % 60}m.", Toast.LENGTH_LONG).show()
                     return@setOnClickListener
                 }
 
                 when (actionMode) {
                     0 -> {
-                        if (isClockWheelMode) {
-                            // Construct exact start & end timestamps from the clock wheel on targetDateStr
+                        if (isSpecificTimeSlot) {
                             val parsedDate = try { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(targetDateStr) } catch (_: Exception) { null } ?: Date()
                             val c1 = Calendar.getInstance().apply {
                                 time = parsedDate
@@ -2629,7 +3113,10 @@ object DeveloperToolsHelper {
                     }
                 }
 
+                val storedFirst = sharedPrefs.getString("first_study_session_date", null)
+                val firstToSet = if (storedFirst == null || targetDateStr < storedFirst) targetDateStr else storedFirst
                 sharedPrefs.edit()
+                    .putString("first_study_session_date", firstToSet)
                     .putLong("${targetDateStr}_focus_total", newTotalFocus)
                     .putLong("${targetDateStr}_focus_manual", 0L)
                     .putLong("last_data_modified_timestamp", now)
@@ -2654,7 +3141,7 @@ object DeveloperToolsHelper {
                 }
 
                 val subName = selectedSubject?.name ?: "General Focus"
-                val syncTag = if (syncLeaderboard) " 🏆 [Synced to Leaderboard]" else ""
+                val syncTag = if (syncLeaderboard) " [Synced to Leaderboard]" else ""
                 val msg = when (actionMode) {
                     0 -> "Added ${enteredMins}m to ${if (isTargetToday) "today's" else targetDateStr} focus ($subName)!$syncTag"
                     1 -> "Deducted ${enteredMins}m from ${if (isTargetToday) "today's" else targetDateStr} focus ($subName)!$syncTag"
@@ -2676,7 +3163,7 @@ object DeveloperToolsHelper {
 
                 if (newTotalBreak > MAX_DAY_SECS || (newTotalBreak + currentStoredFocus) > MAX_DAY_SECS) {
                     val maxAllowedMins = ((MAX_DAY_SECS - currentStoredFocus) / 60L).coerceAtLeast(0L)
-                    Toast.makeText(activity, "Cannot exceed 24 hours in a single day. Maximum allowable total break time is ${maxAllowedMins / 60}h ${maxAllowedMins % 60}m ($maxAllowedMins mins).", Toast.LENGTH_LONG).show()
+                    Toast.makeText(activity, "Cannot exceed 24 hours in a single day. Maximum allowable total break time is ${maxAllowedMins / 60}h ${maxAllowedMins % 60}m.", Toast.LENGTH_LONG).show()
                     return@setOnClickListener
                 }
 
@@ -2739,18 +3226,15 @@ object DeveloperToolsHelper {
         updateUI()
 
         dialog.setContentView(root)
-        dialog.window?.apply {
-            setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
-            setGravity(Gravity.CENTER)
-            val width = (displayMetrics.widthPixels * 0.92f).toInt()
-            setLayout(width, ViewGroup.LayoutParams.WRAP_CONTENT)
+        dialog.behavior.skipCollapsed = true
+        dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        dialog.setOnShowListener {
+            dialog.behavior.skipCollapsed = true
+            dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
         }
         dialog.show()
     }
 
-    /**
-     * Developer Menu Dialog: Unified Add / Remove / Set Time with Automatic Public Leaderboard Sync.
-     */
     fun showDevCustomLeaderboardTimeDialog(activity: MainActivity, themeCoordinator: ThemeCoordinator) {
         showAdjustTodayTimeDialog(
             activity = activity,
@@ -3178,14 +3662,51 @@ object DeveloperToolsHelper {
         dialog.show()
     }
 
+    private fun showFestivalTestPicker(activity: MainActivity) {
+        val festivals = FestivalType.values()
+        val options = festivals.map { it.displayName }.toTypedArray()
+
+        android.app.AlertDialog.Builder(activity)
+            .setTitle("Select Festival to Preview")
+            .setItems(options) { dialogInterface, which ->
+                dialogInterface.dismiss()
+                val selectedFestival = festivals[which]
+                val userName = FestivalManager.getUserFirstName(activity)
+                val varOptions = selectedFestival.greetings.mapIndexed { idx, g ->
+                    val (formattedTitle, _) = g.format(userName)
+                    "Variation ${idx + 1}: $formattedTitle"
+                }.toTypedArray()
+
+                android.app.AlertDialog.Builder(activity)
+                    .setTitle("${selectedFestival.displayName} Variations")
+                    .setItems(varOptions) { _, varIdx ->
+                        FestivalManager.checkAndNotify(
+                            activity,
+                            forceFestival = selectedFestival,
+                            forceVariation = varIdx,
+                            isTest = true
+                        )
+                        android.widget.Toast.makeText(
+                            activity,
+                            "Fired ${selectedFestival.displayName} notification (Variation ${varIdx + 1})",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun showStreakTestPicker(activity: MainActivity) {
         val options = arrayOf(
-            "🥉 7-Day Bronze Streak",
-            "🥈 14-Day Silver Streak",
-            "🥇 21-Day Gold Streak",
-            "💎 28-Day Platinum Streak",
-            "🔥 50-Day Fire Streak",
-            "👑 100-Day Crown Streak"
+            "7-Day Bronze Streak",
+            "14-Day Silver Streak",
+            "21-Day Gold Streak",
+            "28-Day Diamond Streak",
+            "50-Day Fire Streak",
+            "100-Day Crown Streak"
         )
         val streakValues = intArrayOf(7, 14, 21, 28, 50, 100)
 

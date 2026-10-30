@@ -79,7 +79,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             container.addView(title)
 
             val subtitle = TextView(host).apply {
-                text = "Tap to select • Tap 📖 Chapters to manage topics"
+                text = "Tap to select • Tap Chapters to manage topics"
                 textSize = 12f
                 setTextColor(themeCoordinator.textColor)
                 alpha = 0.5f
@@ -96,7 +96,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 }
             }.apply {
                 isFillViewport = true
-                isVerticalScrollBarEnabled = true
+                isVerticalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -250,7 +250,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             bottomActionRow.addView(addBtn)
 
             val chaptersBtn = TextView(host).apply {
-                text = "📖 Chapters"
+                text = "Chapters"
                 textSize = 12f
                 gravity = Gravity.CENTER
                 isSingleLine = true
@@ -342,7 +342,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             val scrollContainer = ScrollView(host).apply {
                 isFillViewport = true
-                isVerticalScrollBarEnabled = true
+                isVerticalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
                     setMargins(0, 0, 0, dp(10))
@@ -729,7 +729,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             val listScroll = ScrollView(host).apply {
                 isFillViewport = true
-                isVerticalScrollBarEnabled = true
+                isVerticalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1449,7 +1449,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             val dialogScroll = android.widget.ScrollView(host).apply {
                 isFillViewport = true
-                isVerticalScrollBarEnabled = true
+                isVerticalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 addView(container)
             }
@@ -1951,7 +1951,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
         val scrollView = ScrollView(host).apply {
             isFillViewport = true
-            isVerticalScrollBarEnabled = true
+            isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
@@ -2114,7 +2114,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             val slicesList = ArrayList<SubjectPieChartView.PieSlice>()
             for ((subj, secs) in activeSubjectsSorted) {
-                slicesList.add(SubjectPieChartView.PieSlice(subj.name, subj.iconEmoji, secs.toDouble(), subj.colorHex))
+                slicesList.add(SubjectPieChartView.PieSlice(subj.name, "", secs.toDouble(), subj.colorHex))
             }
 
             if (slicesList.isNotEmpty()) {
@@ -2578,7 +2578,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             // ScrollView with subjects list
             val scrollView = ScrollView(host).apply {
                 isFillViewport = true
-                isVerticalScrollBarEnabled = true
+                isVerticalScrollBarEnabled = false
                 overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(260))
             }
@@ -2612,7 +2612,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 rowTop.addView(colorCircle)
 
                 rowTop.addView(TextView(host).apply {
-                    text = if (item.emoji.isNotBlank()) "${item.emoji} ${item.label}" else item.label
+                    text = item.label
                     setTextColor(themeCoordinator.textColor)
                     textSize = 14.5f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -2684,7 +2684,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
             headerRow.addView(colorCircle)
             headerRow.addView(TextView(host).apply {
-                text = "${slice.emoji} ${slice.label}"
+                text = slice.label
                 setTextColor(themeCoordinator.textColor)
                 textSize = 18f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)

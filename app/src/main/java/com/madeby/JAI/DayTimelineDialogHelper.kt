@@ -611,6 +611,25 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
         }
         bottomRow.addView(delDayBtn)
 
+        val addPastBtn = TextView(host).apply {
+            text = "+ Add Session"
+            setTextColor(themeCoordinator.primaryColor)
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 30), 12f)
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            setOnClickListener {
+                dialog.dismiss()
+                DeveloperToolsHelper.showAdjustTodayTimeDialog(
+                    host,
+                    themeCoordinator,
+                    isDeveloperExtended = false,
+                    initialDate = dateStr
+                )
+            }
+        }
+        bottomRow.addView(addPastBtn)
+
         bottomRow.addView(View(host).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
 
         val closeBtn = TextView(host).apply {

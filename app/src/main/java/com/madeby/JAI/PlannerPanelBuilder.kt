@@ -135,14 +135,31 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val header = UniversalHeaderHelper.createHeader(host, extraRightView = overflowBtn, title = "PLANNER")
         mainCol.addView(header)
 
-        val scroll = ScrollView(host).apply {
+        val scroll = object : ScrollView(host) {
+            override fun requestChildFocus(child: View?, focused: View?) {
+                // Prevent automatic scroll jumping when child views gain focus or check state changes
+            }
+        }.apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
             isFillViewport = true
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
-            isFocusableInTouchMode = true
-            descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            tag = "planner_scroll_view"
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                setOnScrollChangeListener { _, _, _, scrollY, _ ->
+                    if (scrollY >= 0) {
+                        host.pendingPlannerScrollY = scrollY
+                    }
+                }
+            } else {
+                viewTreeObserver.addOnScrollChangedListener {
+                    if (this.scrollY >= 0) {
+                        host.pendingPlannerScrollY = this.scrollY
+                    }
+                }
+            }
         }
         plannerScrollView = scroll
         val content = LinearLayout(host).apply {
@@ -177,13 +194,23 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
         root.addView(fab)
 
-        val oldScrollY = plannerScrollView?.scrollY ?: 0
+        val oldScrollY = host.pendingPlannerScrollY.takeIf { it > 0 }
+            ?: (target.findViewWithTag<ScrollView>("planner_scroll_view")?.scrollY ?: 0)
         target.removeAllViews()
         target.addView(root)
         if (oldScrollY > 0) {
             scroll.post {
-                scroll.scrollY = oldScrollY
+                scroll.scrollTo(0, oldScrollY)
             }
+            scroll.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    if (scroll.viewTreeObserver.isAlive) {
+                        scroll.viewTreeObserver.removeOnPreDrawListener(this)
+                    }
+                    scroll.scrollTo(0, oldScrollY)
+                    return true
+                }
+            })
         }
         FontStyleManager.applyRecursively(root)
     }
@@ -715,8 +742,11 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         )
 
         fun reloadPlanner() {
-            val scroll = plannerScrollView ?: (parent.parent as? ScrollView)
-            val savedY = scroll?.scrollY ?: 0
+            val scroll = plannerScrollView ?: (parent.parent as? ScrollView) ?: host.findPlannerScrollView()
+            val savedY = scroll?.scrollY?.takeIf { it > 0 } ?: host.pendingPlannerScrollY
+            if (savedY > 0) {
+                host.pendingPlannerScrollY = savedY
+            }
             val oldHeight = parent.height
             if (oldHeight > 0) {
                 parent.minimumHeight = oldHeight
@@ -725,22 +755,20 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             parent.removeAllViews()
             renderPlannerTabContent(parent, curSnap)
             if (scroll != null && savedY > 0) {
+                scroll.post {
+                    parent.minimumHeight = 0
+                    scroll.scrollTo(0, savedY)
+                }
                 scroll.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
                     override fun onPreDraw(): Boolean {
                         if (scroll.viewTreeObserver.isAlive) {
                             scroll.viewTreeObserver.removeOnPreDrawListener(this)
                         }
                         parent.minimumHeight = 0
-                        val maxScroll = maxOf(0, parent.height - scroll.height)
-                        scroll.scrollY = savedY.coerceAtMost(maxScroll)
+                        scroll.scrollTo(0, savedY)
                         return true
                     }
                 })
-                scroll.post {
-                    parent.minimumHeight = 0
-                    val maxScroll = maxOf(0, parent.height - scroll.height)
-                    scroll.scrollY = savedY.coerceAtMost(maxScroll)
-                }
             } else {
                 parent.minimumHeight = 0
             }
@@ -1110,7 +1138,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     val updatedGoal = currentGoal.copy(completed = newCompleted, checkedAt = if (newCompleted) now else 0L)
                     activeGoalsList[targetIndex] = updatedGoal
 
-                    saveSessionGoalsToJson(activeGoalsList)
+                    host.isLocalPlannerUpdateInProgress = true
+                    try {
+                        saveSessionGoalsToJson(activeGoalsList)
+                    } finally {
+                        host.isLocalPlannerUpdateInProgress = false
+                    }
+
                     if (updatedGoal.completed) {
                         GoalReminderScheduler.cancelGoalReminder(host, updatedGoal.id)
                     } else if (updatedGoal.reminderEnabled) {
@@ -2536,7 +2570,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         val subBadge = TextView(host).apply {
             if (resolvedSub != null) {
-                text = "${resolvedSub.iconEmoji} ${resolvedSub.name}"
+                text = resolvedSub.name
                 background = GradientDrawable().apply {
                     cornerRadius = dp(12).toFloat()
                     setColor(runCatching { Color.parseColor(resolvedSub.colorHex) }.getOrDefault(plannerPrimary))
@@ -2948,7 +2982,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val sub = if (!item.subjectId.isNullOrBlank() && item.subjectId != "all") {
                     SubjectTagManager.resolveSubject(host, item.subjectId)
                 } else null
-                val prefix = if (sub != null) "${sub.iconEmoji} " else ""
+                val prefix = if (sub != null && sub.name.isNotBlank()) "${sub.name} · " else ""
                 val itemRow = LinearLayout(host).apply {
                     orientation = LinearLayout.VERTICAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -3995,7 +4029,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 "Pomodoro & White Mode" to "Focus intervals with automatic short/long breaks. Includes an optional Minimal White Background & Black Timer theme.",
                 "Custom Countdown" to "Set targeted hours and minutes for timed study sprints, practice tests, and revision blocks.",
                 "Stopwatch Mode" to "Open-ended count-up timer with precision lap recordings for flexible study.",
-                "Hold to Finish" to "Long-press safety control prevents accidental session terminations."
+                "Finish Session" to "Long-press safety control: hold to complete and save your session."
             )
         )
 
@@ -5205,7 +5239,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val isSelected = selectedSubjectId == sub.id
                 val subColor = try { Color.parseColor(sub.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
                 val chip = TextView(host).apply {
-                    text = "${sub.iconEmoji} ${sub.name}"
+                    text = sub.name
                     textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
@@ -5832,7 +5866,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val isSelected = selectedSubjectId == sub.id
                 val subColor = try { Color.parseColor(sub.colorHex) } catch (_: Exception) { plannerPrimary }
                 val chip = TextView(host).apply {
-                    text = "${sub.iconEmoji} ${sub.name}"
+                    text = sub.name
                     textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
@@ -6320,7 +6354,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 }
                 val itemSub = SubjectTagManager.resolveSubject(host, item.subjectId)
                 textCol.addView(TextView(host).apply {
-                    text = "${itemSub.iconEmoji} ${item.title}"
+                    text = item.title
                     setTextColor(themeCoordinator.textColor)
                     textSize = 15f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -6622,7 +6656,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
             val curInit = availableSubjects.find { it.id == chosenSubId } ?: availableSubjects.firstOrNull() ?: SubjectTagManager.DEFAULT_SUBJECTS[0]
             val subjectLabelTv = TextView(host).apply {
-                text = "${curInit.iconEmoji} ${curInit.name}"
+                text = curInit.name
                 setTextColor(themeCoordinator.textColor)
                 textSize = 13f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -6654,7 +6688,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
             fun updateSubjectLabel() {
                 val cur = availableSubjects.find { it.id == chosenSubId } ?: availableSubjects.firstOrNull() ?: SubjectTagManager.DEFAULT_SUBJECTS[0]
-                subjectLabelTv.text = "${cur.iconEmoji} ${cur.name}"
+                subjectLabelTv.text = cur.name
             }
 
             fun openSubjectPickerMenu() {
@@ -6702,8 +6736,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             dialog.dismiss()
                         }
                     }
+                    val itemSubColor = try { Color.parseColor(s.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
+                    item.addView(View(host).apply {
+                        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(itemSubColor) }
+                        layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { setMargins(0, 0, dp(10), 0) }
+                    })
                     item.addView(TextView(host).apply {
-                        text = "${s.iconEmoji}  ${s.name}"
+                        text = s.name
                         setTextColor(if (isCur) Color.WHITE else themeCoordinator.textColor)
                         textSize = 14f
                         typeface = host.themeCoordinator.getAppTypeface(isBold = isCur)

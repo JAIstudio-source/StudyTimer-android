@@ -286,10 +286,11 @@ class LoginActivity : AppCompatActivity() {
                 }
                 val (remoteMeta, rawRecord) = CloudSyncManager.fetchRemoteMetadata(this@LoginActivity)
                 if (remoteMeta != null && remoteMeta.updatedAt > 0L && rawRecord != null) {
-                    if (wasGuest && hasLocalData) {
-                        // Smart non-destructive merge so guest progress merges seamlessly with the account
+                    if (hasLocalData) {
+                        // Smart non-destructive merge: protects all local days while pulling down cloud days
                         CloudSyncManager.mergeCloudAndLocalData(this@LoginActivity, rawRecord)
                     } else {
+                        // Fresh install or clean device with no local data: restore from cloud
                         CloudSyncManager.restoreDataFromCloud(this@LoginActivity)
                     }
                 } else {

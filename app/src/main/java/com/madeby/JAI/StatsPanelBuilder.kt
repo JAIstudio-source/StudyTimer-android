@@ -976,9 +976,62 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 }
             } else if (daysLimit == 30) {
                 val labelSdf = SimpleDateFormat("d MMM", Locale.getDefault())
+                val todayCal = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+
+                // Find earliest session date
+                val earliestActiveDate = snap.dayFocus.filter { it.value > 0L }.keys.minOrNull()
+                val storedFirstDate = sharedPrefs.getString("first_study_session_date", null)
+                val effectiveFirstDateStr = when {
+                    earliestActiveDate != null && storedFirstDate != null -> if (earliestActiveDate < storedFirstDate) earliestActiveDate else storedFirstDate
+                    earliestActiveDate != null -> earliestActiveDate
+                    else -> storedFirstDate
+                }
+
+                if (effectiveFirstDateStr != null && storedFirstDate != effectiveFirstDateStr) {
+                    sharedPrefs.edit().putString("first_study_session_date", effectiveFirstDateStr).apply()
+                }
+
+                val firstSessionCal = if (effectiveFirstDateStr != null) {
+                    try {
+                        val d = sdf.parse(effectiveFirstDateStr)
+                        if (d != null) {
+                            Calendar.getInstance().apply {
+                                time = d
+                                set(Calendar.HOUR_OF_DAY, 0)
+                                set(Calendar.MINUTE, 0)
+                                set(Calendar.SECOND, 0)
+                                set(Calendar.MILLISECOND, 0)
+                            }
+                        } else null
+                    } catch (_: Exception) { null }
+                } else null
+
+                // If user has no sessions yet, base on today
+                val baseFirstCal = firstSessionCal ?: (todayCal.clone() as Calendar)
+                val diffDays = (((todayCal.timeInMillis - baseFirstCal.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()).coerceAtLeast(0)
+
+                // If user is within their first 30 days (< 30 days), start from first session date (Day 1..30).
+                // Once 30 days are reached (diffDays >= 30), use a rolling 30-day window ending today.
+                val startDateCal = if (diffDays < 30) {
+                    baseFirstCal.clone() as Calendar
+                } else {
+                    (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -29) }
+                }
+
+                val thirtyDaysList = ArrayList<Calendar>()
+                for (offset in 0 until 30) {
+                    val c = startDateCal.clone() as Calendar
+                    c.add(Calendar.DAY_OF_YEAR, offset)
+                    thirtyDaysList.add(c)
+                }
+
                 var maxScaleFound = 1L
-                for (i in 0 until 30) {
-                    val c = Calendar.getInstance(); c.add(Calendar.DAY_OF_YEAR, -i)
+                for (c in thirtyDaysList) {
                     val dStr = sdf.format(c.time)
                     val f = snap.dayFocus[dStr] ?: 0L
                     val g = resolveGoalFor(dStr)
@@ -987,14 +1040,20 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 }
                 val scale = if (maxScaleFound <= 0L) 3600L else Math.ceil(maxScaleFound.toDouble() / 3600.0).toLong() * 3600L
 
-                for (i in 29 downTo 0) {
-                    val c = Calendar.getInstance(); c.add(Calendar.DAY_OF_YEAR, -i)
+                for (idx in thirtyDaysList.indices) {
+                    val c = thirtyDaysList[idx]
                     val dStr = sdf.format(c.time)
-                    val f = snap.dayFocus[dStr] ?: 0L
                     val isToday = dStr == todayStr
+                    val isFuture = c.timeInMillis > todayCal.timeInMillis
+                    val f = if (isFuture) 0L else (snap.dayFocus[dStr] ?: 0L)
                     val dayGoalSecs = resolveGoalFor(dStr)
-                    val dayGoalRatio = (dayGoalSecs.toFloat() / scale.toFloat()).coerceIn(0f, 1f)
-                    val row = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(2), 0, dp(2)) }
+                    val dayGoalRatio = if (isFuture) -1f else (dayGoalSecs.toFloat() / scale.toFloat()).coerceIn(0f, 1f)
+                    val row = LinearLayout(host).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(0, dp(2), 0, dp(2))
+                        if (isFuture) alpha = 0.4f
+                    }
                     row.addView(TextView(host).apply {
                         text = labelSdf.format(c.time)
                         setTextColor(if (isToday) themeCoordinator.primaryColor else themeCoordinator.textColor)
@@ -1003,7 +1062,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         layoutParams = LinearLayout.LayoutParams(dp(55), LinearLayout.LayoutParams.WRAP_CONTENT)
                     })
                     row.addView(host.BarTrackView(
-                        ratio = if (scale > 0L) f.toFloat() / scale.toFloat() else 0f,
+                        ratio = if (scale > 0L && !isFuture) f.toFloat() / scale.toFloat() else 0f,
                         goalRatio = dayGoalRatio,
                         trackColor = tintedColor(themeCoordinator.textColor, 26),
                         fillStart = themeCoordinator.primaryColor,
@@ -1012,13 +1071,19 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         barHeight = dp(13)
                     ).apply { layoutParams = LinearLayout.LayoutParams(0, dp(13), 1f).apply { setMargins(dp(4), 0, dp(6), 0) } })
                     row.addView(TextView(host).apply {
-                        text = host.getString(R.string.duration_h_m, f / 3600, (f % 3600) / 60)
+                        text = if (isFuture) "--" else host.getString(R.string.duration_h_m, f / 3600, (f % 3600) / 60)
                         setTextColor(if (isToday) themeCoordinator.primaryColor else themeCoordinator.textColor)
                         textSize = 12f
                         typeface = Typeface.MONOSPACE
-                        alpha = if (isToday) 1f else 0.85f
+                        alpha = if (isToday) 1f else if (isFuture) 0.5f else 0.85f
                     })
-                    row.setOnClickListener { showDayDialog(dStr, labelSdf.format(c.time)) }
+                    if (!isFuture) {
+                        row.setOnClickListener { showDayDialog(dStr, labelSdf.format(c.time)) }
+                    } else {
+                        row.setOnClickListener {
+                            AppToast.show(host, "Day ${idx + 1} of your 30-day challenge! Complete previous days to reach it.")
+                        }
+                    }
                     chartContainer.addView(row)
                 }
             } else {
@@ -1186,7 +1251,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             } else {
                 val slicesList = ArrayList<SubjectPieChartView.PieSlice>()
                 for ((subj, secs) in sortedSubjects) {
-                    slicesList.add(SubjectPieChartView.PieSlice(subj.name, subj.iconEmoji, secs.toDouble(), subj.colorHex))
+                    slicesList.add(SubjectPieChartView.PieSlice(subj.name, "", secs.toDouble(), subj.colorHex))
                 }
 
                 val isDonut = sharedPrefs.safeBoolean("use_donut_chart", true)

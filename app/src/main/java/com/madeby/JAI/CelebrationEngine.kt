@@ -114,9 +114,9 @@ object CelebrationEngine {
             )
             28 -> StreakMilestoneInfo(
                 icon = "💎",
-                title = "28-Day Platinum Streak!",
+                title = "28-Day Diamond Streak!",
                 subtitle = "4 Weeks of Focus! A full month of unmatched study discipline.",
-                accentColor = Color.parseColor("#38BDF8"),
+                accentColor = Color.parseColor("#00E5FF"),
                 particles = intArrayOf(0xFF38BDF8.toInt(), 0xFF818CF8.toInt(), 0xFFA855F7.toInt())
             )
             50 -> StreakMilestoneInfo(

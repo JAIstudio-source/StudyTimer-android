@@ -12,6 +12,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
@@ -613,6 +614,9 @@ class TimerService : Service() {
         sharedPrefs.edit().apply {
             if (!alreadyFinalized) {
                 putLong("${todayStr}_focus_total", savedFocus + accumulatedStudy)
+                if (!sharedPrefs.contains("first_study_session_date")) {
+                    putString("first_study_session_date", todayStr)
+                }
                 putLong("${todayStr}_break_total", savedBreak + currentBreakSeconds)
             }
             if (!sharedPrefs.contains("${todayStr}_goal_secs")) {
@@ -623,6 +627,7 @@ class TimerService : Service() {
             putLong("break_remaining_secs", 0L)
             putBoolean("lecture_mode_enabled", false)
             remove("active_lecture_subject_id")
+            putLong("last_data_modified_timestamp", System.currentTimeMillis())
             apply()
         }
 
@@ -630,6 +635,19 @@ class TimerService : Service() {
         if (stopPrefs.getBoolean("pomo_grace_realloc_pending", false)) {
             val origSubId = stopPrefs.getString("pomo_grace_orig_subject_id", null) ?: SubjectTagManager.getSelectedSubject(this).id
             SubjectTagManager.finalizePomoGraceReallocation(this, origSubId)
+        }
+
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val backupMgr = BackupManager(this@TimerService)
+                backupMgr.markDataModified()
+                backupMgr.runSilentAutoBackup()
+                if (AuthManager.isLoggedIn(this@TimerService)) {
+                    CloudSyncManager.syncDataToCloud(this@TimerService, force = true)
+                }
+            } catch (e: Exception) {
+                Log.w("TimerService", "Auto-sync after session finalize non-fatal exception", e)
+            }
         }
     }
 
@@ -1327,7 +1345,7 @@ class TimerService : Service() {
         )
 
         val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-        val notification = NotificationCompat.Builder(this, COMPLETION_CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, NotificationHelper.CHANNEL_INACTIVITY)
             .setSmallIcon(R.drawable.ic_flame)
             .setContentTitle("Are you still studying?")
             .setContentText("3.5 hours continuous study reached. Tap below to confirm you are active.")
@@ -1355,7 +1373,7 @@ class TimerService : Service() {
             this, 12, openIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val soundUri = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
-        val notification = NotificationCompat.Builder(this, COMPLETION_CHANNEL_ID)
+        val notification = NotificationCompat.Builder(this, NotificationHelper.CHANNEL_INACTIVITY)
             .setSmallIcon(R.drawable.ic_small_app_logo)
             .setContentTitle("Timer Auto-Paused")
             .setContentText(message)
@@ -1481,6 +1499,19 @@ class TimerService : Service() {
         val configuredGoal = StatsEngine.getDailyGoalSecs(sp)
         if (!sp.contains("${newDateStr}_goal_secs") || sp.getLong("${newDateStr}_goal_secs", 0L) <= 0L) {
             GoalHistoryManager.setDailyGoal(this, configuredGoal, forDateStr = newDateStr)
+        }
+
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val backupMgr = BackupManager(this@TimerService)
+                backupMgr.markDataModified()
+                backupMgr.runSilentAutoBackup()
+                if (AuthManager.isLoggedIn(this@TimerService)) {
+                    CloudSyncManager.syncDataToCloud(this@TimerService, force = true)
+                }
+            } catch (e: Exception) {
+                Log.w("TimerService", "Auto-sync at midnight rollover non-fatal exception", e)
+            }
         }
 
         saveState()

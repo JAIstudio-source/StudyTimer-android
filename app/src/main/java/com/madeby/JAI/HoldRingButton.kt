@@ -23,6 +23,7 @@ class HoldRingButton(context: Context) : AppCompatButton(context) {
             val clamped = value.coerceIn(0f, 1f)
             if (field != clamped) {
                 field = clamped
+                invalidate()
                 postInvalidateOnAnimation()
             }
         }

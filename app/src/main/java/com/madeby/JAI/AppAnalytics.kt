@@ -213,7 +213,7 @@ object AppAnalytics {
             val anonId = getAnonymousId(context)
             val isCurrentlyLoggedIn = AuthManager.isLoggedIn(context) && !AuthManager.isGuest(context)
             val currentUserId = if (isCurrentlyLoggedIn) AuthManager.getUserId(context) else null
-            val currentUserName = if (isCurrentlyLoggedIn) AuthManager.getUserName(context) else null
+            val currentUserName = if (isCurrentlyLoggedIn) ProfileManager.getEffectiveDisplayName(context).takeIf { !it.equals("Student", ignoreCase = true) } ?: AuthManager.getUserName(context) else null
             val currentUserEmail = if (isCurrentlyLoggedIn) AuthManager.getUserEmail(context) else null
             val now = System.currentTimeMillis()
             val eventId = "${anonId}_${eventName}_${now}_${UUID.randomUUID().toString().substring(0, 6)}"
@@ -353,7 +353,7 @@ object AppAnalytics {
                 val anonId = getAnonymousId(context)
                 val isCurrentlyLoggedIn = AuthManager.isLoggedIn(context) && !AuthManager.isGuest(context)
                 val currentUserId = if (isCurrentlyLoggedIn) AuthManager.getUserId(context) else null
-                val currentUserName = if (isCurrentlyLoggedIn) AuthManager.getUserName(context) else null
+                val currentUserName = if (isCurrentlyLoggedIn) ProfileManager.getEffectiveDisplayName(context).takeIf { !it.equals("Student", ignoreCase = true) } ?: AuthManager.getUserName(context) else null
                 val currentUserEmail = if (isCurrentlyLoggedIn) AuthManager.getUserEmail(context) else null
                 val firstSeen = prefs.getLong(KEY_FIRST_SEEN, now)
                 val totalStudySecs = prefs.getLong(KEY_TOTAL_STUDY_SECS, 0L)
