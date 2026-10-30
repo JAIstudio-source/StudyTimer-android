@@ -147,9 +147,6 @@ class MainActivity : AppCompatActivity() {
 
     private var pauseBlinkAnimator: ValueAnimator? = null
 
-    private var frontFlipAnim: ValueAnimator? = null
-    private var backFlipAnim: ValueAnimator? = null
-
     internal var isDevModeUnlocked = false
     internal var isAdjustingFocusMode = true
     internal var showFocusHueBar = false
@@ -2642,9 +2639,6 @@ class MainActivity : AppCompatActivity() {
             showBreakDurationDialog()
             return
         }
-        if (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK) {
-            flipMainButton()
-        }
         statsDirty = true
         val intent = Intent(this, TimerService::class.java).apply {
             action = TimerService.ACTION_TOGGLE
@@ -2765,35 +2759,6 @@ class MainActivity : AppCompatActivity() {
         val sec = s % 60
         return if (h > 0) String.format(Locale.US, "%02d:%02d:%02d", h, m, sec)
         else String.format(Locale.US, "%02d:%02d", m, sec)
-    }
-
-    private fun flipMainButton() {
-        if (frontFlipAnim?.isRunning == true || backFlipAnim?.isRunning == true) return
-        mainBtn.scaleY = 1f
-        val goingToBreak = currentTimerState != TimerState.BREAK
-        frontFlipAnim = ValueAnimator.ofFloat(1f, 0f)
-        frontFlipAnim!!.duration = 280
-        frontFlipAnim!!.interpolator = android.view.animation.AccelerateInterpolator()
-        frontFlipAnim!!.addUpdateListener { mainBtn.scaleY = it.animatedValue as Float }
-        frontFlipAnim!!.addListener(object : android.animation.AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: android.animation.Animator) {
-                if (animation !== frontFlipAnim) return
-                if (goingToBreak) {
-                    mainBtn.text = getString(R.string.resume_deep_focus)
-                    mainBtn.background = rippleBackground(themeCoordinator.primaryColor)
-                } else {
-                    mainBtn.text = getString(R.string.take_a_break)
-                    mainBtn.background = rippleBackground(themeCoordinator.secondaryColor)
-                }
-                mainBtn.setTextColor(if (!themeCoordinator.isDarkMode() || themeCoordinator.isBubbleStyle()) 0xFFFFFFFF.toInt() else themeCoordinator.bgColor)
-                backFlipAnim = ValueAnimator.ofFloat(0f, 1f)
-                backFlipAnim!!.duration = 280
-                backFlipAnim!!.interpolator = android.view.animation.DecelerateInterpolator()
-                backFlipAnim!!.addUpdateListener { mainBtn.scaleY = it.animatedValue as Float }
-                backFlipAnim!!.start()
-            }
-        })
-        frontFlipAnim!!.start()
     }
 
     internal fun handleStopSession(silent: Boolean = false) {

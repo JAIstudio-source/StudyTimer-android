@@ -638,11 +638,11 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 setOnTouchListener { v, event ->
                     when (event.actionMasked) {
                         MotionEvent.ACTION_DOWN -> {
+                            startHold()
                             holdStartTime = SystemClock.uptimeMillis()
                             isHoldingStop = true
                             v.isPressed = true
                             text = "Hold to Finish"
-                            progress = 0f
                             handler.removeCallbacks(holdToEndRunnable)
                             handler.post(holdToEndRunnable)
                             performMicroHapticTick(v, 0f)
