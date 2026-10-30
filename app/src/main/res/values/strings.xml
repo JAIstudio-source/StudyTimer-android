@@ -1,4 +1,4 @@
-﻿<resources>
+<resources>
     <string name="app_name">StudyTimer</string>
 
     <!-- Backup & export -->
@@ -62,7 +62,7 @@
 
     <!-- Focus panel -->
     <string name="btn_pause">Pause</string>
-    <string name="btn_hold_to_end">Hold to Finish</string>
+    <string name="btn_hold_to_end">Finish</string>
     <string name="crunching_numbers">Getting your stats ready…</string>
 
     <!-- Heatmap fullscreen -->

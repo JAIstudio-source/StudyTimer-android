@@ -620,7 +620,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             stopBtn = HoldRingButton(this).apply {
-                text = "Hold to Finish"
+                text = "Finish"
                 ringColor = themeCoordinator.primaryColor
                 setTextColor(themeCoordinator.textColor)
                 textSize = 14f

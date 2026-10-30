@@ -3117,9 +3117,9 @@ class MainActivity : AppCompatActivity() {
                     mainBtn.background = outlinedButtonBackground()
                 }
 
-                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
+                // Slot 2 (Right): Terminal Action - FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Hold to Finish"
+                stopBtn.text = "Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3146,7 +3146,7 @@ class MainActivity : AppCompatActivity() {
                 pauseBtn.setOnClickListener { handleStateToggle() }
                 mainBtn.visibility = View.GONE
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Hold to Finish"
+                stopBtn.text = "Finish"
                 stopBtn.ringColor = themeCoordinator.primaryColor
                 checkAndShowLecturePrompt()
             }
@@ -3197,9 +3197,9 @@ class MainActivity : AppCompatActivity() {
                     mainBtn.background = outlinedButtonBackground()
                 }
 
-                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
+                // Slot 2 (Right): Terminal Action - FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Hold to Finish"
+                stopBtn.text = "Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
@@ -3260,9 +3260,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 mainBtn.setOnClickListener { handleStateToggle() }
 
-                // Slot 2 (Right): Terminal Action - HOLD TO FINISH
+                // Slot 2 (Right): Terminal Action - FINISH
                 stopBtn.visibility = View.VISIBLE
-                stopBtn.text = "Hold to Finish"
+                stopBtn.text = "Finish"
                 if (isPomoWhite) {
                     stopBtn.ringColor = 0xFF000000.toInt()
                     stopBtn.setTextColor(0xFF0F172A.toInt())
