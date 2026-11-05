@@ -213,7 +213,7 @@ object TimerModeBottomSheet {
                     setOnClickListener {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         selectMode(key)
-                        dialog.dismiss()
+                        buildModeRows()
                     }
                 }
 

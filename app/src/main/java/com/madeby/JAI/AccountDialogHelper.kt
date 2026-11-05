@@ -106,25 +106,22 @@ class AccountDialogHelper(private val activity: MainActivity) {
             background = GradientDrawable().apply { cornerRadius = 50f; setColor(themeCoordinator.primaryColor) }
             setOnClickListener {
                 val newName = inputEdit.text.toString().trim()
-                if (newName.isBlank()) {
-                    inputEdit.error = "Display name cannot be empty"
-                    inputEdit.requestFocus()
-                    return@setOnClickListener
-                }
-                AuthManager.updateUserName(activity, newName)
-                val curProfile = ProfileManager.getProfile(activity)
-                ProfileManager.saveProfile(
-                    activity,
-                    curProfile.copy(
-                        displayName = newName,
-                        lastApprovedDisplayName = newName,
-                        moderationStatus = ModerationStatus.APPROVED
+                if (newName.isNotEmpty()) {
+                    AuthManager.updateUserName(activity, newName)
+                    val curProfile = ProfileManager.getProfile(activity)
+                    ProfileManager.saveProfile(
+                        activity,
+                        curProfile.copy(
+                            displayName = newName,
+                            lastApprovedDisplayName = newName,
+                            moderationStatus = ModerationStatus.APPROVED
+                        )
                     )
-                )
-                activity.tabPageCache.remove(activity.settingsTabKey(AppSettingsTab.PROFILE))
-                activity.navigateToPanel(AppPanel.SETTINGS)
-                kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-                    CloudSyncManager.syncDataToCloud(activity)
+                    activity.tabPageCache.remove(activity.settingsTabKey(AppSettingsTab.PROFILE))
+                    activity.navigateToPanel(AppPanel.SETTINGS)
+                    kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
+                        CloudSyncManager.syncDataToCloud(activity)
+                    }
                 }
                 dialog.dismiss()
             }

@@ -68,10 +68,6 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 }
             }
 
-            val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
-            val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(this)
-            val isBrightSurface = (isWallpaperActive && isBrightUnder) || !themeCoordinator.isDarkMode()
-
             val settingsRootLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
@@ -88,7 +84,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             val backArrowBtn = TextView(this).apply {
                 text = "←"
                 textSize = 24f
-                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.primaryColor)
+                setTextColor(themeCoordinator.primaryColor)
                 gravity = Gravity.CENTER
                 minimumWidth = dp(48)
                 minimumHeight = dp(48)
@@ -103,7 +99,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 text = when (currentSettingsTab) {
                     AppSettingsTab.HUB -> getString(R.string.settings_title)
                     AppSettingsTab.TIMER -> "Timer & Focus"
-                    AppSettingsTab.PLANNER -> "Goals & Reminders"
+                    AppSettingsTab.PLANNER -> "Goal and Reminder"
                     AppSettingsTab.ANALYTICS -> "Insights & Stats"
                     AppSettingsTab.THEME -> "Theme & Appearance"
                     AppSettingsTab.CLOUD -> "Cloud & Backups"
@@ -111,7 +107,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     AppSettingsTab.COMMUNITY -> "Leaderboard"
                     AppSettingsTab.DEVELOPER -> "Developer Tools"
                 }
-                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.textColor)
+                setTextColor(themeCoordinator.textColor)
                 textSize = 22f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 letterSpacing = -0.01f
@@ -208,7 +204,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             fun createSectionLabel(title: String): TextView {
                 return TextView(this).apply {
                     text = title
-                    setTextColor(if (isBrightSurface) 0xFF334155.toInt() else themeCoordinator.primaryColor)
+                    setTextColor(themeCoordinator.primaryColor)
                     textSize = 12f
                     letterSpacing = 0.15f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -724,7 +720,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val prefsCard = createSettingsCard()
                 addHubRowToCard(prefsCard, "Timer & Focus", timerSub, AppSettingsTab.TIMER)
                 prefsCard.addView(createDivider())
-                addHubRowToCard(prefsCard, "Goals & Reminders", plannerSub, AppSettingsTab.PLANNER)
+                addHubRowToCard(prefsCard, "Goal and Reminder", plannerSub, AppSettingsTab.PLANNER)
                 prefsCard.addView(createDivider())
                 addHubRowToCard(prefsCard, "Insights & Stats", "Heatmap & pie chart", AppSettingsTab.ANALYTICS)
                 prefsCard.addView(createDivider())
@@ -2560,7 +2556,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
             }
 
             // ==========================================
-            // 5. GOALS & REMINDERS SUB-SCREEN
+            // 5. GOAL AND REMINDER SUB-SCREEN
             // ==========================================
             else if (currentSettingsTab == AppSettingsTab.PLANNER) {
                 // CARD 1: DAILY GOALS
@@ -3854,7 +3850,7 @@ layout.addView(reminderCard)
                 setPadding(0, 0, 0, dp(12))
             }
             val titleText = TextView(this).apply {
-                text = "Select Font Style"
+                text = "Choose Font Style (20+)"
                 textSize = 17f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setTextColor(themeCoordinator.textColor)
