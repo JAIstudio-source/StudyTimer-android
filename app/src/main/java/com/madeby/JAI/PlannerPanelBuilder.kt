@@ -941,14 +941,33 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
         // 2. Filter Tabs (Direction 3: Focus Deck Filter Segments - Minimum to None Pills, Clean Typography)
         val activeCount = (totalCount - completedCount).coerceAtLeast(0)
+        val isWallpaperActive = WallpaperManager.getWallpaperType(host) != "NONE"
+        val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(host)
+        val isBrightSurface = (isWallpaperActive && isBrightUnder) || !themeCoordinator.isDarkMode()
+
         val filterRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            val containerBg = if (isBrightSurface) {
+                GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(0xF0FFFFFF.toInt())
+                    setStroke(dp(1), 0xFFCBD5E1.toInt())
+                }
+            } else {
+                GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(0xEE141620.toInt())
+                    setStroke(dp(1), 0x22FFFFFF.toInt())
+                }
+            }
+            background = containerBg
+            setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                setMargins(0, dp(2), 0, dp(8))
+                setMargins(0, dp(4), 0, dp(10))
             }
         }
 
@@ -959,12 +978,19 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 text = "$label ($count)"
                 textSize = 12f
                 typeface = host.themeCoordinator.getAppTypeface(isBold = isSelected)
-                setTextColor(if (isSelected) plannerPrimary else tintedColor(themeCoordinator.textColor, 130))
-                setPadding(dp(12), dp(6), dp(12), dp(6))
+                setTextColor(
+                    if (isSelected) {
+                        if (isBrightSurface) 0xFF0F172A.toInt() else Color.WHITE
+                    } else {
+                        if (isBrightSurface) 0xFF64748B.toInt() else 0xFF94A3B8.toInt()
+                    }
+                )
+                setPadding(dp(14), dp(6), dp(14), dp(6))
                 background = if (isSelected) {
                     GradientDrawable().apply {
-                        cornerRadius = dp(8).toFloat()
-                        setColor(tintedColor(plannerPrimary, if (themeCoordinator.isDarkMode()) 36 else 24))
+                        cornerRadius = dp(12).toFloat()
+                        setColor(tintedColor(plannerPrimary, if (isBrightSurface) 70 else 90))
+                        setStroke(dp(1.2f), plannerPrimary)
                     }
                 } else null
                 isClickable = true
@@ -980,13 +1006,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(0, 0, dp(6), 0)
+                    setMargins(0, 0, dp(2), 0)
                 }
             }
         }
 
         filterRow.addView(createFilterTab(PlannerFilter.ALL, "All", totalCount))
-        filterRow.addView(createFilterTab(PlannerFilter.ACTIVE, "Active", activeCount))
+        filterRow.addView(createFilterTab(PlannerFilter.ACTIVE, "Remaining", activeCount))
         filterRow.addView(createFilterTab(PlannerFilter.DONE, "Done", completedCount))
         parent.addView(filterRow)
 
@@ -996,11 +1022,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             PlannerFilter.DONE -> activeGoalsList.filter { isGoalScheduledToday(it) && isGoalDone(it) }
         }
 
-        val otherDaysGoalsToRender = if (currentPlannerFilter == PlannerFilter.ALL) {
-            activeGoalsList.filterNot { isGoalScheduledToday(it) }
-        } else {
-            emptyList()
-        }
+        val otherDaysGoalsToRender = emptyList<SessionGoal>()
 
         val displayedGoals = when (currentPlannerSort) {
             PlannerSort.DEFAULT -> filteredGoals
@@ -1179,7 +1201,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val curDone = curScheduledToday.count { isGoalDone(it) }
                 val curActive = (curTotal - curDone).coerceAtLeast(0)
                 parent.findViewWithTag<TextView>("filter_tab_ALL")?.text = "All ($curTotal)"
-                parent.findViewWithTag<TextView>("filter_tab_ACTIVE")?.text = "Active ($curActive)"
+                parent.findViewWithTag<TextView>("filter_tab_ACTIVE")?.text = "Remaining ($curActive)"
                 parent.findViewWithTag<TextView>("filter_tab_DONE")?.text = "Done ($curDone)"
                 val curPct = if (curTotal > 0) (curDone * 100) / curTotal else 0
                 parent.findViewWithTag<TextView>("planner_completed_text")?.text = "$curDone of $curTotal completed"
@@ -3299,7 +3321,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         text = when {
                             isUnscheduled -> "—"
                             isAchieved -> "\u2713"
-                            isMissed -> "\u2715"
+                            isMissed -> "·"
                             isToday -> "\u25CB"
                             d.after(Date()) -> ""
                             else -> "—"
@@ -3308,10 +3330,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             isUnscheduled -> if (isDark) tintedColor(themeCoordinator.textColor, 70) else 0xFF94A3B8.toInt()
                             isAchieved -> greenColor
                             isToday -> plannerPrimary
-                            isMissed -> redColor
+                            isMissed -> if (isDark) tintedColor(themeCoordinator.textColor, 90) else 0xFF94A3B8.toInt()
                             else -> if (isDark) tintedColor(themeCoordinator.textColor, 80) else 0xFF94A3B8.toInt()
                         })
-                        textSize = if (isToday && !isUnscheduled) 16f else 14f
+                        textSize = if (isToday && !isUnscheduled) 16f else if (isMissed) 18f else 14f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         gravity = Gravity.CENTER
                         if (isToday && !isUnscheduled) {
@@ -5699,8 +5721,11 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         GoalReminderScheduler.scheduleGoalReminder(host, newGoal)
                     }
                     refreshStatsPanel()
+                    dialog.dismiss()
+                } else {
+                    titleInput.error = "Goal name cannot be empty"
+                    titleInput.requestFocus()
                 }
-                dialog.dismiss()
             }
         })
         content.addView(btnRow)
@@ -6363,9 +6388,12 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             GoalReminderScheduler.cancelGoalReminder(host, oldG.id)
                         }
                         refreshStatsPanel()
+                        dialog.dismiss()
                     }
+                } else {
+                    titleInput.error = "Goal name cannot be empty"
+                    titleInput.requestFocus()
                 }
-                dialog.dismiss()
             }
         })
         content.addView(btnRow)

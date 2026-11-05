@@ -213,6 +213,18 @@ class CommunityPanelBuilder(private val host: MainActivity) {
         container.addView(leaderboardContainer)
     }
 
+    private fun formatUserFriendlyError(error: Throwable?): String {
+        val msg = error?.message ?: return "Unable to connect to study room"
+        return when {
+            msg.contains("sign in", ignoreCase = true) -> "Please sign in to join study rooms"
+            msg.contains("internet", ignoreCase = true) || msg.contains("connect", ignoreCase = true) -> "Internet connection required"
+            msg.contains("404") || msg.contains("not found", ignoreCase = true) -> "Study room not found or code expired"
+            msg.contains("full", ignoreCase = true) -> "Study room is currently full"
+            msg.contains("401") || msg.contains("403") -> "Authentication required. Please sign in."
+            else -> msg.replace(Regex("(?i)HTTP \\d+:?"), "").replace(Regex("[\"\\{\\}]"), "").trim().ifBlank { "Unable to connect to room" }
+        }
+    }
+
     private fun renderRoomsView(container: FrameLayout) {
         if (!BuildConfig.STUDY_ROOM_ENABLED) {
             renderLeaderboardView(container)
@@ -889,7 +901,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                                 isBrowsingExplore = false
                                 renderRoomsView(container)
                             } else {
-                                AppToast.show(host, "Could not rejoin: ${joinRes.exceptionOrNull()?.message ?: "Error"}")
+                                AppToast.show(host, formatUserFriendlyError(joinRes.exceptionOrNull()))
                             }
                         }
                     }
@@ -1163,7 +1175,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                                         isBrowsingExplore = false
                                         rootContentHost?.let { renderRoomsView(it) }
                                     } else {
-                                        AppToast.show(host, "Could not enter room: ${joinRes.exceptionOrNull()?.message ?: "Error"}")
+                                        AppToast.show(host, formatUserFriendlyError(joinRes.exceptionOrNull()))
                                     }
                                 }
                             }
@@ -1367,8 +1379,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                     } else {
                         it.isEnabled = true
                         it.alpha = 1.0f
-                        val errMsg = result.exceptionOrNull()?.message ?: "Failed to join room"
-                        AppToast.show(host, errMsg)
+                        AppToast.show(host, formatUserFriendlyError(result.exceptionOrNull()))
                     }
                 }
             }
@@ -1642,8 +1653,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                         onCreated()
                     } else {
                         it.isEnabled = true
-                        val errMsg = result.exceptionOrNull()?.message ?: "Failed to create room"
-                        AppToast.show(host, errMsg)
+                        AppToast.show(host, formatUserFriendlyError(result.exceptionOrNull()))
                     }
                 }
             }

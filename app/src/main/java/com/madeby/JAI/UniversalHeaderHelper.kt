@@ -34,6 +34,9 @@ object UniversalHeaderHelper {
         val primary = theme.primaryColor
         val textColor = theme.textColor
         val isPomoWhite = activity.isPomodoroPureWhiteActive()
+        val isWallpaperActive = WallpaperManager.getWallpaperType(activity) != "NONE"
+        val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(activity)
+        val isBrightSurface = isPomoWhite || (isWallpaperActive && isBrightUnder) || !isDark
         val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
 
         fun dp(v: Int): Int = activity.dp(v)
@@ -50,10 +53,10 @@ object UniversalHeaderHelper {
         val profilePill = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = if (isPomoWhite) {
+            background = if (isBrightSurface) {
                 GradientDrawable().apply {
                     cornerRadius = dp(18).toFloat()
-                    setColor(0xFFF1F5F9.toInt())
+                    setColor(0xF0FFFFFF.toInt())
                     setStroke(dp(1), 0xFFCBD5E1.toInt())
                 }
             } else if (!isDark) {
@@ -125,7 +128,7 @@ object UniversalHeaderHelper {
             text = displayName
             textSize = 13f
             typeface = theme.getAppTypeface(isBold = true)
-            setTextColor(if (isPomoWhite) 0xFF0F172A.toInt() else textColor)
+            setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else textColor)
             setSingleLine(true)
             ellipsize = android.text.TextUtils.TruncateAt.END
             maxWidth = if (!title.isNullOrBlank()) dp(62) else dp(115)
@@ -145,7 +148,20 @@ object UniversalHeaderHelper {
                 textSize = 14.5f
                 typeface = theme.getAppTypeface(isBold = true)
                 letterSpacing = 0.04f
-                setTextColor(primary)
+                val titleColor = if (isBrightSurface) {
+                    // Deep rich accent tone preserving the user's theme color with crisp contrast on light surfaces
+                    Color.argb(
+                        255,
+                        (Color.red(primary) * 0.55f).toInt(),
+                        (Color.green(primary) * 0.55f).toInt(),
+                        (Color.blue(primary) * 0.55f).toInt()
+                    )
+                } else primary
+                setTextColor(titleColor)
+                setShadowLayer(
+                    dp(2).toFloat(), 0f, dp(1).toFloat(),
+                    if (isBrightSurface) 0x14000000 else 0x4D000000
+                )
                 gravity = Gravity.CENTER
                 setSingleLine(true)
                 ellipsize = android.text.TextUtils.TruncateAt.END

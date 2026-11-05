@@ -221,6 +221,10 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 )
             }
 
+            val isWallpaperActive = WallpaperManager.getWallpaperType(host) != "NONE"
+            val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(host)
+            val isBrightSurface = (isWallpaperActive && isBrightUnder) || !host.themeCoordinator.isDarkMode()
+
             val scrollContent = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
                 setPadding(0, 0, 0, dp(48))
@@ -314,7 +318,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 textSize = 11f
                 letterSpacing = 0.08f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(host.themeCoordinator.primaryColor)
+                setTextColor(if (isBrightSurface) 0xFF334155.toInt() else host.themeCoordinator.primaryColor)
                 setPadding(dp(4), dp(16), 0, dp(8))
             }
             scrollContent.addView(listHeader)

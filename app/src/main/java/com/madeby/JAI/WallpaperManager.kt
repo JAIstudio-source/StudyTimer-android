@@ -546,7 +546,7 @@ object WallpaperManager {
                 }
                 if (count > 0) {
                     val avgLum = totalLum / count
-                    return avgLum > 0.48
+                    return avgLum > 0.38
                 }
             } catch (_: Exception) {}
         }
