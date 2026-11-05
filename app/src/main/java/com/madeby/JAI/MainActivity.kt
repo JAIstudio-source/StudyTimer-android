@@ -225,6 +225,7 @@ class MainActivity : AppCompatActivity() {
             array.put(obj)
         }
         getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putString("session_goals_json", array.toString()).apply()
+        BackupManager(this).markDataModified()
         PlannerStateManager.notifyGoalsChanged()
     }
 
@@ -238,6 +239,7 @@ class MainActivity : AppCompatActivity() {
     private val plannerGoalListener = object : PlannerStateManager.GoalChangeListener {
         override fun onGoalsChanged() {
             runOnUiThread {
+                TasksWidgetProvider.refresh(this@MainActivity)
                 if (currentPanel == AppPanel.PLANNER) {
                     if (!isLocalPlannerUpdateInProgress) {
                         buildPlannerPanel()
@@ -472,6 +474,7 @@ class MainActivity : AppCompatActivity() {
         } else {
             wallpaperDimScrimView?.visibility = View.GONE
         }
+        themeCoordinator.applyThemeCoordinates()
     }
 
     internal fun pickProfileAvatar() {
@@ -535,6 +538,10 @@ class MainActivity : AppCompatActivity() {
     internal var settingsOriginWasSubTab: Boolean = false
 
     internal fun handleSettingsBack() {
+        if (currentSettingsTab == AppSettingsTab.PROFILE) {
+            ProfileManager.clearDraftForm(this)
+            tabPageCache.remove(settingsTabKey(AppSettingsTab.PROFILE))
+        }
         if (settingsOriginWasSubTab) {
             settingsOriginWasSubTab = false
             currentSettingsTab = AppSettingsTab.HUB
@@ -902,6 +909,24 @@ class MainActivity : AppCompatActivity() {
                 .apply()
         }
 
+        // Auto-heal any preference keys that were stored as Long instead of Int (prevents ClassCastException)
+        val intKeysToHeal = setOf(
+            "daily_goal_minutes", "customBg", "customPrimary", "customHue", "customSecondary", "customSecondaryHue",
+            "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute", "update_launch_count",
+            "update_dismissed_version", "battery_opt_opens", "post_notif_rationale_shown", "pomo_completed_count",
+            "pomodoro_study_minutes", "pomodoro_break_minutes", "pomo_long_break_interval", "last_celebrated_streak"
+        )
+        val healEditor = sharedPrefs.edit()
+        var needsHeal = false
+        for (k in intKeysToHeal) {
+            val v = sharedPrefs.all[k]
+            if (v is Long) {
+                healEditor.putInt(k, v.toInt())
+                needsHeal = true
+            }
+        }
+        if (needsHeal) healEditor.commit()
+
         PlannerStateManager.addListener(plannerGoalListener)
 
         themeCoordinator = ThemeCoordinator(this)
@@ -1045,6 +1070,10 @@ class MainActivity : AppCompatActivity() {
 
         navigateToPanel(AppPanel.FOCUS)
         setupTimerLoop()
+        if (intent?.getBooleanExtra("EXTRA_OPEN_PLANNER", false) == true) {
+            intent?.removeExtra("EXTRA_OPEN_PLANNER")
+            navigateToPanel(AppPanel.PLANNER)
+        }
 
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -1127,8 +1156,19 @@ class MainActivity : AppCompatActivity() {
             } else {
                 showSystemUI()
             }
+            if (::panelContainer.isInitialized) {
+                panelContainer.animate().cancel()
+                panelContainer.alpha = 0f
+            }
             buildCurrentPanel()
             updateVisualStyles()
+            if (::panelContainer.isInitialized) {
+                panelContainer.animate()
+                    .alpha(1f)
+                    .setDuration(220L)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                    .start()
+            }
         } else {
             if (isLandscape && currentPanel == AppPanel.FOCUS) {
                 applyImmersiveModeForLandscape()
@@ -1155,6 +1195,10 @@ class MainActivity : AppCompatActivity() {
         }
         if (intent?.getBooleanExtra("EXTRA_PROMPT_CHANGE_SUBJECT", false) == true) {
             checkPomoSubjectPrompt()
+        }
+        if (intent?.getBooleanExtra("EXTRA_OPEN_PLANNER", false) == true) {
+            intent?.removeExtra("EXTRA_OPEN_PLANNER")
+            navigateToPanel(AppPanel.PLANNER)
         }
     }
 
@@ -1372,7 +1416,6 @@ class MainActivity : AppCompatActivity() {
             AppPanel.SETTINGS -> {
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.HUB))
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.THEME))
-                getOrBuildTabPage(settingsTabKey(AppSettingsTab.PROFILE))
                 getOrBuildTabPage(settingsTabKey(AppSettingsTab.COMMUNITY))
             }
             else -> {}
@@ -1938,37 +1981,94 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun startFocusForGoal(goal: SessionGoal) {
-        val isBreak = currentTimerState == TimerState.BREAK
-        if (!isBreak && currentTimerState != TimerState.IDLE) {
-            DeveloperToolsHelper.showThemedConfirmDialog(
-                activity = this,
-                themeCoordinator = themeCoordinator,
-                title = "⏱️ Active Session Running",
-                message = "Cannot switch goals or change chapters during an active study session.\n\nPlease pause or stop your current timer, or wait for a break to start another goal.",
-                confirmText = "OK",
-                isDestructive = false,
-                onCancel = {}
-            ) {}
-            return
-        }
         val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val goalSubId = goal.subjectId?.takeIf { it.isNotBlank() && it != "all" }
+        val goalSubId = goal.subjectId?.takeIf { it.isNotBlank() && it != "all" } ?: "general"
         val goalSubTopic = goal.subTopic?.takeIf { it.isNotBlank() }
+        val currentSub = SubjectTagManager.getSelectedSubject(this)
+        val currentSubTopic = SubjectTagManager.getSelectedSubTopic(this, currentSub.id)
+        val activeGoalId = sp.getString("active_planner_goal_id", null)
+
+        val isSessionActive = currentTimerState == TimerState.STUDYING ||
+            currentTimerState == TimerState.BREAK ||
+            currentTimerState == TimerState.PAUSED
+
+        val isSameSubjectAndTopic = (activeGoalId == goal.id) ||
+            (currentSub.id == goalSubId && (currentSubTopic ?: "") == (goalSubTopic ?: ""))
+
+        if (isSessionActive) {
+            if (isSameSubjectAndTopic) {
+                // Same subject and topic/goal: continue seamlessly without overriding pre-existing time!
+                sp.edit()
+                    .putString("active_planner_goal_id", goal.id)
+                    .putString("active_planner_goal_title", goal.title)
+                    .putString("active_planner_goal_subject_id", if (goalSubId != "general") goalSubId else "")
+                    .putString("active_planner_goal_subtopic", goalSubTopic ?: "")
+                    .putInt("active_planner_goal_target_mins", goal.targetMinutes)
+                    .apply()
+
+                navigateToPanel(AppPanel.FOCUS)
+                if (currentTimerState == TimerState.PAUSED) {
+                    handleStateToggle()
+                    AppToast.show(this, "Resuming goal: ${goal.title}")
+                } else {
+                    AppToast.show(this, "Continuing goal: ${goal.title}")
+                }
+                return
+            } else {
+                // Different subject/topic running: verify first before switching so no time is lost or overridden!
+                DeveloperToolsHelper.showThemedConfirmDialog(
+                    activity = this,
+                    themeCoordinator = themeCoordinator,
+                    title = "Switch Study Goal?",
+                    message = "You have an active session for '${currentSub.name}'. Would you like to save and finish it to start '${goal.title}'?",
+                    confirmText = "Switch & Save",
+                    isDestructive = false,
+                    onCancel = {}
+                ) {
+                    handleStopSession()
+                    handler.postDelayed({
+                        startFocusForGoal(goal)
+                    }, 350)
+                }
+                return
+            }
+        }
 
         sp.edit()
             .putString("active_planner_goal_id", goal.id)
             .putString("active_planner_goal_title", goal.title)
-            .putString("active_planner_goal_subject_id", goalSubId ?: "")
+            .putString("active_planner_goal_subject_id", if (goalSubId != "general") goalSubId else "")
             .putString("active_planner_goal_subtopic", goalSubTopic ?: "")
             .putInt("active_planner_goal_target_mins", goal.targetMinutes)
             .apply()
 
-        if (goalSubId != null) {
+        if (goalSubId != "general") {
             SubjectTagManager.setSelectedSubject(this, goalSubId)
             SubjectTagManager.setSelectedSubTopic(this, goalSubId, goalSubTopic)
         } else {
             SubjectTagManager.setSelectedSubject(this, "general")
             SubjectTagManager.setSelectedSubTopic(this, "general", null)
+        }
+
+        // In countdown mode, adjust remaining time based on already-completed progress today
+        if (timerMode == "COUNTDOWN" && goal.targetMinutes > 0) {
+            val todayStr = cachedTodayStr.ifEmpty { dateKeyFmt.format(Date()) }
+            val dailySubjDurs = SubjectTagManager.getSubjectDurationsForDate(this, todayStr)
+            val dailyGoalDurs = PlannerHistoryManager.getDailyGoalDurations(this, todayStr)
+            val dailySubTopicDurs = if (goalSubId != "general") {
+                mapOf(goalSubId to SubjectTagManager.getDailySubTopicDurations(this, goalSubId, todayStr))
+            } else emptyMap()
+            val progMap = PlannerHistoryManager.calculateGoalProgress(
+                listOf(goal), dailySubjectDurations = dailySubjDurs,
+                dailyGoalDurations = dailyGoalDurs, dailySubTopicDurations = dailySubTopicDurs
+            )
+            val actualMins = progMap[goal.id]?.actualMinutes ?: 0
+            val remainingMins = (goal.targetMinutes - actualMins).coerceAtLeast(0)
+            val remainingSecs = (if (remainingMins > 0) remainingMins * 60L else goal.targetMinutes * 60L).coerceAtLeast(60L)
+            sp.edit()
+                .putLong("focus_countdown_secs", remainingSecs)
+                .putLong("focus_remaining_secs", remainingSecs)
+                .apply()
         }
 
         navigateToPanel(AppPanel.FOCUS)
@@ -2284,21 +2384,24 @@ class MainActivity : AppCompatActivity() {
                 if (isLandscape) {
                     if (lastIsBreakingState != isBreaking) {
                         lastIsBreakingState = isBreaking
+                        val isCountdown = (timerMode == "COUNTDOWN")
+                        val activeTextSize = if (isCountdown) 72f else 104f
+                        val subTextSize = if (isCountdown) 18f else 22f
                         if (isBreaking) {
                             breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
-                            breakTimerDisplay.textSize = 96f
+                            breakTimerDisplay.textSize = activeTextSize
                             breakTimerDisplay.setPadding(0, 0, 0, 5)
 
                             studyTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-                            studyTimerDisplay.textSize = 24f
+                            studyTimerDisplay.textSize = subTextSize
                             studyTimerDisplay.setPadding(0, 0, 0, 20)
                         } else {
                             studyTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
-                            studyTimerDisplay.textSize = 96f
+                            studyTimerDisplay.textSize = activeTextSize
                             studyTimerDisplay.setPadding(0, 0, 0, 5)
 
                             breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-                            breakTimerDisplay.textSize = 24f
+                            breakTimerDisplay.textSize = subTextSize
                             breakTimerDisplay.setPadding(0, 0, 0, 20)
                         }
                     }
@@ -2342,18 +2445,21 @@ class MainActivity : AppCompatActivity() {
                 val dailySubTopicDurations = mutableMapOf<String, Map<String, Long>>()
                 val goalsJson = appPrefs.getString("session_goals_json", "[]") ?: "[]"
                 val goalsList = loadSessionGoalsFromJson(goalsJson)
-                for (g in goalsList) {
+                val todayCal = Calendar.getInstance()
+                val scheduledTodayGoals = goalsList.filter { PlannerHistoryManager.isGoalScheduledOnDay(it.scheduledDays, todayCal) }
+
+                for (g in scheduledTodayGoals) {
                     val subId = g.subjectId
                     if (!subId.isNullOrBlank() && subId != "all" && !dailySubTopicDurations.containsKey(subId)) {
                         dailySubTopicDurations[subId] = SubjectTagManager.getDailySubTopicDurations(this, subId, todayStr)
                     }
                 }
                 val progressMap = PlannerHistoryManager.calculateGoalProgress(
-                    goalsList, snap.todayFocus, dailySubjectDurations, dailyGoalDurations, dailySubTopicDurations
+                    scheduledTodayGoals, snap.todayFocus, dailySubjectDurations, dailyGoalDurations, dailySubTopicDurations
                 )
 
                 val trulyAchievedIds = mutableSetOf<String>()
-                for (goal in goalsList) {
+                for (goal in scheduledTodayGoals) {
                     val prog = progressMap[goal.id]
                     val targetMins = goal.targetMinutes
                     val actualMins = prog?.actualMinutes ?: 0
@@ -2363,8 +2469,8 @@ class MainActivity : AppCompatActivity() {
                         trulyAchievedIds.add(goal.id)
                     }
                 }
-                val completedCount = trulyAchievedIds.size
-                val totalCount = goalsList.size
+                val completedCount = scheduledTodayGoals.count { trulyAchievedIds.contains(it.id) }
+                val totalCount = scheduledTodayGoals.size
                 val progressPct = if (totalCount > 0) (completedCount * 100) / totalCount else 0
 
                 val (plannerPrimary, _) = resolvePlannerColors()
@@ -2383,15 +2489,46 @@ class MainActivity : AppCompatActivity() {
                     it.progressTintList = android.content.res.ColorStateList.valueOf(lineProgressColor)
                 }
 
+                val activeCount = (totalCount - completedCount).coerceAtLeast(0)
+                (statsContainer.findViewWithTag<TextView>("filter_tab_ALL"))?.text = "All ($totalCount)"
+                (statsContainer.findViewWithTag<TextView>("filter_tab_ACTIVE"))?.text = "Active ($activeCount)"
+                (statsContainer.findViewWithTag<TextView>("filter_tab_DONE"))?.text = "Done ($completedCount)"
+
                 val greenColor = 0xFF22C55E.toInt()
                 val redColor = 0xFFEF4444.toInt()
 
                 for (goal in goalsList) {
+                    val isScheduledToday = PlannerHistoryManager.isGoalScheduledOnDay(goal.scheduledDays, todayCal)
                     val targetMins = goal.targetMinutes
                     val prog = progressMap[goal.id]
                     val actualMins = prog?.actualMinutes ?: 0
 
-                    if (targetMins > 0) {
+                    if (!isScheduledToday) {
+                        (statsContainer.findViewWithTag<TextView>("goal_chip_${goal.id}"))?.let { chip ->
+                            val shouldShow = targetMins > 0
+                            chip.visibility = if (shouldShow) View.VISIBLE else View.GONE
+                            chip.text = if (targetMins > 0) "${targetMins}m" else ""
+                            chip.setTextColor(tintedColor(themeCoordinator.textColor, 70))
+                            chip.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 8f)
+                        }
+                        (statsContainer.findViewWithTag<TextView>("goal_check_${goal.id}"))?.let { checkBtn ->
+                            checkBtn.text = "—"
+                            checkBtn.textSize = 12f
+                            checkBtn.setTextColor(tintedColor(themeCoordinator.textColor, 80))
+                            checkBtn.background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor(Color.TRANSPARENT)
+                                setStroke(dp(1.8f), tintedColor(themeCoordinator.textColor, 70))
+                            }
+                        }
+                        (statsContainer.findViewWithTag<View>("goal_action_${goal.id}"))?.let { actionCta ->
+                            actionCta.visibility = View.GONE
+                        }
+                        (statsContainer.findViewWithTag<TextView>("goal_title_${goal.id}"))?.let { titleTv ->
+                            titleTv.setTextColor(themeCoordinator.textColor)
+                            titleTv.paintFlags = titleTv.paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
+                        }
+                    } else if (targetMins > 0) {
                         val isDone = actualMins >= targetMins
                         val isChecked = isDone || goal.completed
                         val isDeficit = !isDone && goal.completed
@@ -2523,18 +2660,23 @@ class MainActivity : AppCompatActivity() {
                                 map[subj.id] = subj to (currentSecs + secs)
                             }
                         }
-                        if (!hasLive && currentTimerState == TimerState.STUDYING && accumulatedStudy > 0L) {
-                            val activeSub = SubjectTagManager.getSelectedSubject(this)
-                            val currentSecs = map[activeSub.id]?.second ?: 0L
-                            map[activeSub.id] = activeSub to (currentSecs + accumulatedStudy)
-                        }
+                        val isRunning = (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.PAUSED)
                         val todayFocusSecs = FocusTimeProvider.getTodayFocusSeconds(this)
                         val sumRecorded = map.values.sumOf { it.second }
                         if (todayFocusSecs > sumRecorded) {
                             val diff = todayFocusSecs - sumRecorded
-                            val genSub = SubjectTagManager.resolveSubject(this, "general", "General Study", "#6366F1")
-                            val curr = map[genSub.id]?.second ?: 0L
-                            map[genSub.id] = genSub to (curr + diff)
+                            if (isRunning) {
+                                val activeSub = SubjectTagManager.getSelectedSubject(this)
+                                val currentSecs = map[activeSub.id]?.second ?: 0L
+                                map[activeSub.id] = activeSub to (currentSecs + diff)
+                            } else if (map.isNotEmpty()) {
+                                val targetSub = map.values.maxByOrNull { it.second }?.first ?: SubjectTagManager.resolveSubject(this, "general", "General Study", "#6366F1")
+                                val curr = map[targetSub.id]?.second ?: 0L
+                                map[targetSub.id] = targetSub to (curr + diff)
+                            } else {
+                                val genSub = SubjectTagManager.resolveSubject(this, "general", "General Study", "#6366F1")
+                                map[genSub.id] = genSub to diff
+                            }
                         }
                         val sortedSubjects = map.values.filter { it.second > 0L }.sortedByDescending { it.second }
                         if (sortedSubjects.isNotEmpty()) {
@@ -2698,8 +2840,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateTimerRing(showCountdown: Boolean) {
         if (!::timerRing.isInitialized) return
-        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-        val shouldShowCountdownRing = !isLandscape && (timerMode == "COUNTDOWN")
+        val shouldShowCountdownRing = (timerMode == "COUNTDOWN")
         timerRing.visibility = if (shouldShowCountdownRing) View.VISIBLE else View.GONE
         if (!shouldShowCountdownRing) return
 
@@ -2954,6 +3095,7 @@ class MainActivity : AppCompatActivity() {
 
 
     internal fun updateVisualStyles() {
+        val isLandscapeOrientation = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val isPomoWhite = isPomodoroPureWhiteActive()
         if (currentPanel == AppPanel.FOCUS) {
             if (isPomoWhite) {
@@ -2995,10 +3137,8 @@ class MainActivity : AppCompatActivity() {
 
         val mainBtnTextColor = if (isPomoWhite) {
             0xFFFFFFFF.toInt()
-        } else if (themeCoordinator.isBubbleStyle() || !themeCoordinator.isDarkMode()) {
-            0xFFFFFFFF.toInt()
         } else {
-            themeCoordinator.bgColor
+            ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor)
         }
 
         if (isPomoWhite) {
@@ -3085,7 +3225,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     breakTimerDisplay.setTextColor(themeCoordinator.textColor)
                 }
-                if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
+                if (!isZenModeActive) breakTimerDisplay.visibility = if (isLandscapeOrientation) View.GONE else View.VISIBLE
 
                 // Slot 0 (Left): Primary CTA - PAUSE
                 pauseBtn.visibility = pauseButtonVisibility()
@@ -3229,7 +3369,7 @@ class MainActivity : AppCompatActivity() {
                     studyTimerDisplay.setTextColor(if (pureWhiteTimerEnabled()) 0xFFFFFFFF.toInt() else themeCoordinator.textColor)
                     breakTimerDisplay.setTextColor(themeCoordinator.textColor)
                 }
-                if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
+                if (!isZenModeActive) breakTimerDisplay.visibility = if (isLandscapeOrientation && currentBreakSeconds == 0L) View.GONE else View.VISIBLE
 
                 // Slot 0 (Left): Primary CTA - RESUME
                 pauseBtn.visibility = View.VISIBLE
@@ -3277,8 +3417,13 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
-        val isLandscapeOrientation = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-        if (!isLandscapeOrientation && ::controlActionContainer.isInitialized) {
+        if (isLandscapeOrientation) {
+            applyLandscapeActionControlLayout()
+            if (::statusBadge.isInitialized) {
+                statusBadge.background = null
+                statusBadge.setPadding(0, 0, 0, 0)
+            }
+        } else if (::controlActionContainer.isInitialized) {
             applyPortraitActionControlLayout()
         }
         if (::studyBottomNavBar.isInitialized) {
@@ -3289,6 +3434,45 @@ class MainActivity : AppCompatActivity() {
         }
         updateTimerRing(false)
         updateStatusBarIcons()
+    }
+
+    private fun applyLandscapeActionControlLayout() {
+        if (!::controlActionContainer.isInitialized) return
+        controlActionContainer.orientation = LinearLayout.HORIZONTAL
+        controlActionContainer.gravity = Gravity.CENTER_HORIZONTAL
+
+        // Remove extra buttons in landscape (e.g. mainBtn "Break") to keep desk clock clean & distraction-free
+        if (::mainBtn.isInitialized) {
+            mainBtn.visibility = View.GONE
+        }
+
+        val btnHeight = dp(46)
+        val btnWidth = dp(145)
+        val startBtnWidth = dp(175)
+
+        val isIdle = (currentTimerState == TimerState.IDLE)
+        if (isIdle) {
+            if (::pauseBtn.isInitialized && pauseBtn.visibility == View.VISIBLE) {
+                pauseBtn.layoutParams = LinearLayout.LayoutParams(startBtnWidth, btnHeight).apply {
+                    gravity = Gravity.CENTER
+                    setMargins(0, 0, 0, 0)
+                }
+            }
+            if (::stopBtn.isInitialized) {
+                stopBtn.visibility = View.GONE
+            }
+        } else {
+            if (::pauseBtn.isInitialized && pauseBtn.visibility == View.VISIBLE) {
+                pauseBtn.layoutParams = LinearLayout.LayoutParams(btnWidth, btnHeight).apply {
+                    setMargins(dp(8), 0, dp(8), 0)
+                }
+            }
+            if (::stopBtn.isInitialized && stopBtn.visibility == View.VISIBLE) {
+                stopBtn.layoutParams = LinearLayout.LayoutParams(btnWidth, btnHeight).apply {
+                    setMargins(dp(8), 0, dp(8), 0)
+                }
+            }
+        }
     }
 
     private fun applyPortraitActionControlLayout() {
@@ -3402,6 +3586,7 @@ class MainActivity : AppCompatActivity() {
         AppBlockerManager.onStudyTimerResumed(this)
         val oldProfile = ProfileManager.getProfile(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            LeaderboardManager.syncVerifiedOfflineStudy(this@MainActivity)
             val updated = ProfileSyncService.refreshProfileStatus(this@MainActivity)
             if (oldProfile.moderationStatus == ModerationStatus.PENDING_APPROVAL && updated.moderationStatus == ModerationStatus.APPROVED) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -3431,6 +3616,9 @@ class MainActivity : AppCompatActivity() {
         FlipToFocusManager.stop()
         if (::updateRunnable.isInitialized) {
             handler.removeCallbacks(updateRunnable)
+        }
+        if (AuthManager.isLoggedIn(this)) {
+            triggerAutoSyncIfEligible(force = false)
         }
     }
 
@@ -3531,20 +3719,39 @@ class MainActivity : AppCompatActivity() {
         val sharedPrefs = appPrefs
         val isLandscapeEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
         if (!isLandscapeEnabled) return
-
         if (!::controlActionContainer.isInitialized) return
-        if (controlActionContainer.visibility == View.GONE) {
-            if (::navHeader.isInitialized) navHeader.visibility = View.VISIBLE
-            if (::statusBadgeContainer.isInitialized) statusBadgeContainer.visibility = View.VISIBLE
-            if (::breakTimerDisplay.isInitialized) breakTimerDisplay.visibility = View.VISIBLE
+
+        // In IDLE state, controls should remain visible so the Start button is always accessible
+        if (currentTimerState == TimerState.IDLE) {
             controlActionContainer.visibility = View.VISIBLE
-            if (::studyTimerDisplay.isInitialized) studyTimerDisplay.textSize = 64f
+            controlActionContainer.alpha = 1f
+            isZenModeActive = false
+            return
+        }
+
+        if (controlActionContainer.visibility == View.VISIBLE && controlActionContainer.alpha > 0.5f) {
+            isZenModeActive = true
+            controlActionContainer.animate()
+                .alpha(0f)
+                .setDuration(180L)
+                .withEndAction {
+                    controlActionContainer.visibility = View.GONE
+                }
+                .start()
+            if (::statusBadgeContainer.isInitialized) {
+                statusBadgeContainer.animate().alpha(0f).setDuration(180L).start()
+            }
         } else {
-            if (::navHeader.isInitialized) navHeader.visibility = View.GONE
-            if (::statusBadgeContainer.isInitialized) statusBadgeContainer.visibility = View.GONE
-            if (::breakTimerDisplay.isInitialized) breakTimerDisplay.visibility = View.GONE
-            controlActionContainer.visibility = View.GONE
-            if (::studyTimerDisplay.isInitialized) studyTimerDisplay.textSize = 110f
+            isZenModeActive = false
+            controlActionContainer.visibility = View.VISIBLE
+            controlActionContainer.alpha = 0f
+            controlActionContainer.animate()
+                .alpha(1f)
+                .setDuration(180L)
+                .start()
+            if (::statusBadgeContainer.isInitialized) {
+                statusBadgeContainer.animate().alpha(1f).setDuration(180L).start()
+            }
         }
     }
 
@@ -3555,21 +3762,23 @@ class MainActivity : AppCompatActivity() {
 
         if (!isLandscape) {
             isZenModeActive = false
-            if (isPortraitFullscreenActive) {
-                // Keep portrait fullscreen handler
-            } else {
+            if (!isPortraitFullscreenActive) {
                 panelContainer.setOnClickListener(null)
             }
             return
         }
 
         if (isLandscapeEnabled) {
-            isZenModeActive = true
+            isZenModeActive = false
             if (::navHeader.isInitialized) navHeader.visibility = View.GONE
-            if (::statusBadgeContainer.isInitialized) statusBadgeContainer.visibility = View.GONE
-            if (::breakTimerDisplay.isInitialized) breakTimerDisplay.visibility = View.GONE
-            if (::controlActionContainer.isInitialized) controlActionContainer.visibility = View.GONE
-            if (::studyTimerDisplay.isInitialized) studyTimerDisplay.textSize = 110f
+            if (::controlActionContainer.isInitialized) {
+                controlActionContainer.visibility = View.VISIBLE
+                controlActionContainer.alpha = 1f
+            }
+            if (::statusBadgeContainer.isInitialized) {
+                statusBadgeContainer.visibility = View.VISIBLE
+                statusBadgeContainer.alpha = 1f
+            }
 
             panelContainer.setOnClickListener {
                 toggleLandscapeControls()
@@ -3579,11 +3788,6 @@ class MainActivity : AppCompatActivity() {
             }
         } else {
             isZenModeActive = false
-            if (::navHeader.isInitialized) navHeader.visibility = View.VISIBLE
-            if (::statusBadgeContainer.isInitialized) statusBadgeContainer.visibility = View.VISIBLE
-            if (::breakTimerDisplay.isInitialized) breakTimerDisplay.visibility = View.VISIBLE
-            if (::controlActionContainer.isInitialized) controlActionContainer.visibility = View.VISIBLE
-            if (::studyTimerDisplay.isInitialized) studyTimerDisplay.textSize = 64f
             panelContainer.setOnClickListener(null)
             rootLayout.setOnClickListener(null)
         }
@@ -3728,17 +3932,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun applyPortraitFullscreenLayout() {
+        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        if (isLandscape) return
         if (!::studyTimerDisplay.isInitialized || !::breakTimerDisplay.isInitialized) return
         val isBreaking = currentTimerState == TimerState.BREAK ||
             (currentTimerState == TimerState.PAUSED && prePauseState == TimerState.BREAK)
-        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
         val timerMode = sharedPrefs.getString("timer_mode", "STOPWATCH") ?: "STOPWATCH"
         val hasRing = (timerMode == "COUNTDOWN")
 
         if (::timerRing.isInitialized) {
-            timerRing.visibility = if (!isLandscape && hasRing) View.VISIBLE else View.GONE
-            timerRing.isFullscreen = (!isLandscape && isPortraitFullscreenActive && hasRing)
+            timerRing.visibility = if (hasRing) View.VISIBLE else View.GONE
+            timerRing.isFullscreen = (isPortraitFullscreenActive && hasRing)
         }
 
         studyTimerDisplay.translationY = 0f

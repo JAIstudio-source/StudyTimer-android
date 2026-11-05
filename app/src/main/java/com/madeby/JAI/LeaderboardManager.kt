@@ -14,6 +14,7 @@ import java.util.*
 object LeaderboardManager {
     private const val TAG = "LeaderboardManager"
     private const val CACHE_TTL_MS = 120_000L // 2 minutes in-memory TTL
+    private const val MIN_FETCH_COOLDOWN_MS = 20_000L // 20s cooldown even for forceRefresh
     const val MAX_DAILY_LEADERBOARD_SECONDS = 57600 // 16 Hours daily sanity hard cap
 
     private data class CacheRecord(
@@ -41,12 +42,11 @@ object LeaderboardManager {
         forceRefresh: Boolean = false
     ): Result<List<LeaderboardEntry>> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        if (!forceRefresh) {
-            synchronized(cache) {
-                val cached = cache[period]
-                if (cached != null && (now - cached.timestamp) < CACHE_TTL_MS) {
-                    return@withContext Result.success(cached.entries)
-                }
+        synchronized(cache) {
+            val cached = cache[period]
+            val cooldown = if (forceRefresh) MIN_FETCH_COOLDOWN_MS else CACHE_TTL_MS
+            if (cached != null && (now - cached.timestamp) < cooldown) {
+                return@withContext Result.success(cached.entries)
             }
         }
 
@@ -175,6 +175,8 @@ object LeaderboardManager {
     )
 
     private val userProfileCache = java.util.concurrent.ConcurrentHashMap<String, PublicUserProfile>()
+
+    fun getCachedUserProfile(userId: String): PublicUserProfile? = userProfileCache[userId.trim()]
 
     private data class ParsedProfile(
         val bio: String,
@@ -363,6 +365,7 @@ object LeaderboardManager {
             pConn.connectTimeout = 5000
             pConn.readTimeout = 5000
             pConn.doOutput = true
+            val pStreak = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 0)
             val pBody = JSONObject().apply {
                 put("p_user_id", userId)
                 put("p_user_name", ProfileManager.getEffectiveDisplayName(context).trim().take(30))
@@ -371,6 +374,8 @@ object LeaderboardManager {
                 put("p_current_subject", "")
                 put("p_subject_color", "#3b82f6")
                 put("p_study_date", todayStr)
+                put("p_streak_days", pStreak)
+                put("p_streak", pStreak)
             }
             pConn.outputStream.use { it.write(pBody.toString().toByteArray(Charsets.UTF_8)) }
             pConn.responseCode
@@ -471,6 +476,7 @@ object LeaderboardManager {
             conn.readTimeout = 7000
             conn.doOutput = true
 
+            val curStreak = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 0)
             val body = JSONObject().apply {
                 put("p_user_id", userId)
                 put("p_user_name", userName)
@@ -479,6 +485,8 @@ object LeaderboardManager {
                 put("p_current_subject", effectiveSubject.trim().take(40))
                 put("p_subject_color", effectiveColor.trim().take(10))
                 put("p_study_date", todayStr)
+                put("p_streak_days", curStreak)
+                put("p_streak", curStreak)
             }
 
             conn.outputStream.use { os ->
@@ -487,7 +495,6 @@ object LeaderboardManager {
 
             val code = conn.responseCode
             if (code in 200..299) {
-                clearCache()
                 true
             } else {
                 Log.w(TAG, "updateStudyPresence failed with code $code")
@@ -543,6 +550,7 @@ object LeaderboardManager {
             conn.readTimeout = 7000
             conn.doOutput = true
 
+            val curStreak = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 0)
             val body = JSONObject().apply {
                 put("p_user_id", userId)
                 put("p_user_name", userName)
@@ -552,6 +560,8 @@ object LeaderboardManager {
                 put("p_current_subject", effectiveSubject)
                 put("p_subject_color", effectiveColor)
                 put("p_study_date", targetDateStr)
+                put("p_streak_days", curStreak)
+                put("p_streak", curStreak)
             }
 
             conn.outputStream.use { os ->
@@ -560,13 +570,18 @@ object LeaderboardManager {
 
             val code = conn.responseCode
             if (code in 200..299) {
-                clearCache()
                 true
             } else if (code == 404 || code == 400) {
-                if (clampedSeconds > 0) {
-                    recordStudySession(context, clampedSeconds, effectiveSubject, effectiveColor, studyDate = targetDateStr)
-                }
-                updateStudyPresence(context, effectiveIsStudying, effectiveSubject, effectiveColor)
+                // If the custom RPC function is missing on Supabase, fallback directly to daily_leaderboard table upsert!
+                // Anti-cheat verification: compute verified focus seconds from TimelineLogger (only real timer sessions).
+                val verifiedSecs = getRealTimerFocusSecondsForDate(context, targetDateStr).toInt()
+                overrideLeaderboardDailyTotal(
+                    context,
+                    totalSeconds = verifiedSecs,
+                    isStudying = effectiveIsStudying,
+                    subject = effectiveSubject,
+                    color = effectiveColor
+                )
             } else {
                 Log.w(TAG, "syncStudyProgress failed with code $code")
                 false
@@ -618,6 +633,7 @@ object LeaderboardManager {
             conn.readTimeout = 8000
             conn.doOutput = true
 
+            val curStreak = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 0)
             val body = JSONObject().apply {
                 put("p_user_id", userId)
                 put("p_user_name", userName)
@@ -626,6 +642,8 @@ object LeaderboardManager {
                 put("p_subject", effectiveSubject)
                 put("p_subject_color", effectiveColor)
                 put("p_study_date", targetDateStr)
+                put("p_streak_days", curStreak)
+                put("p_streak", curStreak)
             }
 
             conn.outputStream.use { os ->
@@ -634,7 +652,6 @@ object LeaderboardManager {
 
             val code = conn.responseCode
             if (code in 200..299) {
-                clearCache()
                 Log.i(TAG, "Recorded session of $durationSeconds seconds for $userName ($userId)")
                 true
             } else {
@@ -650,6 +667,7 @@ object LeaderboardManager {
     suspend fun overrideLeaderboardDailyTotal(
         context: Context,
         totalSeconds: Int,
+        isStudying: Boolean = false,
         subject: String = "",
         color: String = "#3b82f6"
     ): Boolean = withContext(Dispatchers.IO) {
@@ -663,6 +681,7 @@ object LeaderboardManager {
         val shareLive = isLiveStatusSharingEnabled(context)
         val effectiveSubject = if (shareLive) subject else ""
         val effectiveColor = if (shareLive) color else "#3b82f6"
+        val effectiveIsStudying = if (shareLive) isStudying else false
 
         val supabaseUrl = BuildConfig.SUPABASE_URL
         val anonKey = BuildConfig.SUPABASE_ANON_KEY
@@ -698,7 +717,7 @@ object LeaderboardManager {
                 put("avatar_url", avatarUrl)
                 put("study_date", todayStr)
                 put("total_seconds", totalSeconds.coerceIn(0, MAX_DAILY_LEADERBOARD_SECONDS))
-                put("is_studying", false)
+                put("is_studying", effectiveIsStudying)
                 put("current_subject", effectiveSubject)
                 put("subject_color", effectiveColor)
                 put("last_active_at", nowIso)
@@ -711,7 +730,6 @@ object LeaderboardManager {
 
             val code = conn.responseCode
             if (code in 200..299) {
-                clearCache()
                 true
             } else {
                 Log.w(TAG, "overrideLeaderboardDailyTotal failed with code $code")
@@ -860,10 +878,35 @@ object LeaderboardManager {
         val isToday = dateStr == sdf.format(Date())
         val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
-        val isTimerStudying = timerState == "STUDYING" || timerState == "PAUSED"
-        val runningStudy = if (isToday && isTimerStudying) prefs.getLong("accumulatedStudy", 0L) else 0L
+        val inFlightStudy = if (isToday && timerState == "STUDYING" && parsedAll.openFocusStart != null && !parsedAll.openFocusManual) {
+            val gapMs = (System.currentTimeMillis() - parsedAll.openFocusStart).coerceAtLeast(0L)
+            minOf(gapMs, 14400_000L) / 1000L
+        } else {
+            0L
+        }
         val devBonus = prefs.getLong("dev_leaderboard_bonus_secs_$dateStr", 0L)
 
-        return (realSessionSum + runningStudy + devBonus).coerceAtLeast(0L)
+        return (realSessionSum + inFlightStudy + devBonus).coerceAtLeast(0L)
+    }
+
+    /**
+     * Verifies all offline study logged in TimelineLogger and syncs the authentic verified
+     * total to the daily_leaderboard table on Supabase, strictly filtering out any manual tampering.
+     */
+    suspend fun syncVerifiedOfflineStudy(context: Context): Boolean = withContext(Dispatchers.IO) {
+        if (!AuthManager.isLoggedIn(context) || !isParticipating(context)) return@withContext false
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val verifiedSecs = getRealTimerFocusSecondsForDate(context, todayStr).toInt()
+        val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
+        val isStudying = (timerState == "STUDYING")
+        val curSub = SubjectTagManager.getSelectedSubject(context)
+        overrideLeaderboardDailyTotal(
+            context,
+            totalSeconds = verifiedSecs,
+            isStudying = isStudying,
+            subject = curSub.name,
+            color = curSub.colorHex
+        )
     }
 }

@@ -63,7 +63,7 @@ object AppBlockerSettingsSheet {
                 val corner = dp(24).toFloat()
                 cornerRadii = floatArrayOf(corner, corner, corner, corner, 0f, 0f, 0f, 0f)
                 val bgCol = if (isDark) {
-                    if (theme.activeBgMode == "ECLIPSE") 0xF0101726.toInt() else 0xEE0D0F15.toInt()
+                    0xEE0D0F15.toInt()
                 } else {
                     0xF8FFFFFF.toInt()
                 }

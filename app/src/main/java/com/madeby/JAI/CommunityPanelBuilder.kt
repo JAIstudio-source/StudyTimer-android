@@ -1784,6 +1784,9 @@ class CommunityPanelBuilder(private val host: MainActivity) {
         }
         dialogRoot.addView(mottoView)
 
+        var streakValueTextRef: TextView? = null
+        var streakFlameIconRef: ImageView? = null
+
         // If peer student, fetch real profile from Supabase asynchronously
         if (!isSelf && m.id.isNotBlank()) {
             CoroutineScope(Dispatchers.IO).launch {
@@ -1796,6 +1799,11 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                         if (pubProfile.bio.isNotBlank()) {
                             mottoView.text = "\"${pubProfile.bio}\""
                             mottoView.visibility = View.VISIBLE
+                        }
+                        if (pubProfile.streakDays > 0) {
+                            streakValueTextRef?.text = "${pubProfile.streakDays}d"
+                            streakValueTextRef?.setTextColor(Color.parseColor("#F59E0B"))
+                            streakFlameIconRef?.visibility = View.VISIBLE
                         }
                     }
                 }
@@ -1884,7 +1892,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
         val effectiveStreak = if (isSelf) {
             host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).safeInt("current_streak", 0)
         } else {
-            0
+            LeaderboardManager.getCachedUserProfile(m.id)?.streakDays ?: 0
         }
         val colStreak = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -1901,21 +1909,25 @@ class CommunityPanelBuilder(private val host: MainActivity) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
         }
-        if (effectiveStreak > 0) {
-            streakRow.addView(ImageView(host).apply {
-                setImageResource(R.drawable.ic_flame)
-                setColorFilter(Color.parseColor("#F59E0B"))
-                layoutParams = LinearLayout.LayoutParams(dp(14), dp(14)).apply {
-                    marginEnd = dp(3)
-                }
-            })
+        val flameIcon = ImageView(host).apply {
+            setImageResource(R.drawable.ic_flame)
+            setColorFilter(Color.parseColor("#F59E0B"))
+            layoutParams = LinearLayout.LayoutParams(dp(14), dp(14)).apply {
+                marginEnd = dp(3)
+            }
+            visibility = if (effectiveStreak > 0) View.VISIBLE else View.GONE
         }
-        streakRow.addView(TextView(host).apply {
+        streakFlameIconRef = flameIcon
+        streakRow.addView(flameIcon)
+
+        val streakText = TextView(host).apply {
             text = if (effectiveStreak > 0) "${effectiveStreak}d" else "--"
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(if (effectiveStreak > 0) Color.parseColor("#F59E0B") else textColor)
-        })
+        }
+        streakValueTextRef = streakText
+        streakRow.addView(streakText)
         colStreak.addView(streakRow)
         statsCard.addView(colStreak)
 
@@ -1934,6 +1946,7 @@ class CommunityPanelBuilder(private val host: MainActivity) {
                 }
                 setOnClickListener {
                     dialog.dismiss()
+                    host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
                     host.currentSettingsTab = AppSettingsTab.PROFILE
                     host.navigateToPanel(AppPanel.SETTINGS)
                 }

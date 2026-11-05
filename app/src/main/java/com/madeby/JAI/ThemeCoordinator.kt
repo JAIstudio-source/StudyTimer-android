@@ -10,13 +10,21 @@ class ThemeCoordinator(private val context: Context) {
     var activeBgMode = "OLED"
     var uiStyle = "GLASS"
     var bgColor = 0xFF000000.toInt()
-    var boxColor = 0xFF121212.toInt()
+    var boxColor = 0xFF12131A.toInt()
     var textColor = 0xFFFFFFFF.toInt()
     var primaryColor = Color.parseColor("#A78BFA")
     var secondaryColor = Color.parseColor("#38BDF8")
     var accentColor = Color.HSVToColor(floatArrayOf(36f, 0.80f, 0.95f))
 
     companion object {
+        fun getContrastColor(bgColor: Int): Int {
+            val r = Color.red(bgColor) / 255.0
+            val g = Color.green(bgColor) / 255.0
+            val b = Color.blue(bgColor) / 255.0
+            val luminance = 0.299 * r + 0.587 * g + 0.114 * b
+            return if (luminance > 0.55) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
+        }
+
         val SOFT_FOCUS_PALETTE = listOf(
             "#818CF8", // Soft Lavender / Indigo
             "#60A5FA", // Soft Sky Blue
@@ -61,7 +69,15 @@ class ThemeCoordinator(private val context: Context) {
                 .apply()
         }
 
-        activeBgMode = sharedPrefs.getString("activeBgMode", "OLED") ?: "OLED"
+        var storedMode = sharedPrefs.getString("activeBgMode", "OLED") ?: "OLED"
+        if (storedMode == "ECLIPSE") {
+            storedMode = "OLED"
+            sharedPrefs.edit().putString("activeBgMode", "OLED").apply()
+        } else if (storedMode != "LIGHT" && storedMode != "OLED") {
+            storedMode = "OLED"
+        }
+        activeBgMode = storedMode
+
         uiStyle = sharedPrefs.getString("ui_style", "GLASS")?.takeIf { it != "BUBBLE" } ?: "GLASS"
 
         when (activeBgMode) {
@@ -71,16 +87,10 @@ class ThemeCoordinator(private val context: Context) {
                 textColor = 0xFF0F172A.toInt()
                 accentColor = Color.parseColor("#4F46E5")
             }
-            "ECLIPSE" -> {
-                bgColor = 0xFF0F172A.toInt()
-                boxColor = 0xFF1E293B.toInt()
-                textColor = 0xFFF8FAFC.toInt()
-                accentColor = Color.HSVToColor(floatArrayOf(36f, 0.85f, 0.95f))
-            }
             else -> {
                 bgColor = 0xFF000000.toInt()
-                boxColor = 0xFF000000.toInt() // True OLED Black
-                textColor = 0xFFFFFFFF.toInt()
+                boxColor = 0xFF12131A.toInt() // Elevated OLED Dark surface
+                textColor = 0xFFFFFFFF.toInt() // Dynamic high-contrast stark white
                 accentColor = Color.HSVToColor(floatArrayOf(36f, 0.85f, 0.95f))
             }
         }
@@ -97,7 +107,6 @@ class ThemeCoordinator(private val context: Context) {
         }
     }
 
-
     private fun blend(from: Int, to: Int, t: Float): Int {
         val r = (Color.red(from) + (Color.red(to) - Color.red(from)) * t).toInt()
         val g = (Color.green(from) + (Color.green(to) - Color.green(from)) * t).toInt()
@@ -105,72 +114,58 @@ class ThemeCoordinator(private val context: Context) {
         return Color.rgb(r.coerceIn(0, 255), g.coerceIn(0, 255), b.coerceIn(0, 255))
     }
 
-    fun isDarkMode(): Boolean = activeBgMode != "LIGHT"
+    fun isDarkMode(): Boolean {
+        return activeBgMode != "LIGHT"
+    }
     fun isGlassStyle(): Boolean = uiStyle == "GLASS"
     fun isBubbleStyle(): Boolean = false
 
     fun createBackgroundDrawable(): GradientDrawable {
         if (!isGlassStyle() && !isBubbleStyle()) {
-            return GradientDrawable().apply { setColor(if (activeBgMode == "OLED") 0xFF000000.toInt() else 0xFF0A0C13.toInt()) }
+            val flatBg = if (activeBgMode == "LIGHT") 0xFFF8FAFC.toInt() else 0xFF000000.toInt()
+            return GradientDrawable().apply { setColor(flatBg) }
         }
         val top: Int
         val bottom: Int
-        when (activeBgMode) {
-            "LIGHT" -> {
-                top = 0xFFF8FAFC.toInt()
-                bottom = 0xFFF1F5F9.toInt()
-            }
-            "ECLIPSE" -> {
-                top = 0xFF0F172A.toInt()
-                bottom = 0xFF1B1B3E.toInt()
-            }
-            "OLED" -> {
-                top = 0xFF000000.toInt()
-                bottom = 0xFF000000.toInt()
-            }
-            else -> {
-                // Luxury Obsidian & Frosted Glass Canvas
-                top = 0xFF0D0F17.toInt()
-                bottom = 0xFF08090F.toInt()
-            }
+        if (activeBgMode == "LIGHT") {
+            top = 0xFFF8FAFC.toInt()
+            bottom = 0xFFF1F5F9.toInt()
+        } else {
+            // Luxury Obsidian & Frosted Glass Canvas
+            top = 0xFF0D0F17.toInt()
+            bottom = 0xFF05060A.toInt()
         }
         return GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(top, bottom))
     }
 
     fun createCardBackground(cornerRadius: Float = 24f): android.graphics.drawable.Drawable {
         val density = context.resources.displayMetrics.density
-        val hasWallpaper = WallpaperManager.getWallpaperType(context) != "NONE"
+        val isLightSurface = activeBgMode == "LIGHT"
 
-        if (hasWallpaper) {
-            // Frosted translucent glass card that blends with custom wallpapers
-            val fillCol = if (activeBgMode == "LIGHT") Color.argb(195, 255, 255, 255) else Color.argb(180, 14, 16, 24)
-            val strokeCol = if (activeBgMode == "LIGHT") Color.argb(60, 203, 213, 225) else Color.argb(45, 255, 255, 255)
-            return GradientDrawable().apply {
-                this.cornerRadius = cornerRadius * density
-                setColor(fillCol)
-                setStroke((1f * density).toInt(), strokeCol)
+        if (!isGlassStyle()) {
+            // Flat Mode: 100% Solid Opaque Cards (no translucency, ignores wallpaper)
+            return if (isLightSurface) {
+                GradientDrawable().apply {
+                    this.cornerRadius = cornerRadius * density
+                    setColor(0xFFFFFFFF.toInt()) // Crisp pure white
+                    setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
+                }
+            } else {
+                GradientDrawable().apply {
+                    this.cornerRadius = cornerRadius * density
+                    setColor(0xFF12131A.toInt()) // Deep solid elevated dark surface
+                    setStroke((1f * density).toInt(), Color.argb(32, 255, 255, 255))
+                }
             }
         }
 
-        if (activeBgMode == "LIGHT") {
-            return GradientDrawable().apply {
-                this.cornerRadius = cornerRadius * density
-                setColor(0xFFFFFFFF.toInt())
-                setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
-            }
-        }
-
-        // Luxury Obsidian Tonal Elevation
-        val fill = when (activeBgMode) {
-            "OLED" -> 0xFF0A0B10.toInt()
-            "ECLIPSE" -> 0xFF141926.toInt()
-            else -> 0xFF131622.toInt()
-        }
-        val stroke = Color.argb(28, 255, 255, 255) // Hair-thin specular light catch
+        // Glass Mode: Frosted translucent glass card that blends with custom wallpapers and canvas
+        val fillCol = if (isLightSurface) Color.argb(205, 255, 255, 255) else Color.argb(170, 14, 16, 24)
+        val strokeCol = if (isLightSurface) Color.argb(80, 203, 213, 225) else Color.argb(45, 255, 255, 255)
         return GradientDrawable().apply {
             this.cornerRadius = cornerRadius * density
-            setColor(fill)
-            setStroke((1f * density).toInt(), stroke)
+            setColor(fillCol)
+            setStroke((1f * density).toInt(), strokeCol)
         }
     }
 
@@ -184,28 +179,21 @@ class ThemeCoordinator(private val context: Context) {
             }
         }
         if (isBubbleStyle()) {
-            val dialogTop = when (activeBgMode) {
-                "ECLIPSE" -> 0xFF1E293B.toInt()
-                else -> 0xFF161922.toInt()
-            }
-            val dialogBottom = when (activeBgMode) {
-                "ECLIPSE" -> 0xFF0F172A.toInt()
-                else -> 0xFF0B0D12.toInt()
-            }
+            val dialogTop = 0xFF161922.toInt()
+            val dialogBottom = 0xFF0B0D12.toInt()
             return GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(dialogTop, dialogBottom)).apply {
                 this.cornerRadius = cornerRadius * density
                 setStroke((1.5f * density).toInt(), 0x3EFFFFFF.toInt())
             }
         }
         if (!isGlassStyle()) {
-            val fillCol = if (activeBgMode == "OLED") 0xFF0D0F14.toInt() else boxColor
             return GradientDrawable().apply {
                 this.cornerRadius = cornerRadius * density
-                setColor(fillCol)
-                setStroke((1 * density).toInt(), Color.argb(55, 255, 255, 255))
+                setColor(0xFF141622.toInt())
+                setStroke((1 * density).toInt(), Color.argb(40, 255, 255, 255))
             }
         }
-        val fill = if (activeBgMode == "ECLIPSE") 0xF00F172A.toInt() else 0xEE0D0F15.toInt()
+        val fill = 0xEE0D0F15.toInt()
         val stroke = 0x38FFFFFF.toInt()
         return GradientDrawable().apply {
             this.cornerRadius = cornerRadius * density
@@ -255,8 +243,8 @@ class ThemeCoordinator(private val context: Context) {
             }
         }
         if (!isGlassStyle()) {
-            val fill = if (isDarkMode()) Color.argb(40, 255, 255, 255) else 0xFFF1F5F9.toInt()
-            val stroke = if (isDarkMode()) borderColor else (if (borderColor != 0) borderColor else Color.argb(50, 15, 23, 42))
+            val fill = if (isDarkMode()) 0xFF1E2230.toInt() else 0xFFF1F5F9.toInt()
+            val stroke = if (isDarkMode()) (if (borderColor != 0) borderColor else Color.argb(40, 255, 255, 255)) else (if (borderColor != 0) borderColor else 0xFFE2E8F0.toInt())
             return GradientDrawable().apply {
                 this.cornerRadius = cornerRadius * density
                 setColor(fill)
@@ -286,8 +274,8 @@ class ThemeCoordinator(private val context: Context) {
         if (!isGlassStyle()) {
             return GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(if (isDarkMode()) boxColor else 0xFFF1F5F9.toInt())
-                setStroke((1 * density).toInt(), if (activeBgMode == "LIGHT") Color.argb(40, 15, 23, 42) else Color.argb(45, 255, 255, 255))
+                setColor(if (isDarkMode()) 0xFF1A1C26.toInt() else 0xFFF1F5F9.toInt())
+                setStroke((1 * density).toInt(), if (activeBgMode == "LIGHT") 0xFFE2E8F0.toInt() else Color.argb(35, 255, 255, 255))
             }
         }
         val fill = if (isDarkMode()) 0x1CFFFFFF.toInt() else 0xFFF1F5F9.toInt()
@@ -313,4 +301,9 @@ class ThemeCoordinator(private val context: Context) {
         return if (isBold) FontStyleManager.getBoldTypeface(context) else FontStyleManager.getNormalTypeface(context)
     }
 
+    fun getContrastTextColorFor(backgroundColor: Int): Int = getContrastColor(backgroundColor)
+
+    fun getDynamicWallpaperContrastTextColor(): Int {
+        return if (WallpaperManager.isBackgroundUnderTimerBright(context)) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
+    }
 }

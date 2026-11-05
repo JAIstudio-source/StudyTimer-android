@@ -157,7 +157,10 @@ class StatsPanelBuilder(private val host: MainActivity) {
         // 2. Check active planner goals
         val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val activeGoals = loadSessionGoalsFromJson(prefs.getString("session_goals_json", "[]") ?: "[]")
-        val activeSubGoals = activeGoals.filter { it.subjectId == subjectId && it.targetMinutes > 0 }
+        val activeSubGoals = activeGoals.filter {
+            it.subjectId == subjectId && it.targetMinutes > 0 &&
+            PlannerHistoryManager.isGoalScheduledOnDay(it.scheduledDays, Calendar.getInstance())
+        }
         if (activeSubGoals.isNotEmpty()) {
             val totalMins = activeSubGoals.sumOf { it.targetMinutes }
             if (totalMins > 0) return totalMins * 60L
@@ -324,7 +327,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             setPadding(0, 0, 0, dp(4))
         }
         headerRow.addView(TextView(host).apply {
-            text = "â„ï¸ BURNOUT PREVENTION"
+            text = "\u2744 STREAK FREEZE"
             textSize = 11.5f
             letterSpacing = 0.12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -334,73 +337,73 @@ class StatsPanelBuilder(private val host: MainActivity) {
         content.addView(headerRow)
 
         content.addView(TextView(host).apply {
-            text = "Streak Freeze Protection"
+            text = "Streak Protection"
             textSize = 20f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.textColor)
-            setPadding(0, dp(2), 0, dp(8))
+            setPadding(0, dp(2), 0, dp(4))
         })
 
         content.addView(TextView(host).apply {
-            text = "Protect your hard-earned study streak on sick days, travel, or scheduled rest days. You get 2 free streak freezes every calendar month."
+            text = "Protect your study streak on rest or sick days."
             textSize = 13f
             setTextColor(themeCoordinator.textColor)
-            alpha = 0.75f
-            setLineSpacing(dp(2).toFloat(), 1.15f)
+            alpha = 0.7f
             setPadding(0, 0, 0, dp(14))
         })
 
         // Status Card
         val statusCard = LinearLayout(host).apply {
-            orientation = LinearLayout.VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             background = if (isDark) {
-                themeCoordinator.createGlassChip(0x330284C7.toInt(), 16f)
+                GradientDrawable().apply {
+                    cornerRadius = dp(14).toFloat()
+                    setColor(0x1F38BDF8.toInt())
+                    setStroke(dp(1), 0x3338BDF8.toInt())
+                }
             } else {
                 GradientDrawable().apply {
-                    cornerRadius = dp(16).toFloat()
+                    cornerRadius = dp(14).toFloat()
                     setColor(0xFFF0F9FF.toInt())
                     setStroke(dp(1), 0xFFBAE6FD.toInt())
                 }
             }
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setPadding(dp(16), dp(12), dp(16), dp(12))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                 setMargins(0, 0, 0, dp(14))
             }
         }
-        val statusRow = LinearLayout(host).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        statusRow.addView(TextView(host).apply {
+        statusCard.addView(TextView(host).apply {
             text = "Available This Month"
             textSize = 13f
             setTextColor(themeCoordinator.textColor)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
-        statusRow.addView(TextView(host).apply {
-            text = "$availableFreezes / ${StreakCalculator.MAX_FREEZES_PER_MONTH} Left"
-            textSize = 14f
+        statusCard.addView(TextView(host).apply {
+            text = "$availableFreezes of ${StreakCalculator.MAX_FREEZES_PER_MONTH} Left"
+            textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(if (isDark) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt())
         })
-        statusCard.addView(statusRow)
         content.addView(statusCard)
 
         // Actions
         if (availableFreezes > 0) {
             val yesterdayFrozen = frozenDates.contains(yesterdayStr)
             if (!yesterdayFrozen) {
+                val freezeYesterdayColor = if (isDark) 0xFF0284C7.toInt() else 0xFF0369A1.toInt()
                 val freezeYesterdayBtn = TextView(host).apply {
-                    text = "â„ï¸ Protect Yesterday ($yesterdayStr)"
+                    text = "\u2744 Protect Yesterday ($yesterdayStr)"
                     textSize = 13f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(Color.WHITE)
+                    setTextColor(ThemeCoordinator.getContrastColor(freezeYesterdayColor))
                     background = GradientDrawable().apply {
                         cornerRadius = dp(14).toFloat()
-                        setColor(if (isDark) 0xFF0284C7.toInt() else 0xFF0369A1.toInt())
+                        setColor(freezeYesterdayColor)
                     }
                     gravity = Gravity.CENTER
-                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    setPadding(dp(14), dp(11), dp(14), dp(11))
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                         setMargins(0, 0, 0, dp(8))
                     }
@@ -408,7 +411,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         StreakCalculator.applyStreakFreeze(host, yesterdayStr)
                         host.statsEngine.recalculateStreak()
-                        AppToast.show(host, "â„ï¸ Yesterday protected! Streak preserved.")
+                        AppToast.show(host, "\u2744 Yesterday protected! Streak preserved.")
                         dialog.dismiss()
                         host.navigateToPanel(AppPanel.STATS)
                     }
@@ -418,22 +421,21 @@ class StatsPanelBuilder(private val host: MainActivity) {
 
             val todayFrozen = frozenDates.contains(todayStr)
             if (!todayFrozen) {
+                val todayBg = if (isDark) 0x2238BDF8.toInt() else 0xFFE0F2FE.toInt()
+                val todayStroke = if (isDark) 0x6638BDF8.toInt() else 0xFF0284C7.toInt()
+                val todayTextColor = if (isDark) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt()
                 val freezeTodayBtn = TextView(host).apply {
-                    text = "â„ï¸ Freeze Today as Rest Day"
+                    text = "\u2744 Freeze Today as Rest Day"
                     textSize = 13f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(if (isDark) Color.WHITE else 0xFF0F172A.toInt())
-                    background = if (isDark) {
-                        themeCoordinator.createGlassChip(0x3338BDF8.toInt(), 14f)
-                    } else {
-                        GradientDrawable().apply {
-                            cornerRadius = dp(14).toFloat()
-                            setColor(0xFFE0F2FE.toInt())
-                            setStroke(dp(1), 0xFF0284C7.toInt())
-                        }
+                    setTextColor(todayTextColor)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(todayBg)
+                        setStroke(dp(1), todayStroke)
                     }
                     gravity = Gravity.CENTER
-                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    setPadding(dp(14), dp(11), dp(14), dp(11))
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                         setMargins(0, 0, 0, dp(12))
                     }
@@ -441,7 +443,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                         StreakCalculator.applyStreakFreeze(host, todayStr)
                         host.statsEngine.recalculateStreak()
-                        AppToast.show(host, "â„ï¸ Today set as rest day! Streak preserved.")
+                        AppToast.show(host, "\u2744 Today set as rest day! Streak preserved.")
                         dialog.dismiss()
                         host.navigateToPanel(AppPanel.STATS)
                     }
@@ -453,7 +455,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         // List of frozen dates this month if any
         if (frozenThisMonth.isNotEmpty()) {
             content.addView(TextView(host).apply {
-                text = "FROZEN DATES THIS MONTH"
+                text = "PROTECTED DATES"
                 textSize = 11f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(if (isDark) 0x88FFFFFF.toInt() else 0xFF64748B.toInt())
@@ -492,7 +494,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             text = "Done"
             textSize = 14f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(ThemeCoordinator.getContrastColor(primary))
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
                 cornerRadius = dp(20).toFloat()
@@ -503,6 +505,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             setOnClickListener { dialog.dismiss() }
         }
         content.addView(closeBtn)
+
 
         dialog.setContentView(content)
         dialog.window?.let { win ->
@@ -677,7 +680,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             background = GradientDrawable().apply {
                 cornerRadius = dp(14).toFloat()
                 val streakBg = if (themeCoordinator.isDarkMode()) {
-                    if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF1E212D.toInt()
+                    0xFF1E212D.toInt()
                 } else {
                     0xFFEDF0F5.toInt()
                 }
@@ -808,7 +811,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         setStroke(dp(1), 0x8843D36E.toInt())
                     } else {
                         val badgeBg = if (themeCoordinator.isDarkMode()) {
-                            if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF181A24.toInt()
+                            0xFF181A24.toInt()
                         } else {
                             0xFFEDF0F5.toInt()
                         }
@@ -1185,26 +1188,22 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     }
                     val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
                     val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
-                    val runningStudy = if (timerState == "STUDYING" || timerState == "PAUSED") prefs.getLong("accumulatedStudy", 0L) else 0L
-                    val hasLive = allDaySessions.any { it.running }
-                    if (!hasLive && runningStudy > 0L) {
-                        val activeSub = SubjectTagManager.getSelectedSubject(host)
-                        val currentSecs = map[activeSub.id]?.second ?: 0L
-                        map[activeSub.id] = activeSub to (currentSecs + runningStudy)
-                    }
                     val todayFocusSecs = FocusTimeProvider.getTodayFocusSeconds(host)
                     val sumRecorded = map.values.sumOf { it.second }
                     if (todayFocusSecs > sumRecorded) {
                         val diff = todayFocusSecs - sumRecorded
-                        val isRunning = (timerState == "STUDYING" || timerState == "PAUSED" || timerState == "BREAK")
+                        val isRunning = (timerState == "STUDYING" || timerState == "PAUSED")
                         if (isRunning) {
                             val activeSub = SubjectTagManager.getSelectedSubject(host)
                             val currentSecs = map[activeSub.id]?.second ?: 0L
                             map[activeSub.id] = activeSub to (currentSecs + diff)
-                        } else if (diff >= 60L) {
+                        } else if (map.isNotEmpty()) {
+                            val targetSub = map.values.maxByOrNull { it.second }?.first ?: SubjectTagManager.resolveSubject(host, "general", "General Study", "#6366F1")
+                            val curr = map[targetSub.id]?.second ?: 0L
+                            map[targetSub.id] = targetSub to (curr + diff)
+                        } else {
                             val genSub = SubjectTagManager.resolveSubject(host, "general", "General Study", "#6366F1")
-                            val curr = map[genSub.id]?.second ?: 0L
-                            map[genSub.id] = genSub to (curr + diff)
+                            map[genSub.id] = genSub to diff
                         }
                     }
                     map
@@ -1260,7 +1259,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     primaryColor = themeCoordinator.primaryColor
                     textColor = themeCoordinator.textColor
                     isDonutMode = isDonut
-                    boxColor = if (themeCoordinator.isDarkMode()) (if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF111625.toInt()) else 0xFFFFFFFF.toInt()
+                    boxColor = if (themeCoordinator.isDarkMode()) 0xFF111625.toInt() else 0xFFFFFFFF.toInt()
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(340))
                 }
                 pieView.setData(slicesList, preserveSelection = true)
@@ -1764,9 +1763,12 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 text = "Export \u2197"
                 textSize = 11.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(Color.WHITE)
-                background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
-                setPadding(dp(10), dp(5), dp(10), dp(5))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(themeCoordinator.primaryColor)
+                }
+                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
+                setPadding(dp(12), dp(6), dp(12), dp(6))
             })
             content.addView(exportCard)
 
@@ -1832,7 +1834,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 background = GradientDrawable().apply {
                     cornerRadius = dp(20).toFloat()
                     if (themeCoordinator.isDarkMode()) {
-                        val chipBg = if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF181A24.toInt()
+                        val chipBg = 0xFF181A24.toInt()
                         setColor(chipBg)
                         setStroke(dp(1), tintedColor(themeCoordinator.primaryColor, 120))
                     } else {

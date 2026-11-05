@@ -134,6 +134,10 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     isClickable = true
                     setOnClickListener {
                         it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        if (currentSettingsTab == AppSettingsTab.PROFILE) {
+                            ProfileManager.clearDraftForm(this@with)
+                            host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
+                        }
                         currentSettingsTab = AppSettingsTab.HUB
                         settingsOriginWasSubTab = false
                         navigateToPanel(AppPanel.SETTINGS)
@@ -570,6 +574,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     isClickable = true
                     isFocusable = true
                     setOnClickListener {
+                        host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
                         currentSettingsTab = AppSettingsTab.PROFILE
                         navigateToPanel(AppPanel.SETTINGS)
                     }
@@ -833,10 +838,11 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     gravity = Gravity.CENTER
                     setOnClickListener {
-                        if (BuildConfig.DEBUG) {
-                            devClickCount++
-                            if (devClickCount >= 5) {
-                                devClickCount = 0
+                        if (!BuildConfig.DEBUG) return@setOnClickListener
+                        devClickCount++
+                        if (devClickCount >= 5) {
+                            devClickCount = 0
+                            DeveloperToolsHelper.requestBroadcastPermission(host, themeCoordinator) {
                                 isDevModeUnlocked = true
                                 AppToast.show(context, "Developer Mode Activated")
                                 currentSettingsTab = AppSettingsTab.DEVELOPER
@@ -1112,6 +1118,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             setPadding(0, dp(4), 0, 0)
                         })
                         layout.addView(rejectedCard)
+                        // Acknowledge rejection on viewing so reopening/refreshing clears it automatically
+                        ProfileManager.acknowledgeRejection(this@with)
                     } else if (currentProfile.moderationStatus == ModerationStatus.PENDING_APPROVAL) {
                         val pendingCard = LinearLayout(this).apply {
                             orientation = LinearLayout.VERTICAL
@@ -1140,9 +1148,76 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             setTextColor(themeCoordinator.textColor)
                             alpha = 0.80f
                             textSize = 12f
-                            setPadding(0, dp(4), 0, 0)
+                            setPadding(0, dp(4), 0, dp(6))
                         })
+
+                        val pendingBtnRow = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.END
+                        }
+
+                        val refreshPendingBtn = TextView(this).apply {
+                            text = "Refresh Status ⟳"
+                            setTextColor(Color.parseColor("#F59E0B"))
+                            textSize = 11.5f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#F59E0B"), 45), 10f)
+                            setPadding(dp(10), dp(4), dp(10), dp(4))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                setMargins(0, 0, dp(8), 0)
+                            }
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener {
+                                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    val updated = ProfileSyncService.refreshProfileStatus(this@with)
+                                    if (updated.moderationStatus == ModerationStatus.REJECTED) {
+                                        ProfileManager.acknowledgeRejection(this@with)
+                                    }
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
+                                        navigateToPanel(AppPanel.SETTINGS)
+                                    }
+                                }
+                            }
+                        }
+                        pendingBtnRow.addView(refreshPendingBtn)
+
+                        val cancelPendingBtn = TextView(this).apply {
+                            text = "Cancel Request ✕"
+                            setTextColor(Color.parseColor("#EF4444"))
+                            textSize = 11.5f
+                            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                            background = themeCoordinator.createGlassChip(tintedColor(Color.parseColor("#EF4444"), 45), 10f)
+                            setPadding(dp(10), dp(4), dp(10), dp(4))
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener {
+                                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                ProfileManager.cancelPendingApproval(this@with)
+                                host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
+                                navigateToPanel(AppPanel.SETTINGS)
+                            }
+                        }
+                        pendingBtnRow.addView(cancelPendingBtn)
+                        pendingCard.addView(pendingBtnRow)
+
                         layout.addView(pendingCard)
+
+                        // Also check cloud status in background silently
+                        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                            val updated = ProfileSyncService.refreshProfileStatus(this@with)
+                            if (updated.moderationStatus != ModerationStatus.PENDING_APPROVAL) {
+                                if (updated.moderationStatus == ModerationStatus.REJECTED) {
+                                    ProfileManager.acknowledgeRejection(this@with)
+                                }
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
+                                    navigateToPanel(AppPanel.SETTINGS)
+                                }
+                            }
+                        }
                     }
 
                     // ----------------------------------------------------
@@ -1166,9 +1241,15 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                     editContent.addView(nameLabel)
 
+                    val existingRealName = currentProfile.pendingDisplayName?.takeIf { it.isNotBlank() }
+                        ?: currentProfile.displayName.takeIf { it.isNotBlank() && it != "Student" }
+                        ?: AuthManager.getUserName(this)?.takeIf { it.isNotBlank() }
+                        ?: "Student"
+                    val initialName = draftName?.takeIf { it.isNotBlank() } ?: existingRealName
+
                     val editNameField = EditText(this).apply {
                         hint = "e.g. Alex_Studies"
-                        setText(draftName ?: (currentProfile.pendingDisplayName ?: currentProfile.displayName))
+                        setText(initialName)
                         setTextColor(themeCoordinator.textColor)
                         setHintTextColor(tintedColor(themeCoordinator.textColor, 100))
                         textSize = 14f
@@ -1182,7 +1263,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                             override fun afterTextChanged(s: android.text.Editable?) {
-                                ProfileManager.saveDraftForm(this@with, s?.toString(), null, null)
+                                val trimmed = s?.toString()?.trim()
+                                if (trimmed.isNullOrBlank()) {
+                                    ProfileManager.saveDraftForm(this@with, "", null, null)
+                                } else {
+                                    ProfileManager.saveDraftForm(this@with, trimmed, null, null)
+                                }
                             }
                         })
                     }
@@ -1284,14 +1370,40 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     editBioFieldRef = editBioField
                     editContent.addView(editBioField)
 
+                    // Action Button Row (Cancel / Discard & Save Changes)
+                    val btnActionRow = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46))
+                    }
+
+                    val cancelEditBtn = Button(this).apply {
+                        text = "Cancel"
+                        setTextColor(themeCoordinator.textColor)
+                        alpha = 0.85f
+                        textSize = 13f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 12f)
+                        layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply {
+                            setMargins(0, 0, dp(10), 0)
+                        }
+                        setOnClickListener {
+                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            ProfileManager.clearDraftForm(this@with)
+                            editNameField.setText(existingRealName)
+                            editBioField.setText(currentProfile.bio)
+                            AppToast.show(this@with, "Changes cancelled.")
+                        }
+                    }
+                    btnActionRow.addView(cancelEditBtn)
+
                     // Save Changes Button
                     val saveProfileBtn = Button(this).apply {
                         text = "Save Changes"
                         setTextColor(Color.WHITE)
-                        textSize = 14f
+                        textSize = 13.5f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         background = themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46))
+                        layoutParams = LinearLayout.LayoutParams(0, dp(46), 1.6f)
                         setOnClickListener {
                             it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                             val inputName = editNameField.text.toString().trim()
@@ -1481,7 +1593,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                             confirmDialog.show()
                         }
                     }
-                    editContent.addView(saveProfileBtn)
+                    btnActionRow.addView(saveProfileBtn)
+                    editContent.addView(btnActionRow)
                     editDetailsCard.addView(editContent)
                     layout.addView(editDetailsCard)
                 }
@@ -1706,6 +1819,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     setPadding(dp(12), dp(6), dp(12), dp(6))
                     setOnClickListener {
                         HapticFeedbackHelper.performMicroHaptic(host, it)
+                        host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
                         currentSettingsTab = AppSettingsTab.PROFILE
                         navigateToPanel(AppPanel.SETTINGS)
                     }
@@ -2284,6 +2398,108 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 }
                 controlsCard.addView(createSettingsRow("", "Tactile Haptics", "Subtle vibration on button taps & steppers", hapticsSwitch))
                 layout.addView(controlsCard)
+
+                // CARD 4: SOUNDS & ALERTS
+                layout.addView(createSectionLabel("SOUNDS & ALERTS"))
+                val soundsCard = createSettingsCard()
+
+                // 1. Completion Bell Toggle
+                val isChimeOn = StudyAudioManager.isChimeEnabled(this)
+                val chimeSwitch = SwitchMaterial(this).apply {
+                    isChecked = isChimeOn
+                    setOnCheckedChangeListener { _, isChecked ->
+                        StudyAudioManager.setChimeEnabled(this@with, isChecked)
+                    }
+                }
+                soundsCard.addView(createSettingsRow("", "Timer Sound", "Play a gentle sound when focus or break ends", chimeSwitch))
+                soundsCard.addView(createDivider())
+
+                // 2. Chime Choice Picker
+                val selectedChimeId = StudyAudioManager.getSelectedChime(this)
+                val currentChime = StudyAudioManager.CHIME_OPTIONS.find { it.id == selectedChimeId } ?: StudyAudioManager.CHIME_OPTIONS[0]
+                val chevron1 = TextView(this).apply {
+                    text = "›"
+                    textSize = 18f
+                    setTextColor(themeCoordinator.primaryColor)
+                }
+                val chimePickerRow = createSettingsRow("", "Timer Sound Tone", currentChime.displayName, chevron1)
+                chimePickerRow.setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    ChimePickerBottomSheet.show(host) {
+                        this@with.buildCurrentPanel()
+                    }
+                }
+                soundsCard.addView(chimePickerRow)
+                soundsCard.addView(createDivider())
+
+                // 3. Vibration Toggle
+                val isVibrateOn = StudyAudioManager.isVibrateEnabled(this)
+                val vibrateSwitch = SwitchMaterial(this).apply {
+                    isChecked = isVibrateOn
+                    setOnCheckedChangeListener { _, isChecked ->
+                        StudyAudioManager.setVibrateEnabled(this@with, isChecked)
+                        if (isChecked) performMicroHaptic(this)
+                    }
+                }
+                soundsCard.addView(createSettingsRow("", "Vibrate When Finished", "Vibrate your phone when session finishes", vibrateSwitch))
+                soundsCard.addView(createDivider())
+
+                // 4. Background Focus Sounds Toggle
+                val isAmbientOn = StudyAudioManager.isAmbientEnabled(this)
+                val ambientSwitch = SwitchMaterial(this).apply {
+                    isChecked = isAmbientOn
+                    setOnCheckedChangeListener { _, isChecked ->
+                        StudyAudioManager.setAmbientEnabled(this@with, isChecked)
+                        if (isChecked && currentTimerState == TimerState.STUDYING) {
+                            StudyAudioManager.startAmbient(this@with)
+                        } else if (!isChecked) {
+                            StudyAudioManager.stopAmbient()
+                        }
+                    }
+                }
+                soundsCard.addView(createSettingsRow("", "Background Focus Sounds", "Play calming sounds (Rain, Waves, Fire) while studying", ambientSwitch))
+                soundsCard.addView(createDivider())
+
+                // 5. Ambient Sound Choice
+                val selectedAmbientId = StudyAudioManager.getSelectedAmbient(this)
+                val currentAmbient = StudyAudioManager.AMBIENT_OPTIONS.find { it.id == selectedAmbientId } ?: StudyAudioManager.AMBIENT_OPTIONS[0]
+                val chevron2 = TextView(this).apply {
+                    text = "›"
+                    textSize = 18f
+                    setTextColor(themeCoordinator.primaryColor)
+                }
+                val ambientPickerRow = createSettingsRow("", "Focus Sound Choice", "${currentAmbient.iconEmoji} ${currentAmbient.displayName}", chevron2)
+                ambientPickerRow.setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    AmbientSoundBottomSheet.show(host) {
+                        this@with.buildCurrentPanel()
+                    }
+                }
+                soundsCard.addView(ambientPickerRow)
+
+                layout.addView(soundsCard)
+
+                // CARD 5: BACKGROUND RELIABILITY
+                layout.addView(createSectionLabel("BACKGROUND RELIABILITY"))
+                val reliabilityCard = createSettingsCard()
+                val detectedBrand = OemOptimizationHelper.detectBrand()
+                val chevronRel = TextView(this).apply {
+                    text = "›"
+                    textSize = 18f
+                    setTextColor(themeCoordinator.primaryColor)
+                }
+                val oemRow = createSettingsRow(
+                    "",
+                    "Prevent Sleep Interruptions",
+                    "Setup for ${detectedBrand.brandName}",
+                    chevronRel
+                )
+                oemRow.setOnClickListener {
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    OemGuideBottomSheet.show(host)
+                }
+                reliabilityCard.addView(oemRow)
+                layout.addView(reliabilityCard)
             }
 
             // ==========================================
@@ -2798,11 +3014,7 @@ layout.addView(reminderCard)
                 heroInfoCol.addView(liveBadgeRow)
 
                 val heroThemeDesc = TextView(this).apply {
-                    val modeStr = when (themeCoordinator.activeBgMode) {
-                        "LIGHT" -> "Light"
-                        "ECLIPSE" -> "Midnight"
-                        else -> "OLED"
-                    }
+                    val modeStr = if (themeCoordinator.activeBgMode == "LIGHT") "Light" else "Dark (OLED)"
                     val styleStr = if (themeCoordinator.isGlassStyle()) "Glass" else "Flat"
                     text = "$modeStr \u2022 $styleStr"
                     textSize = 13.5f
@@ -2942,8 +3154,7 @@ layout.addView(reminderCard)
                 val activeMode = themeCoordinator.activeBgMode
                 data class BgOption(val key: String, val name: String, val surfaceColor: Int, val isSelected: Boolean)
                 val bgOptions = listOf(
-                    BgOption("OLED", "OLED", 0xFF000000.toInt(), activeMode != "ECLIPSE" && activeMode != "LIGHT"),
-                    BgOption("ECLIPSE", "Midnight", 0xFF0F172A.toInt(), activeMode == "ECLIPSE"),
+                    BgOption("OLED", "Dark (OLED)", 0xFF000000.toInt(), activeMode != "LIGHT"),
                     BgOption("LIGHT", "Light", 0xFFF8FAFC.toInt(), activeMode == "LIGHT")
                 )
                 val bgTilesRow = LinearLayout(this).apply {
@@ -2980,7 +3191,7 @@ layout.addView(reminderCard)
                                 setColor(0xFFFFFFFF.toInt())
                                 setStroke(dp(1.2f), 0xFF94A3B8.toInt())
                             } else {
-                                setColor(if (opt.key == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF121212.toInt())
+                                setColor(0xFF121212.toInt())
                                 setStroke(dp(1.2f), 0x33FFFFFF)
                             }
                         }
@@ -2998,6 +3209,7 @@ layout.addView(reminderCard)
                     tile.setOnClickListener {
                         HapticFeedbackHelper.performMicroHaptic(host, it)
                         pendingSettingsScrollY = settingsScrollView.scrollY
+                        host.tabPageCache.clear()
                         sharedPrefs.edit().putString("activeBgMode", opt.key).apply()
                         themeCoordinator.applyThemeCoordinates()
                         navigateToPanel(AppPanel.SETTINGS)
@@ -3055,6 +3267,7 @@ layout.addView(reminderCard)
                         setOnClickListener {
                             HapticFeedbackHelper.performMicroHaptic(host, it)
                             pendingSettingsScrollY = settingsScrollView.scrollY
+                            host.tabPageCache.clear()
                             sharedPrefs.edit().putString("ui_style", sOpt.first).apply()
                             themeCoordinator.applyThemeCoordinates()
                             navigateToPanel(AppPanel.SETTINGS)

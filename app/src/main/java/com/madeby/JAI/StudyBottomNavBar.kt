@@ -109,19 +109,21 @@ class StudyBottomNavBar @JvmOverloads constructor(
         val bgDrawable = GradientDrawable().apply {
             cornerRadius = 28f * density
             if (isDarkTheme) {
-                if (themeCoordinator.activeBgMode == "ECLIPSE") {
-                    setColor(0xF0141824.toInt())
-                    setStroke((1f * density).toInt(), Color.argb(35, 255, 255, 255))
-                } else if (themeCoordinator.activeBgMode == "OLED") {
+                if (themeCoordinator.isGlassStyle()) {
                     setColor(0xF508090D.toInt())
                     setStroke((1f * density).toInt(), Color.argb(28, 255, 255, 255))
                 } else {
-                    setColor(0xF011141E.toInt())
+                    setColor(0xFF0F1015.toInt())
                     setStroke((1f * density).toInt(), Color.argb(32, 255, 255, 255))
                 }
             } else {
-                setColor(0xF5FFFFFF.toInt())
-                setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
+                if (themeCoordinator.isGlassStyle()) {
+                    setColor(0xF5FFFFFF.toInt())
+                    setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
+                } else {
+                    setColor(0xFFFFFFFF.toInt())
+                    setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
+                }
             }
         }
         background = bgDrawable

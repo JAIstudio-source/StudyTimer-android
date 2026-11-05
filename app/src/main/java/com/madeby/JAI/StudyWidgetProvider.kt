@@ -27,6 +27,8 @@ class StudyWidgetProvider : AppWidgetProvider() {
             if (ids.isNotEmpty()) {
                 render(context, appWidgetManager, ids)
             }
+            MatrixGoalWidgetProvider.refresh(context)
+            TasksWidgetProvider.refresh(context)
         }
 
         private fun render(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {

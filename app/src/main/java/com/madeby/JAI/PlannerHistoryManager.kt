@@ -203,14 +203,19 @@ object PlannerHistoryManager {
 
         val progressMap = calculateGoalProgress(goals, dayFocusSecs, dailySubjectDurations, dailyGoalDurations, dailySubTopicDurations)
 
+        val dateCal = Calendar.getInstance().apply {
+            runCatching { time = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr)!! }
+        }
+
         val array = JSONArray()
         for (g in goals) {
+            val isScheduled = isGoalScheduledOnDay(g.scheduledDays, dateCal)
             val prog = progressMap[g.id]
             val actualMins = prog?.actualMinutes ?: 0
             val isDurationAchieved = if (g.targetMinutes > 0) (actualMins >= g.targetMinutes) else g.completed
-            val isCompleted = g.completed || isDurationAchieved
-            // Strictly require duration achievement when targetMinutes > 0
-            val isAchieved = if (g.targetMinutes > 0) isDurationAchieved else isCompleted
+            val isCompleted = if (isScheduled) (g.completed || isDurationAchieved) else false
+            // Off-day goals are not active goals and must never be recorded as achieved on off days
+            val isAchieved = if (isScheduled) (if (g.targetMinutes > 0) isDurationAchieved else isCompleted) else false
 
             val obj = JSONObject().apply {
                 put("goalId", g.id)

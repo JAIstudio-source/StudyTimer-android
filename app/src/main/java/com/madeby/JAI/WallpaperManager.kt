@@ -48,15 +48,18 @@ object WallpaperManager {
 
     // Fallback preset list in case JSON parsing fails
     private val DEFAULT_PRESETS = listOf(
-        WallpaperPreset("cozy_cat", "Cozy Cat", "Lofi & Chill", "wallpapers/cozy_cat.webp", "wallpapers/thumbs/cozy_cat.webp", 0.40f),
-        WallpaperPreset("dark_night", "Dark Night Sky", "Astronomy", "wallpapers/dark_night.webp", "wallpapers/thumbs/dark_night.webp", 0.35f),
-        WallpaperPreset("tokyo_mountain", "Tokyo Mountain", "Landscape", "wallpapers/tokyo_mountain.webp", "wallpapers/thumbs/tokyo_mountain.webp", 0.40f),
-        WallpaperPreset("dense_forest", "Dense Forest", "Nature", "wallpapers/dense_forest.webp", "wallpapers/thumbs/dense_forest.webp", 0.40f),
-        WallpaperPreset("peaceful_field", "Peaceful Field", "Nature", "wallpapers/peaceful_field.webp", "wallpapers/thumbs/peaceful_field.webp", 0.45f),
-        WallpaperPreset("bright_day", "Bright Day", "Nature", "wallpapers/bright_day.webp", "wallpapers/thumbs/bright_day.webp", 0.50f),
-        WallpaperPreset("bright_sky", "Bright Sky", "Sky", "wallpapers/bright_sky.webp", "wallpapers/thumbs/bright_sky.webp", 0.50f),
+        WallpaperPreset("wonderful_sky", "Wonderful Sky", "Sky", "wallpapers/wonderful_sky.webp", "wallpapers/thumbs/wonderful_sky.webp", 0.45f),
         WallpaperPreset("tranquil_water", "Tranquil Water", "Minimal", "wallpapers/tranquil_water.webp", "wallpapers/thumbs/tranquil_water.webp", 0.45f),
-        WallpaperPreset("wonderful_sky", "Wonderful Sky", "Sky", "wallpapers/wonderful_sky.webp", "wallpapers/thumbs/wonderful_sky.webp", 0.45f)
+        WallpaperPreset("bright_day", "Bright Day", "Nature", "wallpapers/bright_day.webp", "wallpapers/thumbs/bright_day.webp", 0.50f),
+        WallpaperPreset("tokyo_mountain", "Tokyo Mountain", "Landscape", "wallpapers/tokyo_mountain.webp", "wallpapers/thumbs/tokyo_mountain.webp", 0.40f),
+        WallpaperPreset("dark_night", "Dark Night Sky", "Astronomy", "wallpapers/dark_night.webp", "wallpapers/thumbs/dark_night.webp", 0.35f),
+        WallpaperPreset("cozy_cat", "Cozy Cat", "Lofi & Chill", "wallpapers/cozy_cat.webp", "wallpapers/thumbs/cozy_cat.webp", 0.40f),
+        WallpaperPreset("stationery_textured_linen", "Textured Linen", "Minimalist Desk", "wallpapers/stationery_textured_linen.webp", "wallpapers/thumbs/stationery_textured_linen.webp", 0.45f),
+        WallpaperPreset("stationery_dot_journal", "Dot Journal", "Minimalist Desk", "wallpapers/stationery_dot_journal.webp", "wallpapers/thumbs/stationery_dot_journal.webp", 0.45f),
+        WallpaperPreset("stationery_graph_notebook", "Graph Notebook", "Minimalist Desk", "wallpapers/stationery_graph_notebook.webp", "wallpapers/thumbs/stationery_graph_notebook.webp", 0.50f),
+        WallpaperPreset("stationery_nordic_mint", "Nordic Mint", "Minimalist Desk", "wallpapers/stationery_nordic_mint.webp", "wallpapers/thumbs/stationery_nordic_mint.webp", 0.40f),
+        WallpaperPreset("stationery_warm_parchment", "Warm Parchment", "Minimalist Desk", "wallpapers/stationery_warm_parchment.webp", "wallpapers/thumbs/stationery_warm_parchment.webp", 0.45f),
+        WallpaperPreset("stationery_blueprint", "Blueprint Grid", "Minimalist Desk", "wallpapers/stationery_blueprint.webp", "wallpapers/thumbs/stationery_blueprint.webp", 0.45f)
     )
 
     fun getWallpaperType(context: Context): String {
@@ -511,6 +514,9 @@ object WallpaperManager {
                     val options = BitmapFactory.Options().apply { inSampleSize = 8 }
                     BitmapFactory.decodeFile(file.absolutePath, options)
                 } else null
+            }
+            TYPE_LIVE_VIDEO, TYPE_LIVE_AURORA, TYPE_LIVE_COSMIC, TYPE_LIVE_LOFI_RAIN, TYPE_LIVE_AMBER_GLOW -> {
+                getLiveWallpaperThumbnail(context, type)
             }
             else -> null
         }

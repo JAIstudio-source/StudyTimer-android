@@ -69,6 +69,7 @@ object UniversalHeaderHelper {
             isClickable = true
             setOnClickListener {
                 it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                activity.tabPageCache.remove(activity.settingsTabKey(AppSettingsTab.PROFILE))
                 activity.currentSettingsTab = AppSettingsTab.PROFILE
                 activity.navigateToPanel(AppPanel.SETTINGS)
             }

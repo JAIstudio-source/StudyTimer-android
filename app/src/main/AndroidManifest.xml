@@ -1,4 +1,4 @@
-﻿<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -32,7 +32,7 @@
             android:name=".SplashActivity"
             android:exported="true"
             android:noHistory="true"
-            android:theme="@style/Theme.AppCompat.NoActionBar">
+            android:theme="@style/SplashTheme">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -131,6 +131,31 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/study_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".MatrixGoalWidgetProvider"
+            android:exported="true"
+            android:label="Goal Matrix Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_matrix_info" />
+        </receiver>
+
+        <receiver
+            android:name=".TasksWidgetProvider"
+            android:exported="true"
+            android:label="Tasks &amp; To-Do Widget">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.madeby.JAI.WIDGET_TOGGLE_TASK" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_tasks_info" />
         </receiver>
     </application>
 

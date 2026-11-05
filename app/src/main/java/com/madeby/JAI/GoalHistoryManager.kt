@@ -72,7 +72,7 @@ object GoalHistoryManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val allKeys = prefs.all.keys.toList()
-        val futureGoalKeys = allKeys.filter { it.endsWith("_goal_secs") && it.removeSuffix("_goal_secs") > todayStr }
+        val futureGoalKeys = allKeys.filter { it != "daily_goal_secs" && it.removeSuffix("_goal_secs").matches(Regex("""^\d{4}-\d{2}-\d{2}$""")) && it.removeSuffix("_goal_secs") > todayStr }
         if (futureGoalKeys.isNotEmpty()) {
             val editor = prefs.edit()
             for (k in futureGoalKeys) {
@@ -90,9 +90,10 @@ object GoalHistoryManager {
 
         val isTodayOrFuture = targetDateStr >= todayStr
         val priorConfiguredGoal = StatsEngine.getDailyGoalSecs(prefs)
+        val hasExplicitPriorGoal = prefs.contains("daily_goal_secs") || prefs.contains("daily_goal_minutes")
 
         // Lock any past dates that had activity to the prior configured goal so future changes never bleed into the past
-        if (isTodayOrFuture && priorConfiguredGoal > 0L && priorConfiguredGoal != goalSecs) {
+        if (isTodayOrFuture && hasExplicitPriorGoal && priorConfiguredGoal > 0L && priorConfiguredGoal != goalSecs) {
             val allKeys = prefs.all.keys.toList()
             val focusDates = allKeys.filter { it.endsWith("_focus_total") }.map { it.removeSuffix("_focus_total") }
             val pastEditor = prefs.edit()
@@ -107,7 +108,7 @@ object GoalHistoryManager {
         // Clean up any future-dated keys in prefs so future days always reflect the new goal
         if (isTodayOrFuture) {
             val allKeys = prefs.all.keys.toList()
-            val futureGoalKeys = allKeys.filter { it.endsWith("_goal_secs") && it.removeSuffix("_goal_secs") > todayStr }
+            val futureGoalKeys = allKeys.filter { it != "daily_goal_secs" && it.removeSuffix("_goal_secs").matches(Regex("""^\d{4}-\d{2}-\d{2}$""")) && it.removeSuffix("_goal_secs") > todayStr }
             if (futureGoalKeys.isNotEmpty()) {
                 val cleanEditor = prefs.edit()
                 for (k in futureGoalKeys) {
@@ -117,8 +118,9 @@ object GoalHistoryManager {
             }
         }
 
-        // In history, keep entries up to targetDateStr, removing any future dates that would override the current goal
-        val history = loadHistory(context).filter { it.date <= targetDateStr }.toMutableList()
+        // In history, keep entries up to max(todayStr, targetDateStr), removing future dates that would override the current goal
+        val maxAllowedDate = if (targetDateStr > todayStr) targetDateStr else todayStr
+        val history = loadHistory(context).filter { it.date <= maxAllowedDate }.toMutableList()
         val existingIdx = history.indexOfFirst { it.date == targetDateStr }
         val newEntry = GoalHistoryEntry(targetDateStr, goalSecs, System.currentTimeMillis())
         if (existingIdx >= 0) {

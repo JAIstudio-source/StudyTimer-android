@@ -358,13 +358,13 @@ class LoginActivity : AppCompatActivity() {
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        completeLoginAndSync(googleEmail, displayName, idToken, googleEmail, googleAvatarUrl)
+                        completeLoginAndSync(googleEmail, displayName, null, googleEmail, googleAvatarUrl)
                     }
                 }
             } catch (e: Exception) {
                 Log.e("LoginActivity", "Supabase token exchange error", e)
                 withContext(Dispatchers.Main) {
-                    completeLoginAndSync(googleEmail, displayName, idToken, googleEmail, googleAvatarUrl)
+                    completeLoginAndSync(googleEmail, displayName, null, googleEmail, googleAvatarUrl)
                 }
             }
         }

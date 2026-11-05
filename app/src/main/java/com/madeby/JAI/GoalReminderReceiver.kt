@@ -44,14 +44,23 @@ class GoalReminderReceiver : BroadcastReceiver() {
         try {
             val array = org.json.JSONArray(jsonStr)
             var isCompleted = false
+            var isScheduledToday = true
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
-                if (obj.optString("id") == goalId && obj.optBoolean("completed", false)) {
-                    isCompleted = true
+                if (obj.optString("id") == goalId) {
+                    if (obj.optBoolean("completed", false)) {
+                        isCompleted = true
+                    }
+                    val daysArr = obj.optJSONArray("scheduledDays")
+                    if (daysArr != null && daysArr.length() in 1..6) {
+                        val days = mutableListOf<Int>()
+                        for (d in 0 until daysArr.length()) days.add(daysArr.getInt(d))
+                        isScheduledToday = PlannerHistoryManager.isGoalScheduledOnDay(days, Calendar.getInstance())
+                    }
                     break
                 }
             }
-            if (isCompleted) return
+            if (isCompleted || !isScheduledToday) return
         } catch (_: Exception) {}
 
         val openIntent = Intent(context, MainActivity::class.java).apply {

@@ -4,6 +4,7 @@ plugins {
 }
 
 import java.util.Properties
+import java.security.MessageDigest
 
 val localProps = Properties().apply {
     val f = File(rootDir, "local.properties")
@@ -17,6 +18,16 @@ val envProps = Properties().apply {
 
 fun secret(key: String, default: String = ""): String =
     System.getenv(key) ?: envProps.getProperty(key) ?: localProps.getProperty(key) ?: default
+
+fun hashPasskey(input: String): String {
+    val md = MessageDigest.getInstance("SHA-256")
+    val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
+    val sb = StringBuilder()
+    for (b in bytes) {
+        sb.append(String.format("%02x", b))
+    }
+    return sb.toString()
+}
 
 android {
     namespace = "com.madeby.JAI"
@@ -53,6 +64,8 @@ android {
         buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"${secret("TELEGRAM_BOT_TOKEN")}\"")
         buildConfigField("String", "TELEGRAM_CHAT_ID", "\"${secret("TELEGRAM_CHAT_ID")}\"")
         buildConfigField("boolean", "STUDY_ROOM_ENABLED", "false")
+        val adminPasskey = secret("DEV_ADMIN_PASSKEY", "JAI#Admin7370")
+        buildConfigField("String", "DEV_ADMIN_HASH", "\"${hashPasskey(adminPasskey)}\"")
     }
 
     signingConfigs {

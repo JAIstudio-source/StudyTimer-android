@@ -193,7 +193,7 @@ class StudyScorecardExportHelper(private val host: MainActivity) {
             for ((idx, rPair) in ranges.withIndex()) {
                 val chip = rangeChips.getOrNull(idx) ?: continue
                 val isSel = rPair.first == selectedRange
-                chip.setTextColor(if (isSel) Color.WHITE else themeCoordinator.textColor)
+                chip.setTextColor(if (isSel) ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor) else themeCoordinator.textColor)
                 chip.background = if (isSel) {
                     GradientDrawable().apply {
                         cornerRadius = dp(14).toFloat()
@@ -234,7 +234,7 @@ class StudyScorecardExportHelper(private val host: MainActivity) {
             for ((idx, fPair) in formats.withIndex()) {
                 val chip = formatChips.getOrNull(idx) ?: continue
                 val isSel = fPair.first == selectedFormat
-                chip.setTextColor(if (isSel) Color.WHITE else themeCoordinator.textColor)
+                chip.setTextColor(if (isSel) ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor) else themeCoordinator.textColor)
                 chip.background = if (isSel) {
                     GradientDrawable().apply {
                         cornerRadius = dp(12).toFloat()
@@ -298,7 +298,7 @@ class StudyScorecardExportHelper(private val host: MainActivity) {
 
         val saveAndShareBtn = Button(host).apply {
             text = "💾 Save to Device & Share"
-            setTextColor(Color.WHITE)
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = GradientDrawable().apply {
@@ -794,7 +794,8 @@ class StudyScorecardExportHelper(private val host: MainActivity) {
                     "In Progress"
                 }
 
-                val (sessions, _) = host.dayBlocks(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
+                val (allSessions, _) = host.dayBlocks(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
+                val sessions = allSessions.filter { it.secs >= 60L }
                 val longestStretch = sessions.maxOfOrNull { it.secs } ?: 0L
                 val longestStr = if (longestStretch > 0) "${longestStretch / 3600}h ${(longestStretch % 3600) / 60}m" else "0m"
 

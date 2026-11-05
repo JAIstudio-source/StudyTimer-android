@@ -929,7 +929,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 text = "+ Add"
                 textSize = 13f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
-                setTextColor(Color.WHITE)
+                setTextColor(ThemeCoordinator.getContrastColor(parsedColor))
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
                     cornerRadius = dp(12).toFloat()
@@ -1355,7 +1355,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 text = "Add"
                 textSize = 12.5f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
-                setTextColor(Color.WHITE)
+                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
                 background = GradientDrawable().apply {
                     cornerRadius = dp(10).toFloat()
                     setColor(themeCoordinator.primaryColor)
@@ -1408,7 +1408,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 textSize = 13.5f
                 isAllCaps = false
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
-                setTextColor(Color.WHITE)
+                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
                 background = GradientDrawable().apply {
                     setColor(themeCoordinator.primaryColor)
                     cornerRadius = dp(14).toFloat()
@@ -1764,7 +1764,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 textSize = 13.5f
                 isAllCaps = false
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
-                setTextColor(Color.WHITE)
+                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
                 background = GradientDrawable().apply {
                     setColor(themeCoordinator.primaryColor)
                     cornerRadius = dp(14).toFloat()
@@ -2034,6 +2034,26 @@ class SubjectDialogHelper(private val host: MainActivity) {
                             map[subj.id] = subj to (currentSecs + secs)
                         }
                     }
+                    val todayFocusSecs = FocusTimeProvider.getTodayFocusSeconds(host)
+                    val sumRecorded = map.values.sumOf { it.second }
+                    if (todayFocusSecs > sumRecorded) {
+                        val diff = todayFocusSecs - sumRecorded
+                        val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                        val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
+                        val isRunning = (timerState == "STUDYING" || timerState == "PAUSED")
+                        if (isRunning) {
+                            val activeSub = SubjectTagManager.getSelectedSubject(host)
+                            val currentSecs = map[activeSub.id]?.second ?: 0L
+                            map[activeSub.id] = activeSub to (currentSecs + diff)
+                        } else if (map.isNotEmpty()) {
+                            val targetSub = map.values.maxByOrNull { it.second }?.first ?: SubjectTagManager.resolveSubject(host, "general", "General Study", "#6366F1")
+                            val curr = map[targetSub.id]?.second ?: 0L
+                            map[targetSub.id] = targetSub to (curr + diff)
+                        } else {
+                            val genSub = SubjectTagManager.resolveSubject(host, "general", "General Study", "#6366F1")
+                            map[genSub.id] = genSub to diff
+                        }
+                    }
                     map
                 }
                 SubjectTagManager.SubjectStatsPeriod.WEEK -> {
@@ -2049,7 +2069,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             val totalSecsAllModal = subjectMap.values.sumOf { it.second }
             val activeSubjectsSorted = subjectMap.values
-                .filter { it.second >= 60L }
+                .filter { it.second > 0L }
                 .sortedByDescending { it.second }
 
             // Period Summary Banner
@@ -2103,7 +2123,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 primaryColor = themeCoordinator.primaryColor
                 textColor = themeCoordinator.textColor
                 isDonutMode = isDonut
-                boxColor = if (themeCoordinator.isDarkMode()) (if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF111625.toInt()) else 0xFFFFFFFF.toInt()
+                boxColor = if (themeCoordinator.isDarkMode()) 0xFF111625.toInt() else 0xFFFFFFFF.toInt()
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(340))
                 onSliceSelectedListener = { slice, _ ->
                     if (slice != null && (slice.label == "Others" || slice.bundledSlices.isNotEmpty())) {
@@ -2228,7 +2248,32 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
                     // Sub-Topics list chips (if any)
                     if (subj.subTopics.isNotEmpty()) {
-                        val studyTotals = SubjectTagManager.getSubTopicStudyTotals(host, subj.id)
+                        val studyTotals = when (currentPeriod) {
+                            SubjectTagManager.SubjectStatsPeriod.TODAY -> {
+                                SubjectTagManager.getDailySubTopicDurations(host, subj.id, currentDateKey)
+                            }
+                            SubjectTagManager.SubjectStatsPeriod.WEEK -> {
+                                val weekDates = SubjectTagManager.getDatesForWeek(currentWeekMonday)
+                                val agg = mutableMapOf<String, Long>()
+                                for (d in weekDates) {
+                                    val dMap = SubjectTagManager.getDailySubTopicDurations(host, subj.id, d)
+                                    for ((t, s) in dMap) agg[t] = (agg[t] ?: 0L) + s
+                                }
+                                agg
+                            }
+                            SubjectTagManager.SubjectStatsPeriod.MONTH -> {
+                                val monthDates = SubjectTagManager.getDatesForMonth(currentMonthCal.get(Calendar.YEAR), currentMonthCal.get(Calendar.MONTH))
+                                val agg = mutableMapOf<String, Long>()
+                                for (d in monthDates) {
+                                    val dMap = SubjectTagManager.getDailySubTopicDurations(host, subj.id, d)
+                                    for ((t, s) in dMap) agg[t] = (agg[t] ?: 0L) + s
+                                }
+                                agg
+                            }
+                            SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> {
+                                SubjectTagManager.getSubTopicStudyTotals(host, subj.id)
+                            }
+                        }
                         val chaptersWithTime = subj.subTopics.map { topic ->
                             val tSecs = studyTotals[topic] ?: 0L
                             if (tSecs > 0L) {
@@ -2476,10 +2521,13 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
             val setBtn = TextView(host).apply {
                 text = "Set Emoji"
-                setTextColor(Color.WHITE)
                 textSize = 14f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(themeCoordinator.primaryColor)
+                }
+                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
                 setPadding(dp(16), dp(8), dp(16), dp(8))
                 setOnClickListener {
                     val emojiStr = input.text.toString().trim()
@@ -2744,7 +2792,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 text = "Open Full Subject Analytics ↗"
                 textSize = 13f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(Color.WHITE)
+                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
                     cornerRadius = dp(12).toFloat()
@@ -2856,7 +2904,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
         val switchBtn = Button(host).apply {
             text = "Change Subject"
-            setTextColor(Color.WHITE)
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()

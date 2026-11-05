@@ -29,7 +29,11 @@
     <string name="update_available">Update Available</string>
     <string name="update_version_ready">Version %1$s is ready</string>
     <string name="update_message">A fresh update with new improvements is ready to download.</string>
+    <string name="update_critical_required">Critical Update Required</string>
+    <string name="update_critical_message">This version of StudyTimer is no longer supported. Please update now to continue using the app.</string>
     <string name="btn_update">Update Now</string>
+    <string name="btn_got_it">Got It</string>
+    <string name="btn_learn_more">Learn More</string>
     <string name="toast_update_page_failed">Couldn\'t open the update page.</string>
     <string name="toast_checking_updates">Checking for updates…</string>
     <string name="toast_update_check_failed">Couldn\'t check for updates. Check your internet connection.</string>

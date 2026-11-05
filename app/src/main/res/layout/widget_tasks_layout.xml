@@ -1,0 +1,244 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widTasksRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_widget_dark"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp">
+
+    <!-- Header Bar -->
+    <LinearLayout
+        android:id="@+id/widTasksHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widTasksTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="TODAY'S TASKS"
+            android:textColor="#A78BFA"
+            android:textSize="11.5sp"
+            android:letterSpacing="0.08"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/widTasksBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_widget_chip"
+            android:paddingStart="8dp"
+            android:paddingEnd="8dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:text="0 pending"
+            android:textColor="#FFFFFF"
+            android:textSize="10.5sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Empty State -->
+    <TextView
+        android:id="@+id/widTasksEmpty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:layout_marginBottom="6dp"
+        android:text="All tasks finished! Tap to open Planner."
+        android:textColor="#75FFFFFF"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+    <!-- Task List -->
+    <LinearLayout
+        android:id="@+id/widTasksListContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="6dp">
+
+        <!-- Row 1 -->
+        <LinearLayout
+            android:id="@+id/widTaskRow1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/widTaskCheck1"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:gravity="center"
+                android:text="o"
+                android:textColor="#A78BFA"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/widTaskTitle1"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:singleLine="true"
+                android:text="Task item 1"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/widTaskTag1"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="30m"
+                android:textColor="#66FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <!-- Row 2 -->
+        <LinearLayout
+            android:id="@+id/widTaskRow2"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/widTaskCheck2"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:gravity="center"
+                android:text="o"
+                android:textColor="#A78BFA"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/widTaskTitle2"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:singleLine="true"
+                android:text="Task item 2"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/widTaskTag2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="45m"
+                android:textColor="#66FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <!-- Row 3 -->
+        <LinearLayout
+            android:id="@+id/widTaskRow3"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/widTaskCheck3"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:gravity="center"
+                android:text="o"
+                android:textColor="#A78BFA"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/widTaskTitle3"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:singleLine="true"
+                android:text="Task item 3"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/widTaskTag3"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1h"
+                android:textColor="#66FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+        <!-- Row 4 -->
+        <LinearLayout
+            android:id="@+id/widTaskRow4"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp">
+
+            <TextView
+                android:id="@+id/widTaskCheck4"
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:gravity="center"
+                android:text="o"
+                android:textColor="#A78BFA"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/widTaskTitle4"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="6dp"
+                android:singleLine="true"
+                android:text="Task item 4"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/widTaskTag4"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="15m"
+                android:textColor="#66FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Bottom Footer -->
+    <LinearLayout
+        android:id="@+id/widTasksFooter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/widTasksAction"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="+ Manage in Planner"
+            android:textColor="#A78BFA"
+            android:textSize="11sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+</LinearLayout>

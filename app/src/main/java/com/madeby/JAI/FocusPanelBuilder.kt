@@ -1,6 +1,7 @@
 package com.madeby.JAI
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.Typeface
@@ -16,29 +17,46 @@ import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class FocusPanelBuilder(private val host: MainActivity) {
 
     fun build() {
         with(host) {
             val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val isLandscapeEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
+            val isLandscapeEnabled = sharedPrefs.getBoolean(
+                "is_landscape_mode_enabled",
+                sharedPrefs.getBoolean("true_fullscreen_landscape", true)
+            )
             val isLandscape = (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) && isLandscapeEnabled
+
+            if (isLandscape) {
+                buildLandscapeLayout(sharedPrefs)
+            } else {
+                buildPortraitLayout(sharedPrefs)
+            }
+        }
+    }
+
+    /**
+     * Dedicated Portrait Focus layout.
+     * Preserves the full Universal Header, interactive session capsule, spacious Pomodoro ring,
+     * and portrait 3-button action controls.
+     */
+    private fun buildPortraitLayout(sharedPrefs: SharedPreferences) {
+        with(host) {
             val isPomoWhite = isPomodoroPureWhiteActive()
 
             // 1. Universal Top Header (Profile + Streak on left, Settings gear on right)
             navHeader = UniversalHeaderHelper.createHeader(this).apply {
-                visibility = if (isLandscape) View.GONE else View.VISIBLE
+                visibility = View.VISIBLE
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(0, if (isLandscape) dp(4) else dp(2), 0, if (isLandscape) dp(4) else dp(6))
+                    setMargins(0, dp(2), 0, dp(4))
                 }
             }
 
@@ -49,7 +67,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             val controlsContainer = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_HORIZONTAL
-                visibility = if (isLandscape) View.GONE else View.VISIBLE
+                visibility = View.VISIBLE
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -116,7 +134,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 )
             }
 
-            // 1. Subject Pill Button: Colored Dot with outer ring + Bold Name + Dropdown Chevron
+            // 1. Subject Pill Button
             if (showSubjectTagging) {
                 val subjectPill = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -124,7 +142,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     isClickable = true
                     isFocusable = true
                     contentDescription = "Selected study subject: ${activeSubject.name}. Tap to change subject."
-                    
+
                     val pillBg = if (isPomoWhite) {
                         GradientDrawable().apply {
                             cornerRadius = dp(16).toFloat()
@@ -156,7 +174,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     }
                 }
 
-                // Glowing color dot indicator with outer ring
                 val dotContainer = FrameLayout(this).apply {
                     layoutParams = LinearLayout.LayoutParams(dp(12), dp(12)).apply {
                         rightMargin = dp(6)
@@ -204,7 +221,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     setTextColor(subjectColor)
                 }
                 subjectPill.addView(dropdownChevron)
-
                 sessionPillsRow.addView(subjectPill)
             }
 
@@ -299,8 +315,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     }
                 }
 
-
-
                 val topicText = TextView(this).apply {
                     text = topicLabel
                     textSize = 12f
@@ -319,7 +333,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     setTextColor(if (hasSubTopic) themeCoordinator.primaryColor else tintedColor(themeCoordinator.textColor, 130))
                 }
                 topicPill.addView(topicChevron)
-
                 sessionPillsRow.addView(topicPill)
             }
 
@@ -362,11 +375,62 @@ class FocusPanelBuilder(private val host: MainActivity) {
             modePill.addView(modeText)
             sessionPillsRow.addView(modePill)
 
+            // 4. Ambient Focus Sound Pill (Rain, Waves, Fire, Forest)
+            val isAmbientOn = StudyAudioManager.isAmbientEnabled(this)
+            val selectedSound = StudyAudioManager.AMBIENT_OPTIONS.find { it.id == StudyAudioManager.getSelectedAmbient(this) } ?: StudyAudioManager.AMBIENT_OPTIONS[0]
+            val ambientPill = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isClickable = true
+                isFocusable = true
+                contentDescription = "Background focus sound. Currently ${if (isAmbientOn) selectedSound.displayName else "Off"}."
+                val pillBg = GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(if (isPomoWhite) 0xFFF1F5F9.toInt() else if (isAmbientOn) tintedColor(themeCoordinator.primaryColor, 35) else 0x22FFFFFF.toInt())
+                    setStroke(dp(1), if (isAmbientOn) themeCoordinator.primaryColor else tintedColor(themeCoordinator.textColor, 50))
+                }
+                background = pillBg
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    dp(38)
+                ).apply {
+                    marginStart = dp(6)
+                }
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    AmbientSoundBottomSheet.show(host) {
+                        host.buildCurrentPanel()
+                    }
+                }
+            }
+
+            val ambientIcon = TextView(this).apply {
+                text = if (isAmbientOn) selectedSound.iconEmoji else "♫"
+                textSize = 12.5f
+                setPadding(0, 0, dp(4), 0)
+            }
+            ambientPill.addView(ambientIcon)
+
+            val ambientText = TextView(this).apply {
+                text = if (isAmbientOn) selectedSound.displayName else "Sounds"
+                textSize = 12f
+                typeface = themeCoordinator.getAppTypeface(isBold = isAmbientOn)
+                setTextColor(if (isAmbientOn) themeCoordinator.primaryColor else if (isPomoWhite) 0xFF334155.toInt() else tintedColor(themeCoordinator.textColor, 200))
+                setSingleLine(true)
+                maxWidth = dp(95)
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            ambientPill.addView(ambientText)
+            if (isAmbientOn) {
+                sessionPillsRow.addView(ambientPill)
+            }
+
             sessionScrollWrapper.addView(sessionPillsRow)
             host.modeOptionsPill = sessionScrollWrapper
             controlsContainer.addView(sessionScrollWrapper)
 
-            // 2.5 Connected Room HUD: Strictly and exclusively shown when the user is currently inside a study room
+            // Connected Room HUD (if user is inside a room)
             val activeRoom = StudyRoomManager.getActiveRoom(this)
             if (activeRoom != null) {
                 val roomHud = LinearLayout(this).apply {
@@ -393,7 +457,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 val liveDot = TextView(this).apply {
                     text = "● "
                     textSize = 9.5f
-                    setTextColor(0xFF10B981.toInt()) // Emerald Green
+                    setTextColor(0xFF10B981.toInt())
                 }
                 roomHud.addView(liveDot)
 
@@ -424,7 +488,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
 
                 controlsContainer.addView(roomHud)
 
-                // Asynchronously fetch members to display studying peer status
                 CoroutineScope(Dispatchers.Main).launch {
                     val membersRes = StudyRoomManager.fetchRoomMembers(host, activeRoom)
                     val members = membersRes.getOrElse { emptyList() }
@@ -452,12 +515,12 @@ class FocusPanelBuilder(private val host: MainActivity) {
             val savedTimerMode = sharedPrefs.getString("timer_mode", "SUBJECT") ?: "SUBJECT"
             val isPomodoro = (savedTimerMode == "COUNTDOWN")
             timerRing = TimerRingView(this).apply {
-                visibility = if (!isLandscape && isPomodoro) View.VISIBLE else View.GONE
+                visibility = if (isPomodoro) View.VISIBLE else View.GONE
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER)
             }
 
             statusBadge = TextView(this).apply {
-                textSize = if (isLandscape) 12.5f else 14f
+                textSize = 14f
                 letterSpacing = 0.04f
                 setPadding(dp(18), dp(6), dp(18), dp(6))
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
@@ -470,7 +533,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
-                    setMargins(0, if (isLandscape) dp(4) else dp(8), 0, 0)
+                    setMargins(0, dp(6), 0, 0)
                 }
                 addView(statusBadge)
 
@@ -492,13 +555,18 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 }
             }
 
-            val selectedTypeface = FontStyleManager.getTypeface(this)
+            val fontId = FontStyleManager.getSelectedFontId(this)
+            val selectedTypeface = if (fontId == "sans_default" || fontId == "tabular_clock") {
+                FontStyleManager.getTabularClockTypeface(this)
+            } else {
+                FontStyleManager.getTypeface(this)
+            }
 
             studyTimerDisplay = TextView(this).apply {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = if (isLandscape) 110f else if (isPomodoro) 64f else 78f
+                textSize = if (isPomodoro) 66f else 78f
                 typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
@@ -513,11 +581,11 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = if (isLandscape) 26f else 22f
+                textSize = 22f
                 typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, if (isLandscape) 10 else 44)
+                setPadding(0, 0, 0, dp(28))
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
             }
 
@@ -526,13 +594,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
 
                 override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                     host.dismissGestureHint()
-                    if (isLandscape) {
-                        toggleLandscapeControls()
-                        return true
-                    } else {
-                        togglePortraitFullscreenMode()
-                        return true
-                    }
+                    togglePortraitFullscreenMode()
+                    return true
                 }
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
@@ -565,13 +628,13 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 letterSpacing = 0.04f
                 setTextColor(tintedColor(themeCoordinator.textColor, if (themeCoordinator.isDarkMode()) 95 else 115))
                 gravity = Gravity.CENTER
-                visibility = if (isLandscape || isGestureHintDismissed || currentTimerState != TimerState.IDLE) View.GONE else View.VISIBLE
+                visibility = if (isGestureHintDismissed || currentTimerState != TimerState.IDLE) View.GONE else View.VISIBLE
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
                 ).apply {
-                    bottomMargin = dp(14)
+                    bottomMargin = dp(8)
                 }
             }
             host.gestureHintView = gestureHint
@@ -582,11 +645,10 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(
-                    if (isLandscape) LinearLayout.LayoutParams.WRAP_CONTENT else LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    if (isLandscape) gravity = Gravity.CENTER_HORIZONTAL
-                    setMargins(0, if (isLandscape) dp(6) else dp(10), 0, if (isLandscape) dp(12) else dp(88))
+                    setMargins(0, dp(8), 0, dp(78))
                 }
             }
 
@@ -597,8 +659,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 minimumHeight = dp(48)
                 isSoundEffectsEnabled = false
-                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(160) else 0, dp(48), if (isLandscape) 0f else 1f).apply {
-                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(4), 0, dp(4), 0)
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(4), 0, dp(4), 0)
                 }
                 setOnClickListener { handleStateToggle() }
                 applyBubbleTouchAnimation(this)
@@ -612,8 +674,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 minimumHeight = dp(48)
                 isSoundEffectsEnabled = false
-                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(150) else 0, dp(48), if (isLandscape) 0f else 1f).apply {
-                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(4), 0, dp(4), 0)
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(4), 0, dp(4), 0)
                 }
                 setOnClickListener { handlePause() }
                 applyBubbleTouchAnimation(this)
@@ -630,68 +692,345 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 background = outlinedButtonBackground()
                 setPadding(dp(12), dp(10), dp(12), dp(10))
                 minimumHeight = dp(48)
-                layoutParams = LinearLayout.LayoutParams(if (isLandscape) dp(160) else 0, dp(48), if (isLandscape) 0f else 1f).apply {
-                    if (isLandscape) setMargins(dp(8), 0, dp(8), 0) else setMargins(dp(4), 0, dp(4), 0)
-                }
-                setOnTouchListener { v, event ->
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> {
-                            holdStartTime = SystemClock.uptimeMillis()
-                            isHoldingStop = true
-                            v.isPressed = true
-                            progress = 0f
-                            handler.removeCallbacks(holdToEndRunnable)
-                            handler.post(holdToEndRunnable)
-                            performMicroHapticTick(v, 0f)
-                            true
-                        }
-                        MotionEvent.ACTION_UP -> {
-                            val elapsed = SystemClock.uptimeMillis() - holdStartTime
-                            if (elapsed < 500L) {
-                                AppToast.show(host, "Hold for 0.5s to finish session")
-                                try { v.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK) } catch (_: Exception) {}
-                                v.animate().translationX(-8f).setDuration(40).withEndAction {
-                                    v.animate().translationX(8f).setDuration(40).withEndAction {
-                                        v.animate().translationX(0f).setDuration(40).start()
-                                    }.start()
-                                }.start()
-                            }
-                            resetHoldToEnd()
-                            true
-                        }
-                        MotionEvent.ACTION_CANCEL -> {
-                            resetHoldToEnd()
-                            true
-                        }
-                        MotionEvent.ACTION_MOVE -> {
-                            if (event.x < 0f || event.y < 0f || event.x > v.width || event.y > v.height) {
-                                resetHoldToEnd()
-                            }
-                            true
-                        }
-                        else -> true
-                    }
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(4), 0, dp(4), 0)
                 }
             }
+            attachHoldToEndListener(stopBtn)
 
             controlActionContainer.addView(pauseBtn)
             controlActionContainer.addView(mainBtn)
             controlActionContainer.addView(stopBtn)
 
-            // Assemble into panelContainer in unified, distraction-free order:
-            // 1. Universal Header (Top)
-            // 2. Unified Top Capsule: Subject Tag + Timer Mode + Active Task (Right under header)
-            // 3. Center Clocks (Middle - ample breathing room)
-            // 4. Control Action Container (Start / Pause / End buttons)
             panelContainer.addView(navHeader)
-            if (!isLandscape) {
-                panelContainer.addView(extraControlsContainer)
-            }
+            panelContainer.addView(extraControlsContainer)
             panelContainer.addView(centerClocksWrapper)
             panelContainer.addView(controlActionContainer)
 
             updateVisualStyles()
             applyTrueFullscreenMode()
+        }
+    }
+
+    /**
+     * Dedicated Landscape Focus layout.
+     * Clean, horizontal desk-clock interface without cluttered headers,
+     * removing extra buttons (e.g. no Break button) and providing a prominent,
+     * perfectly proportioned Pomodoro ring.
+     */
+    private fun buildLandscapeLayout(sharedPrefs: SharedPreferences) {
+        with(host) {
+            val isPomoWhite = isPomodoroPureWhiteActive()
+
+            // Safe stub for navHeader (never added to landscape panelContainer)
+            navHeader = View(this).apply { visibility = View.GONE }
+            extraControlsContainer = null
+            modeOptionsPill = null
+            gestureHintView = null
+
+            val timerModeSetting = sharedPrefs.getString("timer_mode", "COUNTDOWN") ?: "COUNTDOWN"
+            val showSubjectTagging = sharedPrefs.getBoolean("enable_subject_tagging", true)
+            val isPomodoro = (timerModeSetting == "COUNTDOWN")
+
+            val isLectureRunning = timerModeSetting == "LECTURE" &&
+                (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.PAUSED) &&
+                sharedPrefs.getBoolean("lecture_mode_enabled", false)
+            val lectureSubId = sharedPrefs.getString("active_lecture_subject_id", null)
+            val activeSubject = if (isLectureRunning && lectureSubId != null) {
+                SubjectTagManager.resolveSubject(this, lectureSubId)
+            } else {
+                SubjectTagManager.getSelectedSubject(this)
+            }
+
+            val subjectColor = try {
+                Color.parseColor(activeSubject.colorHex)
+            } catch (_: Exception) {
+                themeCoordinator.primaryColor
+            }
+
+            val modeLabel = when (timerModeSetting) {
+                "STOPWATCH" -> "Stopwatch"
+                "SUBJECT" -> "Subject Wise"
+                "COUNTDOWN" -> {
+                    val pStudy = sharedPrefs.safeLong("study_interval_minutes", 25L).toInt()
+                    val pBreak = sharedPrefs.safeLong("break_interval_minutes", 5L).toInt()
+                    "$pStudy/$pBreak Pomodoro"
+                }
+                "LECTURE" -> "Lecture"
+                else -> "Focus"
+            }
+
+            // 1. Sleek Minimalist Top HUD Pill: Compact, distraction-free
+            statusBadgeContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setMargins(0, dp(6), 0, dp(2))
+                }
+            }
+
+            val topPill = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                val pillBg = if (isPomoWhite) {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(16).toFloat()
+                        setColor(0xFFF1F5F9.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                    }
+                } else {
+                    GradientDrawable().apply {
+                        cornerRadius = dp(16).toFloat()
+                        setColor(if (themeCoordinator.isDarkMode()) 0x331E293B.toInt() else 0x25FFFFFF.toInt())
+                        setStroke(dp(1), tintedColor(themeCoordinator.primaryColor, 120))
+                    }
+                }
+                background = pillBg
+                setPadding(dp(12), dp(4), dp(12), dp(4))
+                isClickable = true
+                isFocusable = true
+                setOnClickListener {
+                    if (currentTimerState == TimerState.IDLE) {
+                        performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        showSubjectPickerDialog()
+                    }
+                }
+            }
+
+            if (showSubjectTagging) {
+                val dot = View(this).apply {
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(subjectColor)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).apply {
+                        marginEnd = dp(6)
+                    }
+                }
+                topPill.addView(dot)
+
+                val subjText = TextView(this).apply {
+                    text = activeSubject.name
+                    textSize = 12f
+                    typeface = themeCoordinator.getAppTypeface(isBold = true)
+                    setTextColor(if (isPomoWhite) 0xFF0F172A.toInt() else themeCoordinator.textColor)
+                    setSingleLine(true)
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                    maxWidth = dp(140)
+                }
+                topPill.addView(subjText)
+
+                val sep = TextView(this).apply {
+                    text = " • "
+                    textSize = 11f
+                    setTextColor(tintedColor(themeCoordinator.textColor, 120))
+                }
+                topPill.addView(sep)
+            }
+
+            statusBadge = TextView(this).apply {
+                text = modeLabel
+                textSize = 12f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setTextColor(themeCoordinator.primaryColor)
+                setSingleLine(true)
+            }
+            topPill.addView(statusBadge)
+            statusBadgeContainer.addView(topPill)
+
+            // 2. Center Clocks & Pomodoro Ring Wrapper
+            val centerClocksWrapper = FrameLayout(this).apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+            }
+
+            timerRing = TimerRingView(this).apply {
+                visibility = if (isPomodoro) View.VISIBLE else View.GONE
+                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.CENTER)
+            }
+
+            val fontId = FontStyleManager.getSelectedFontId(this)
+            val selectedTypeface = if (fontId == "sans_default" || fontId == "tabular_clock") {
+                FontStyleManager.getTabularClockTypeface(this)
+            } else {
+                FontStyleManager.getTypeface(this)
+            }
+
+            studyTimerDisplay = TextView(this).apply {
+                text = "00:00:00"
+                isSingleLine = true
+                maxLines = 1
+                textSize = if (isPomodoro) 72f else 104f
+                typeface = selectedTypeface
+                fontFeatureSettings = "tnum"
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, 5)
+                if (themeCoordinator.isGlassStyle() && !pureWhiteTimerEnabled() && !isPomoWhite) {
+                    setShadowLayer(16f, 0f, 0f, tintedColor(themeCoordinator.primaryColor, 90))
+                }
+                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+            }
+
+            breakTimerDisplay = TextView(this).apply {
+                text = "00:00:00"
+                isSingleLine = true
+                maxLines = 1
+                textSize = 20f
+                typeface = selectedTypeface
+                fontFeatureSettings = "tnum"
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, dp(10))
+                visibility = View.GONE
+                layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
+            }
+
+            val gestureDetector = android.view.GestureDetector(this, object : android.view.GestureDetector.SimpleOnGestureListener() {
+                override fun onDown(e: MotionEvent): Boolean = true
+
+                override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                    toggleLandscapeControls()
+                    return true
+                }
+
+                override fun onDoubleTap(e: MotionEvent): Boolean {
+                    if (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK) {
+                        handlePause()
+                        try { centerClocksWrapper.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } catch (_: Exception) {}
+                        return true
+                    } else if (currentTimerState == TimerState.PAUSED) {
+                        handleStateToggle()
+                        try { centerClocksWrapper.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS) } catch (_: Exception) {}
+                        return true
+                    }
+                    return false
+                }
+            })
+            centerClocksWrapper.setOnTouchListener { _, event ->
+                gestureDetector.onTouchEvent(event)
+            }
+
+            centerClocksWrapper.addView(timerRing)
+            centerClocksWrapper.addView(studyTimerDisplay)
+            centerClocksWrapper.addView(breakTimerDisplay)
+
+            // 3. Landscape Action Controls Container: Centered, clean, no extra Break button
+            controlActionContainer = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    setMargins(0, dp(4), 0, dp(14))
+                }
+            }
+
+            val isIdle = (currentTimerState == TimerState.IDLE)
+            val btnHeight = dp(46)
+            val btnWidth = dp(145)
+            val startBtnWidth = dp(175)
+
+            pauseBtn = Button(this).apply {
+                textSize = 14.5f
+                letterSpacing = 0.02f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                minimumHeight = btnHeight
+                isSoundEffectsEnabled = false
+                layoutParams = LinearLayout.LayoutParams(if (isIdle) startBtnWidth else btnWidth, btnHeight).apply {
+                    if (!isIdle) setMargins(dp(8), 0, dp(8), 0)
+                }
+                setOnClickListener {
+                    if (currentTimerState == TimerState.IDLE || currentTimerState == TimerState.PAUSED || currentTimerState == TimerState.BREAK) {
+                        handleStateToggle()
+                    } else {
+                        handlePause()
+                    }
+                }
+                applyBubbleTouchAnimation(this)
+            }
+
+            // mainBtn ("Break") is explicitly hidden in landscape - no clutter
+            mainBtn = Button(this).apply {
+                visibility = View.GONE
+                layoutParams = LinearLayout.LayoutParams(0, 0)
+            }
+
+            stopBtn = HoldRingButton(this).apply {
+                text = "Finish"
+                ringColor = themeCoordinator.primaryColor
+                setTextColor(themeCoordinator.textColor)
+                textSize = 14f
+                letterSpacing = 0.02f
+                typeface = themeCoordinator.getAppTypeface(isBold = true)
+                isSoundEffectsEnabled = false
+                background = outlinedButtonBackground()
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                minimumHeight = btnHeight
+                visibility = if (isIdle) View.GONE else View.VISIBLE
+                layoutParams = LinearLayout.LayoutParams(btnWidth, btnHeight).apply {
+                    setMargins(dp(8), 0, dp(8), 0)
+                }
+            }
+            attachHoldToEndListener(stopBtn)
+
+            controlActionContainer.addView(pauseBtn)
+            controlActionContainer.addView(mainBtn)
+            controlActionContainer.addView(stopBtn)
+
+            panelContainer.addView(statusBadgeContainer)
+            panelContainer.addView(centerClocksWrapper)
+            panelContainer.addView(controlActionContainer)
+
+            updateVisualStyles()
+            applyTrueFullscreenMode()
+        }
+    }
+
+    private fun attachHoldToEndListener(button: HoldRingButton) {
+        with(host) {
+            button.setOnTouchListener { v, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        holdStartTime = SystemClock.uptimeMillis()
+                        isHoldingStop = true
+                        v.isPressed = true
+                        button.progress = 0f
+                        handler.removeCallbacks(holdToEndRunnable)
+                        handler.post(holdToEndRunnable)
+                        performMicroHapticTick(v, 0f)
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        val elapsed = SystemClock.uptimeMillis() - holdStartTime
+                        if (elapsed < 500L) {
+                            AppToast.show(host, "Hold for 0.5s to finish session")
+                            try { v.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK) } catch (_: Exception) {}
+                            v.animate().translationX(-8f).setDuration(40).withEndAction {
+                                v.animate().translationX(8f).setDuration(40).withEndAction {
+                                    v.animate().translationX(0f).setDuration(40).start()
+                                }.start()
+                            }.start()
+                        }
+                        resetHoldToEnd()
+                        true
+                    }
+                    MotionEvent.ACTION_CANCEL -> {
+                        resetHoldToEnd()
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (event.x < 0f || event.y < 0f || event.x > v.width || event.y > v.height) {
+                            resetHoldToEnd()
+                        }
+                        true
+                    }
+                    else -> true
+                }
+            }
         }
     }
 }

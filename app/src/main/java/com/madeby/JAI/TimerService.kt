@@ -50,6 +50,7 @@ class TimerService : Service() {
     private var lecturePromptTimestamp: Long = 0L
     private var lectureModeEnabled: Boolean = false
     private var lastLeaderboardSyncStudySecs: Long = 0L
+    private var sessionStartTimestampMs: Long = 0L
 
     // Anti-Cheat & Continuous Study Tracking
     private var continuousStudySecs: Long = 0L
@@ -395,6 +396,7 @@ class TimerService : Service() {
                 accumulatedStudy = 0L
                 currentBreakSeconds = 0L
                 continuousStudySecs = 0L
+                sessionStartTimestampMs = System.currentTimeMillis()
                 isPendingActivityConfirmation = false
                 activityConfirmationPromptTime = 0L
                 cancelInactivityCheckNotification()
@@ -541,9 +543,11 @@ class TimerService : Service() {
 
             TimelineLogger.record(this, currentTimerState, subId = sub.id, subName = sub.name, subColor = sub.colorHex)
             syncPresence(true, sub.name, sub.colorHex)
+            StudyAudioManager.resumeAmbient(this)
         } else {
             TimelineLogger.record(this, currentTimerState)
             syncPresence(false)
+            StudyAudioManager.pauseAmbient()
         }
         saveState()
         updateForegroundNotification()
@@ -569,6 +573,7 @@ class TimerService : Service() {
     private fun handlePause() {
         if (currentTimerState != TimerState.STUDYING && currentTimerState != TimerState.BREAK) return
         stopBlockerMonitor()
+        StudyAudioManager.pauseAmbient()
         prePauseState = currentTimerState
         currentTimerState = TimerState.PAUSED
         lastTimestamp = System.currentTimeMillis() / 1000
@@ -590,14 +595,17 @@ class TimerService : Service() {
     }
 
     private fun finalizeSessionStats(completed: Boolean = false, alreadyFinalized: Boolean = false) {
+        val isMicroSession = accumulatedStudy < 60L
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val savedFocus = sharedPrefs.getLong("${todayStr}_focus_total", 0L)
         val savedBreak = sharedPrefs.getLong("${todayStr}_break_total", 0L)
 
-        AppAnalytics.trackSessionEnd(this, timerMode, accumulatedStudy, completed = completed)
+        if (!isMicroSession) {
+            AppAnalytics.trackSessionEnd(this, timerMode, accumulatedStudy, completed = completed)
+        }
 
-        val remainingSecs = if (accumulatedStudy > lastLeaderboardSyncStudySecs) (accumulatedStudy - lastLeaderboardSyncStudySecs).toInt() else 0
+        val remainingSecs = if (!isMicroSession && accumulatedStudy > lastLeaderboardSyncStudySecs) (accumulatedStudy - lastLeaderboardSyncStudySecs).toInt() else 0
         lastLeaderboardSyncStudySecs = 0L
         val currentSub = SubjectTagManager.getSelectedSubject(this)
         serviceScope.launch {
@@ -607,15 +615,17 @@ class TimerService : Service() {
                 LeaderboardManager.updateStudyPresence(this@TimerService, false)
             }
             if (BuildConfig.STUDY_ROOM_ENABLED) {
-                StudyRoomManager.updateRoomPresenceIfActive(this@TimerService, false, currentSub.name, currentSub.colorHex, accumulatedStudy.toInt())
+                StudyRoomManager.updateRoomPresenceIfActive(this@TimerService, false, currentSub.name, currentSub.colorHex, if (isMicroSession) 0 else accumulatedStudy.toInt())
             }
         }
 
         sharedPrefs.edit().apply {
             if (!alreadyFinalized) {
-                putLong("${todayStr}_focus_total", savedFocus + accumulatedStudy)
-                if (!sharedPrefs.contains("first_study_session_date")) {
-                    putString("first_study_session_date", todayStr)
+                if (!isMicroSession) {
+                    putLong("${todayStr}_focus_total", savedFocus + accumulatedStudy)
+                    if (!sharedPrefs.contains("first_study_session_date")) {
+                        putString("first_study_session_date", todayStr)
+                    }
                 }
                 putLong("${todayStr}_break_total", savedBreak + currentBreakSeconds)
             }
@@ -627,6 +637,8 @@ class TimerService : Service() {
             putLong("break_remaining_secs", 0L)
             putBoolean("lecture_mode_enabled", false)
             remove("active_lecture_subject_id")
+            putLong("last_leaderboard_sync_study_secs", 0L)
+            putLong("session_start_timestamp_ms", 0L)
             putLong("last_data_modified_timestamp", System.currentTimeMillis())
             apply()
         }
@@ -653,6 +665,10 @@ class TimerService : Service() {
 
     private fun handleStop(completed: Boolean = false, alreadyFinalized: Boolean = false) {
         stopBlockerMonitor()
+        StudyAudioManager.stopAmbient()
+        val isMicroSession = accumulatedStudy < 60L
+        val startTs = sessionStartTimestampMs
+        sessionStartTimestampMs = 0L
         finalizeSessionStats(completed, alreadyFinalized)
 
         currentTimerState = TimerState.IDLE
@@ -667,7 +683,11 @@ class TimerService : Service() {
         isPendingActivityConfirmation = false
         activityConfirmationPromptTime = 0L
         cancelInactivityCheckNotification()
-        TimelineLogger.record(this, TimerState.IDLE)
+        if (isMicroSession && startTs > 0L) {
+            TimelineLogger.removeEntriesSince(this, startTs)
+        } else {
+            TimelineLogger.record(this, TimerState.IDLE)
+        }
         val stopPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         stopPrefs.edit()
             .putBoolean("pomo_overtime_alerted", false)
@@ -687,6 +707,10 @@ class TimerService : Service() {
 
     private fun handleStopSilent(alreadyFinalized: Boolean = false) {
         stopBlockerMonitor()
+        StudyAudioManager.stopAmbient()
+        val isMicroSession = accumulatedStudy < 60L
+        val startTs = sessionStartTimestampMs
+        sessionStartTimestampMs = 0L
         finalizeSessionStats(completed = false, alreadyFinalized = alreadyFinalized)
 
         currentTimerState = TimerState.IDLE
@@ -701,7 +725,11 @@ class TimerService : Service() {
         isPendingActivityConfirmation = false
         activityConfirmationPromptTime = 0L
         cancelInactivityCheckNotification()
-        TimelineLogger.record(this, TimerState.IDLE)
+        if (isMicroSession && startTs > 0L) {
+            TimelineLogger.removeEntriesSince(this, startTs)
+        } else {
+            TimelineLogger.record(this, TimerState.IDLE)
+        }
         val stopSilentPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         stopSilentPrefs.edit()
             .putLong("focus_remaining_secs", 0L)
@@ -710,6 +738,11 @@ class TimerService : Service() {
             .putBoolean("lecture_mode_enabled", false)
             .putBoolean("pomo_overtime_alerted", false)
             .remove("active_lecture_subject_id")
+            .remove("active_planner_goal_id")
+            .remove("active_planner_goal_title")
+            .remove("active_planner_goal_subject_id")
+            .remove("active_planner_goal_subtopic")
+            .remove("active_planner_goal_target_mins")
             .apply()
         saveState()
 
@@ -745,16 +778,24 @@ class TimerService : Service() {
     }
 
     private fun triggerVibration() {
-        triggerVibrationPattern(longArrayOf(0, 600))
+        if (StudyAudioManager.isVibrateEnabled(this)) {
+            triggerVibrationPattern(longArrayOf(0, 600))
+        }
+        StudyAudioManager.playCompletionChime(this)
     }
 
     // Single 600ms pulse intentionally matches standard alert; kept without triple vibration per user constraint
     private fun triggerInactivityVibration() {
-        triggerVibrationPattern(longArrayOf(0, 600))
+        if (StudyAudioManager.isVibrateEnabled(this)) {
+            triggerVibrationPattern(longArrayOf(0, 600))
+        }
     }
 
     private fun triggerBreakEndVibration() {
-        triggerVibrationPattern(longArrayOf(0, 500))
+        if (StudyAudioManager.isVibrateEnabled(this)) {
+            triggerVibrationPattern(longArrayOf(0, 500))
+        }
+        StudyAudioManager.playCompletionChime(this)
     }
 
     private fun checkScheduledLectures(nowSecs: Long) {
@@ -909,6 +950,7 @@ class TimerService : Service() {
         accumulatedStudy = 0L
         currentBreakSeconds = 0L
         continuousStudySecs = 0L
+        sessionStartTimestampMs = System.currentTimeMillis()
         isPendingActivityConfirmation = false
         activityConfirmationPromptTime = 0L
         cancelInactivityCheckNotification()
@@ -1085,7 +1127,7 @@ class TimerService : Service() {
                                 }
                             }
 
-                            if (accumulatedStudy - lastLeaderboardSyncStudySecs >= 30L) {
+                            if (accumulatedStudy - lastLeaderboardSyncStudySecs >= 20L) {
                                 val chunk = (accumulatedStudy - lastLeaderboardSyncStudySecs).toInt()
                                 lastLeaderboardSyncStudySecs = accumulatedStudy
                                 val sub = if (timerMode == "LECTURE" && lectureModeEnabled) {
@@ -1095,7 +1137,11 @@ class TimerService : Service() {
                                     SubjectTagManager.getSelectedSubject(this@TimerService)
                                 }
                                 serviceScope.launch {
-                                    LeaderboardManager.syncStudyProgress(this@TimerService, chunk, isStudying = true, sub.name, sub.colorHex)
+                                    val synced = LeaderboardManager.syncStudyProgress(this@TimerService, chunk, isStudying = true, sub.name, sub.colorHex)
+                                    if (!synced) {
+                                        // Retain unsynced chunk so next tick or reconnection retries it
+                                        lastLeaderboardSyncStudySecs = (lastLeaderboardSyncStudySecs - chunk).coerceAtLeast(0L)
+                                    }
                                     if (BuildConfig.STUDY_ROOM_ENABLED) {
                                         StudyRoomManager.updateRoomPresenceIfActive(
                                             this@TimerService,
@@ -1105,6 +1151,11 @@ class TimerService : Service() {
                                             elapsedSeconds = accumulatedStudy.toInt()
                                         )
                                     }
+                                }
+                            }
+                            if (accumulatedStudy > 0L && accumulatedStudy % 900L == 0L) {
+                                serviceScope.launch {
+                                    CloudSyncManager.syncDataToCloud(this@TimerService, force = false)
                                 }
                             }
                             if (timerMode == "COUNTDOWN" || (timerMode == "LECTURE" && lectureModeEnabled)) {
@@ -1529,6 +1580,8 @@ class TimerService : Service() {
         }
         accumulatedStudy = sharedPrefs.safeLong("accumulatedStudy", 0L)
         currentBreakSeconds = sharedPrefs.safeLong("currentBreakSeconds", 0L)
+        lastLeaderboardSyncStudySecs = sharedPrefs.safeLong("last_leaderboard_sync_study_secs", 0L)
+        sessionStartTimestampMs = sharedPrefs.safeLong("session_start_timestamp_ms", 0L)
         activeSessionDateStr = sharedPrefs.safeString("active_session_date_str", SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
         timerMode = sharedPrefs.safeString("timer_mode", sharedPrefs.safeString("timerMode", "STOPWATCH")) ?: "STOPWATCH"
 
@@ -1680,6 +1733,8 @@ class TimerService : Service() {
             putLong("lastTimestamp", lastTimestamp)
             putLong("accumulatedStudy", accumulatedStudy)
             putLong("currentBreakSeconds", currentBreakSeconds)
+            putLong("last_leaderboard_sync_study_secs", lastLeaderboardSyncStudySecs)
+            putLong("session_start_timestamp_ms", sessionStartTimestampMs)
             putString("active_session_date_str", activeSessionDateStr ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
             putLong("focus_remaining_secs", focusRemainingSecs)
             putLong("break_countdown_secs", breakCountdownSecs)
@@ -1712,6 +1767,7 @@ class TimerService : Service() {
 
     override fun onDestroy() {
         stopBlockerMonitor()
+        StudyAudioManager.stopAmbient()
         handler.removeCallbacks(timerRunnable)
         serviceScope.cancel()
         foregroundStarted = false

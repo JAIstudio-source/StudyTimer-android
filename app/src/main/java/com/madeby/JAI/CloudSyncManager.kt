@@ -49,6 +49,53 @@ object CloudSyncManager {
         val profileImageUri: String
     )
 
+    fun pruneLargePrefsData(prefsJson: JSONObject, maxAllowedLen: Int = 47000) {
+        if (prefsJson.toString().length <= maxAllowedLen) return
+        val snapshotKeys = mutableListOf<String>()
+        val keys = prefsJson.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            if (k.endsWith("_planner_snapshot") && k.removeSuffix("_planner_snapshot").matches(Regex("""^\d{4}-\d{2}-\d{2}$"""))) {
+                snapshotKeys.add(k)
+            }
+        }
+        snapshotKeys.sort()
+        while (snapshotKeys.size > 14 && prefsJson.toString().length > maxAllowedLen) {
+            val oldest = snapshotKeys.removeAt(0)
+            prefsJson.remove(oldest)
+        }
+        if (prefsJson.toString().length > maxAllowedLen) {
+            prefsJson.remove("daily_break_today")
+            prefsJson.remove("focus_time_today")
+            prefsJson.remove("dev_mock_rooms_json")
+            prefsJson.remove("user_created_rooms_json")
+        }
+    }
+
+    fun resolveAuthToken(context: Context, anonKey: String): String {
+        val token = AuthManager.getAccessToken(context)?.trim()
+        if (token.isNullOrBlank()) return anonKey
+        val parts = token.split(".")
+        if (parts.size != 3) return anonKey
+        return try {
+            val payloadBytes = android.util.Base64.decode(parts[1], android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+            val json = JSONObject(String(payloadBytes, Charsets.UTF_8))
+            val iss = json.optString("iss", "")
+            if (iss.contains("google", ignoreCase = true) || iss.contains("accounts.google.com", ignoreCase = true)) {
+                anonKey
+            } else {
+                val exp = json.optLong("exp", 0L)
+                if (exp > 0L && (System.currentTimeMillis() / 1000L) >= (exp - 30L)) {
+                    anonKey
+                } else {
+                    token
+                }
+            }
+        } catch (_: Exception) {
+            anonKey
+        }
+    }
+
     sealed class SyncCheckResult {
         object UpToDate : SyncCheckResult()
         object Success : SyncCheckResult()
@@ -67,7 +114,7 @@ object CloudSyncManager {
         }
 
         try {
-            val authToken = AuthManager.getAccessToken(context)?.takeIf { it.isNotBlank() } ?: anonKey
+            var authToken = resolveAuthToken(context, anonKey)
             val encodedUserId = java.net.URLEncoder.encode(userId, "UTF-8")
             var queryParams = "user_id=eq.$encodedUserId&order=updated_at.desc&select=*"
             var url = URL("$supabaseUrl/rest/v1/user_sync_data?$queryParams")
@@ -80,6 +127,19 @@ object CloudSyncManager {
             conn.readTimeout = 8000
 
             var code = conn.responseCode
+            // Retry with anonKey if user token received 401
+            if (code == 401 && authToken != anonKey) {
+                Log.w("CloudSyncManager", "fetchRemoteMetadata received HTTP 401. Retrying with anonKey...")
+                authToken = anonKey
+                conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", anonKey)
+                conn.setRequestProperty("Authorization", "Bearer $anonKey")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.connectTimeout = 8000
+                conn.readTimeout = 8000
+                code = conn.responseCode
+            }
             var responseStr = if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() } else ""
             var jsonArray = if (responseStr.isNotEmpty()) org.json.JSONArray(responseStr) else org.json.JSONArray()
 
@@ -259,6 +319,9 @@ object CloudSyncManager {
             val profileImg: String = ProfileManager.getEffectiveAvatarUrl(context).trim().take(300)
             val localLastMod = BackupManager(context).getLastModifiedTimestamp()
 
+            // Keep prefs_data safely under check_payload_size limit (50,000 chars)
+            pruneLargePrefsData(prefsJson, maxAllowedLen = 47000)
+
             // Exact schema columns: user_id, user_name, user_email, profile_image_uri, prefs_data, timeline_data, updated_at
             val payload = JSONObject()
             payload.put("user_id", userId)
@@ -267,22 +330,17 @@ object CloudSyncManager {
             payload.put("profile_image_uri", profileImg)
             payload.put("prefs_data", prefsJson.toString())
             payload.put("timeline_data", timelineJsonStr)
-            val termsAccepted = AuthManager.getTermsAcceptedAt(context)
-            if (!termsAccepted.isNullOrBlank()) {
-                payload.put("terms_accepted_at", termsAccepted)
-                payload.put("terms_version", AuthManager.getTermsVersion(context))
-            }
             payload.put("updated_at", maxOf(localLastMod, now))
 
-            val payloadString = payload.toString()
+            var payloadString = payload.toString()
             if (payloadString.length > 5 * 1024 * 1024) {
                 Log.w("CloudSyncManager", "Cloud sync payload exceeds 5MB safety limit (${payloadString.length} bytes), skipping upload.")
                 return@withContext SyncResult(isSuccess = false, errorMessage = "Cloud backup payload exceeds 5MB safety limit.")
             }
-            Log.d("CloudSyncManager", "Outgoing Cloud Sync Payload (${payloadString.length} bytes): timeline_entries=${entries.size}, updated_at=${maxOf(localLastMod, now)}")
+            Log.d("CloudSyncManager", "Outgoing Cloud Sync Payload (${payloadString.length} bytes, prefs_data=${payload.getString("prefs_data").length} chars): timeline_entries=${entries.size}, updated_at=${maxOf(localLastMod, now)}")
 
             // Try Upsert POST
-            val authToken = AuthManager.getAccessToken(context)?.takeIf { it.isNotBlank() } ?: anonKey
+            var authToken = resolveAuthToken(context, anonKey)
             var url = URL("$supabaseUrl/rest/v1/user_sync_data?on_conflict=user_id")
             var conn = url.openConnection() as HttpURLConnection
             conn.requestMethod = "POST"
@@ -299,15 +357,60 @@ object CloudSyncManager {
             }
 
             var code = conn.responseCode
-            val responseBody = try {
+            // HTTP 401 recovery: If user bearer token was rejected by Supabase, seamlessly retry with anonKey
+            if (code == 401 && authToken != anonKey) {
+                Log.w("CloudSyncManager", "Cloud sync POST received HTTP 401 with bearer token. Retrying cleanly with anonKey...")
+                authToken = anonKey
+                conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", anonKey)
+                conn.setRequestProperty("Authorization", "Bearer $anonKey")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "resolution=merge-duplicates")
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.doOutput = true
+                conn.outputStream.use { os ->
+                    os.write(payloadString.toByteArray(Charsets.UTF_8))
+                }
+                code = conn.responseCode
+            }
+            var responseBody = try {
                 if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() }
                 else conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
             } catch (_: Exception) { "" }
             Log.d("CloudSyncManager", "Cloud sync POST response code: $code, response: $responseBody")
 
+            // Auto-recovery for check_payload_size constraint: prune older snapshots and retry once
+            if (code == 400 && responseBody.contains("check_payload_size")) {
+                Log.w("CloudSyncManager", "POST violated check_payload_size constraint. Pruning older snapshots down to 35,000 characters and retrying...")
+                pruneLargePrefsData(prefsJson, maxAllowedLen = 35000)
+                payload.put("prefs_data", prefsJson.toString())
+                payloadString = payload.toString()
+                conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", anonKey)
+                conn.setRequestProperty("Authorization", "Bearer $authToken")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "resolution=merge-duplicates")
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.doOutput = true
+                conn.outputStream.use { os ->
+                    os.write(payloadString.toByteArray(Charsets.UTF_8))
+                }
+                code = conn.responseCode
+                responseBody = try {
+                    if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() }
+                    else conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+                } catch (_: Exception) { "" }
+                Log.d("CloudSyncManager", "Pruned POST retry response code: $code, response: $responseBody")
+            }
+
             // Fallback to PATCH if 403 or 409
             if (code !in 200..299) {
-                url = URL("$supabaseUrl/rest/v1/user_sync_data?user_id=eq.$userId")
+                val encodedUserId = java.net.URLEncoder.encode(userId, "UTF-8")
+                url = URL("$supabaseUrl/rest/v1/user_sync_data?user_id=eq.$encodedUserId")
                 conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "PATCH"
                 conn.setRequestProperty("apikey", anonKey)
@@ -320,6 +423,22 @@ object CloudSyncManager {
                     os.write(payloadString.toByteArray(Charsets.UTF_8))
                 }
                 code = conn.responseCode
+                if (code == 401 && authToken != anonKey) {
+                    Log.w("CloudSyncManager", "Cloud sync PATCH received HTTP 401 with bearer token. Retrying with anonKey...")
+                    authToken = anonKey
+                    conn = url.openConnection() as HttpURLConnection
+                    conn.requestMethod = "PATCH"
+                    conn.setRequestProperty("apikey", anonKey)
+                    conn.setRequestProperty("Authorization", "Bearer $anonKey")
+                    conn.setRequestProperty("Content-Type", "application/json")
+                    conn.connectTimeout = 10000
+                    conn.readTimeout = 10000
+                    conn.doOutput = true
+                    conn.outputStream.use { os ->
+                        os.write(payloadString.toByteArray(Charsets.UTF_8))
+                    }
+                    code = conn.responseCode
+                }
                 val patchResponseBody = try {
                     if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() }
                     else conn.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
@@ -385,8 +504,23 @@ object CloudSyncManager {
 
                 SyncResult(isSuccess = true)
             } else {
-                Log.w("CloudSyncManager", "Cloud sync failed with HTTP $code. Response: $responseBody")
-                SyncResult(isSuccess = false, errorMessage = "Cloud sync failed (Server HTTP $code)")
+                val serverMsg = try {
+                    if (responseBody.isNotBlank()) {
+                        val errObj = JSONObject(responseBody)
+                        val m = errObj.optString("message", "")
+                        val d = errObj.optString("details", "")
+                        val h = errObj.optString("hint", "")
+                        listOf(m, d, h).filter { it.isNotBlank() && it != "null" }.joinToString(" - ")
+                    } else ""
+                } catch (_: Exception) { "" }
+
+                val fullErr = if (serverMsg.isNotBlank()) {
+                    "Cloud sync failed: $serverMsg (Server HTTP $code)"
+                } else {
+                    "Cloud sync failed (Server HTTP $code)"
+                }
+                Log.w("CloudSyncManager", "$fullErr. Raw response: $responseBody")
+                SyncResult(isSuccess = false, errorMessage = fullErr)
             }
         } catch (e: Exception) {
             Log.e("CloudSyncManager", "Failed to sync data to cloud with exception", e)
@@ -420,7 +554,8 @@ object CloudSyncManager {
                     "customBg", "customPrimary", "customHue", "customSecondary", "customSecondaryHue",
                     "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute",
                     "update_launch_count", "update_dismissed_version", "battery_opt_opens",
-                    "post_notif_rationale_shown", "pomo_completed_count", "pomodoro_study_minutes", "pomodoro_break_minutes"
+                    "post_notif_rationale_shown", "pomo_completed_count", "pomodoro_study_minutes", "pomodoro_break_minutes",
+                    "daily_goal_minutes", "active_planner_goal_target_mins", "last_celebrated_streak", "pomo_long_break_interval"
                 )
                 val stringPrefKeys = setOf(
                     "timerState", "pre_pause_state", "prePauseState", "timer_mode", "timerMode", "selected_theme_key",
@@ -538,9 +673,18 @@ object CloudSyncManager {
                         when (v) {
                             is Boolean -> editor.putBoolean(k, v)
                             is Number -> {
-                                if (k in intPrefKeys) editor.putInt(k, v.toInt())
-                                else if (k in stringPrefKeys) editor.putString(k, v.toString())
-                                else editor.putLong(k, v.toLong())
+                                val existing = sharedPrefs.all[k]
+                                if (existing is Int || k in intPrefKeys || k.startsWith("submissions_count_")) {
+                                    editor.putInt(k, v.toInt())
+                                } else if (existing is Float) {
+                                    editor.putFloat(k, v.toFloat())
+                                } else if (existing is Long) {
+                                    editor.putLong(k, v.toLong())
+                                } else if (k in stringPrefKeys) {
+                                    editor.putString(k, v.toString())
+                                } else {
+                                    editor.putLong(k, v.toLong())
+                                }
                             }
                             is String -> editor.putString(k, v)
                             is JSONArray -> editor.putString(k, v.toString())
@@ -831,7 +975,7 @@ object CloudSyncManager {
             // Save an emergency local safety snapshot before altering local storage
             BackupManager(context).createPreAuthSafetySnapshot("pre_restore")
 
-            val authToken = AuthManager.getAccessToken(context)?.takeIf { it.isNotBlank() } ?: anonKey
+            var authToken = resolveAuthToken(context, anonKey)
             val encodedUserId = java.net.URLEncoder.encode(userId, "UTF-8")
             val queryParams = "user_id=eq.$encodedUserId&order=updated_at.desc&select=*"
             var url = URL("$supabaseUrl/rest/v1/user_sync_data?$queryParams")
@@ -842,6 +986,16 @@ object CloudSyncManager {
             conn.setRequestProperty("Content-Type", "application/json")
 
             var code = conn.responseCode
+            if (code == 401 && authToken != anonKey) {
+                Log.w("CloudSyncManager", "Restore GET received HTTP 401 with bearer token. Retrying cleanly with anonKey...")
+                authToken = anonKey
+                conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", anonKey)
+                conn.setRequestProperty("Authorization", "Bearer $anonKey")
+                conn.setRequestProperty("Content-Type", "application/json")
+                code = conn.responseCode
+            }
             Log.d("CloudSyncManager", "Restore GET response code: $code")
 
             var responseStr = if (code in 200..299) conn.inputStream.bufferedReader().use { it.readText() } else ""
@@ -916,7 +1070,8 @@ object CloudSyncManager {
                         "customBg", "customPrimary", "customHue", "customSecondary", "customSecondaryHue",
                         "current_streak", "selected_days_filter", "reminder_hour", "reminder_minute",
                         "update_launch_count", "update_dismissed_version", "battery_opt_opens",
-                        "post_notif_rationale_shown", "pomo_completed_count", "pomodoro_study_minutes", "pomodoro_break_minutes"
+                        "post_notif_rationale_shown", "pomo_completed_count", "pomodoro_study_minutes", "pomodoro_break_minutes",
+                        "daily_goal_minutes", "active_planner_goal_target_mins", "last_celebrated_streak", "pomo_long_break_interval"
                     )
                     val stringPrefKeys = setOf(
                         "timerState", "pre_pause_state", "prePauseState", "timer_mode", "timerMode", "selected_theme_key",
@@ -936,8 +1091,13 @@ object CloudSyncManager {
                                 when (v) {
                                     is Boolean -> editor.putBoolean(k, v)
                                     is Number -> {
-                                        if (k in intPrefKeys) {
+                                        val existing = sharedPrefs.all[k]
+                                        if (existing is Int || k in intPrefKeys || k.startsWith("submissions_count_")) {
                                             editor.putInt(k, v.toInt())
+                                        } else if (existing is Float) {
+                                            editor.putFloat(k, v.toFloat())
+                                        } else if (existing is Long) {
+                                            editor.putLong(k, v.toLong())
                                         } else if (k in stringPrefKeys) {
                                             editor.putString(k, v.toString())
                                         } else {

@@ -13,15 +13,15 @@ import kotlin.math.min
 
 class TimerRingView(context: Context) : View(context) {
     private val density = resources.displayMetrics.density
-    private var strokePx = 13f * density
-    private var padPx = 14f * density
+    private var strokePx = 11.5f * density
+    private var padPx = 6f * density
 
     var isFullscreen = false
         set(value) {
             if (field != value) {
                 field = value
-                strokePx = if (value) 14f * density else 13f * density
-                padPx = if (value) 10f * density else 14f * density
+                strokePx = if (value) 12.5f * density else 11.5f * density
+                padPx = if (value) 5f * density else 6f * density
                 ringPaint.strokeWidth = strokePx
                 trackPaint.strokeWidth = strokePx
                 requestLayout()
@@ -54,7 +54,7 @@ class TimerRingView(context: Context) : View(context) {
         val w = MeasureSpec.getSize(widthMeasureSpec)
         val h = MeasureSpec.getSize(heightMeasureSpec)
         val base = if (h > 0) min(w, h) else w
-        val scale = if (isFullscreen) 0.96f else 0.91f
+        val scale = if (isFullscreen) 0.99f else 0.98f
         val size = (base * scale).toInt().coerceAtLeast(1)
         setMeasuredDimension(size, size)
     }

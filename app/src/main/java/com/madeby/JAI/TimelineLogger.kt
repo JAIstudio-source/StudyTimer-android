@@ -43,6 +43,18 @@ object TimelineLogger {
         }
     }
 
+    fun removeEntriesSince(context: Context, sinceMs: Long) {
+        if (sinceMs <= 0L) return
+        synchronized(this) {
+            val entries = load(context).toMutableList()
+            val beforeCount = entries.size
+            entries.removeAll { it.timestamp >= sinceMs }
+            if (entries.size != beforeCount) {
+                persist(context, entries)
+            }
+        }
+    }
+
     fun mergeAndDeduplicate(existing: List<TimelineEntry>, incoming: List<TimelineEntry>): List<TimelineEntry> {
         val idSet = HashSet<String>()
         val tsStateSet = HashSet<String>()
@@ -307,7 +319,12 @@ object TimelineLogger {
                         list.remove(atOldEnd)
                     }
                     list.removeAll { it.timestamp == newEndMs }
-                    val state = if (isBreak) "MANUAL_BREAK" else "MANUAL_FOCUS"
+                    val origState = oldEntry?.state
+                    val state = if (isBreak) {
+                        if (origState == "BREAK") "BREAK" else "MANUAL_BREAK"
+                    } else {
+                        if (origState == "STUDYING" || (!block.manual && origState != "MANUAL_FOCUS")) "STUDYING" else "MANUAL_FOCUS"
+                    }
                     val subId = block.subjectId ?: oldEntry?.subId
                     val subName = block.subjectName ?: oldEntry?.subName
                     val subColor = block.subjectColor ?: oldEntry?.subColor

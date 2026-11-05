@@ -26,10 +26,14 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
     private var hasPlayedPodiumEntrance = false
     private var currentEntries: List<LeaderboardEntry> = emptyList()
     private var pollJob: kotlinx.coroutines.Job? = null
-    private var lastManualRefreshTimestamp = 0L
-    private val MANUAL_REFRESH_COOLDOWN_MS = 10_000L
     private var skeletonShimmerAnimator: android.animation.ValueAnimator? = null
     private val shimmerViews = mutableListOf<View>()
+
+    companion object {
+        private var lastManualRefreshTimestamp = 0L
+        private const val MANUAL_REFRESH_COOLDOWN_MS = 20_000L
+        private var lastPresenceSyncTimestamp = 0L
+    }
 
     private fun formatStatusLabel(entry: LeaderboardEntry): String {
         if (!entry.isStudying) return "Resting"
@@ -92,7 +96,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         pollJob?.cancel()
         pollJob = CoroutineScope(Dispatchers.Main).launch {
             while (true) {
-                kotlinx.coroutines.delay(15_000L)
+                kotlinx.coroutines.delay(30_000L)
                 if (!root.isAttachedToWindow) break
                 if (!isLoading) {
                     loadLeaderboardData(root, forceRefresh = true, isSilent = true)
@@ -278,7 +282,16 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                         CoroutineScope(Dispatchers.IO).launch {
                             val todayKeyFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
                             val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(host, todayKeyFmt).toInt()
-                            LeaderboardManager.overrideLeaderboardDailyTotal(host, realSecs)
+                            val sp = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                            val isStudying = (sp.getString("timerState", "IDLE") == "STUDYING")
+                            val curSub = SubjectTagManager.getSelectedSubject(host)
+                            LeaderboardManager.overrideLeaderboardDailyTotal(
+                                host,
+                                realSecs,
+                                isStudying = isStudying,
+                                subject = curSub.name,
+                                color = curSub.colorHex
+                            )
                             withContext(Dispatchers.Main) {
                                 loadLeaderboardData(root, forceRefresh = true)
                             }
@@ -412,13 +425,25 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         }
 
         CoroutineScope(Dispatchers.Main).launch {
+            val nowMs = System.currentTimeMillis()
             val todayRealSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(
+                host,
+                java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            ).toInt()
+            if (todayRealSecs > 0 && AuthManager.isLoggedIn(host) && LeaderboardManager.isParticipating(host) && (nowMs - lastPresenceSyncTimestamp >= 20_000L)) {
+                lastPresenceSyncTimestamp = nowMs
+                val sp = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                val tState = sp.getString("timerState", "IDLE") ?: "IDLE"
+                val isStudying = (tState == "STUDYING")
+                val curSub = SubjectTagManager.getSelectedSubject(host)
+                LeaderboardManager.overrideLeaderboardDailyTotal(
                     host,
-                    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
-                ).toInt()
-                if (todayRealSecs > 0 && AuthManager.isLoggedIn(host) && LeaderboardManager.isParticipating(host)) {
-                    LeaderboardManager.overrideLeaderboardDailyTotal(host, todayRealSecs)
-                }
+                    todayRealSecs,
+                    isStudying = isStudying,
+                    subject = curSub.name,
+                    color = curSub.colorHex
+                )
+            }
                 val result = withContext(Dispatchers.IO) {
                 LeaderboardManager.fetchLeaderboard(host, selectedPeriod, forceRefresh)
             }
@@ -923,7 +948,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         })
         colTime.addView(TextView(host).apply {
-            text = LeaderboardManager.formatDuration(if (isCurrent) maxOf(entry.totalSeconds, LeaderboardManager.getRealTimerFocusSecondsForPeriod(host, selectedPeriod).toInt()) else entry.totalSeconds)
+            text = LeaderboardManager.formatDuration(entry.totalSeconds)
             textSize = 15f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(host.themeCoordinator.textColor)
@@ -1077,7 +1102,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         val isParticipating = LeaderboardManager.isParticipating(host)
         val myEntry = if (isParticipating) currentEntries.find { LeaderboardManager.isCurrentUser(it, host) } else null
         val periodRealSecs = LeaderboardManager.getRealTimerFocusSecondsForPeriod(host, selectedPeriod).toInt()
-        val myTime: Int = maxOf(myEntry?.totalSeconds ?: 0, periodRealSecs)
+        val myTime: Int = myEntry?.totalSeconds ?: periodRealSecs
         val myRankText: String = if (!isParticipating) "Unranked" else if (myEntry != null && myEntry.rank > 0) "#${myEntry.rank}" else "--"
 
         val targetTime: Int = entry.totalSeconds
@@ -1303,11 +1328,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
 
     private fun buildPodiumPedestal(entry: LeaderboardEntry?, rank: Int, accentColor: Int, minHeightPx: Int): View {
         val isCurrent = entry != null && LeaderboardManager.isCurrentUser(entry, host)
-        val displaySecs = if (isCurrent && entry != null) {
-            maxOf(entry.totalSeconds, LeaderboardManager.getRealTimerFocusSecondsForPeriod(host, selectedPeriod).toInt())
-        } else {
-            entry?.totalSeconds ?: 0
-        }
+        val displaySecs = entry?.totalSeconds ?: 0
 
         val pedestal = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -1662,11 +1683,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         row.addView(userCol)
 
         // Study Duration (Unified verified timer time)
-        val displaySecs = if (isCurrent) {
-            maxOf(entry.totalSeconds, LeaderboardManager.getRealTimerFocusSecondsForPeriod(host, selectedPeriod).toInt())
-        } else {
-            entry.totalSeconds
-        }
+        val displaySecs = entry.totalSeconds
         val durationView = TextView(host).apply {
             text = LeaderboardManager.formatDuration(displaySecs)
             textSize = 13f
@@ -1790,15 +1807,25 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             val effectiveName = ProfileManager.getEffectiveDisplayName(host)
 
             val periodRealSecs = LeaderboardManager.getRealTimerFocusSecondsForPeriod(host, selectedPeriod).toInt()
-            val finalDurationSecs = maxOf(myEntry?.totalSeconds ?: 0, periodRealSecs)
+            val finalDurationSecs = myEntry?.totalSeconds ?: if (periodRealSecs > 0) periodRealSecs else 0
+            val currentTimerState = host.currentTimerState
+            val isCurrentlyStudying = (currentTimerState == TimerState.STUDYING)
+            val curSub = SubjectTagManager.getSelectedSubject(host)
 
-            val effectiveEntry = myEntry ?: LeaderboardEntry(
+            val effectiveEntry = myEntry?.copy(
+                totalSeconds = finalDurationSecs,
+                isStudying = isCurrentlyStudying,
+                currentSubject = if (isCurrentlyStudying) curSub.name else myEntry.currentSubject,
+                subjectColor = if (isCurrentlyStudying) curSub.colorHex else myEntry.subjectColor
+            ) ?: LeaderboardEntry(
                 rank = 0,
                 userId = AuthManager.getUserId(host) ?: "",
                 userName = effectiveName,
                 avatarUrl = ProfileManager.getEffectiveAvatarUrl(host),
                 totalSeconds = finalDurationSecs,
-                isStudying = false,
+                isStudying = isCurrentlyStudying,
+                currentSubject = if (isCurrentlyStudying) curSub.name else "",
+                subjectColor = if (isCurrentlyStudying) curSub.colorHex else "#3b82f6",
                 examTarget = currentProfile.targetExam,
                 bio = currentProfile.bio
             )

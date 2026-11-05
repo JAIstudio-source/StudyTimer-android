@@ -181,12 +181,18 @@ class SubjectPieChartView(context: Context) : View(context) {
         val previousSelectedLabel = if (selectedSliceIndex in slices.indices) slices[selectedSliceIndex].label else null
         rawItems.clear()
         val totalSeconds = items.sumOf { it.value }
-        val filtered = if (items.size > 1 && totalSeconds >= 120.0) {
-            items.filter { it.value >= 60.0 }
+        val (majorItems, tinyItems) = if (items.size > 1 && totalSeconds >= 120.0) {
+            items.partition { it.value >= 60.0 }
         } else {
-            items.filter { it.value > 0 }
+            items to emptyList()
         }
-        rawItems.addAll(if (filtered.isNotEmpty()) filtered else items.filter { it.value > 0 })
+        if (tinyItems.isNotEmpty()) {
+            val tinySum = tinyItems.sumOf { it.value }
+            rawItems.addAll(majorItems)
+            rawItems.add(PieSlice("Other Focus", "⏱", tinySum, "#94A3B8", tinyItems.size, tinyItems))
+        } else {
+            rawItems.addAll(majorItems.filter { it.value > 0 })
+        }
         rebuildSlices()
         if (preserveSelection && previousSelectedLabel != null) {
             val newIdx = slices.indexOfFirst { it.label == previousSelectedLabel }

@@ -172,7 +172,7 @@ class CalendarTimeline(private val host: MainActivity) {
 
             // Styled Weekday Headers Row
             val wdBg = if (themeCoordinator.isDarkMode()) {
-                if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF141620.toInt()
+                0xFF141620.toInt()
             } else {
                 0xFFEDF0F5.toInt()
             }
@@ -398,7 +398,7 @@ class CalendarTimeline(private val host: MainActivity) {
                     GradientDrawable().apply {
                         cornerRadius = dp(10).toFloat()
                         val cellBg = if (isDark) {
-                            if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF14151C.toInt()
+                            0xFF14151C.toInt()
                         } else {
                             0xFFF8FAFC.toInt()
                         }
@@ -1066,7 +1066,7 @@ class CalendarTimeline(private val host: MainActivity) {
 
         val editBtn = Button(activity).apply {
             text = "Edit Details"
-            setTextColor(Color.WHITE)
+            setTextColor(themeCoordinator.textColor)
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 40), 12f)
@@ -1081,7 +1081,7 @@ class CalendarTimeline(private val host: MainActivity) {
 
         val deleteBtn = Button(activity).apply {
             text = "Delete"
-            setTextColor(Color.WHITE)
+            setTextColor(Color.parseColor("#EF4444"))
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = themeCoordinator.createGlassChip(host.tintedColor(Color.parseColor("#EF4444"), 45), 12f)
@@ -1195,7 +1195,7 @@ class CalendarTimeline(private val host: MainActivity) {
 
         val dateBtn = TextView(activity).apply {
             text = "Exam Date: ${sdf.format(cal.time)} ▾"
-            setTextColor(Color.WHITE)
+            setTextColor(themeCoordinator.textColor)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 45), 12f)

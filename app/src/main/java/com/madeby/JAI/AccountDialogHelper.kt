@@ -353,10 +353,11 @@ class AccountDialogHelper(private val activity: MainActivity) {
         }
         val restoreBtn = Button(activity).apply {
             text = if (isOlderThanLocal) "REVERT & RESTORE" else activity.getString(R.string.btn_restore)
-            setTextColor(themeCoordinator.bgColor)
+            val btnColor = if (isOlderThanLocal) Color.parseColor("#F59E0B") else themeCoordinator.primaryColor
+            setTextColor(ThemeCoordinator.getContrastColor(btnColor))
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = activity.rippleBackground(if (isOlderThanLocal) Color.parseColor("#F59E0B") else themeCoordinator.primaryColor)
+            background = activity.rippleBackground(btnColor)
             setOnClickListener {
                 dialog.dismiss()
                 performImportWithCloudConflictCheck(uri)

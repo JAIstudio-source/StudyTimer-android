@@ -15,6 +15,9 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -50,7 +53,7 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
             block.endMs,
             newStartMs,
             newEndMs,
-            if (isBreak) "BREAK" else "STUDYING",
+            if (isBreak) (if (block.manual) "MANUAL_BREAK" else "BREAK") else (if (block.manual) "MANUAL_FOCUS" else "STUDYING"),
             subId = block.subjectId,
             subName = block.subjectName,
             subColor = block.subjectColor
@@ -58,6 +61,21 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
         reconcileDayTotals(dateStr)
         if (!isBreak) {
             TimelineLogger.reconcileSubjectDurationsFromTimeline(host, dateStr)
+            val todayStr = host.dateKeyFmt.format(Date())
+            if (dateStr == todayStr && AuthManager.isLoggedIn(host) && LeaderboardManager.isParticipating(host)) {
+                val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(host, todayStr).toInt()
+                val curSub = SubjectTagManager.getSelectedSubject(host)
+                val isStudying = (host.currentTimerState == TimerState.STUDYING)
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    LeaderboardManager.overrideLeaderboardDailyTotal(
+                        host,
+                        totalSeconds = realSecs,
+                        isStudying = isStudying,
+                        subject = curSub.name,
+                        color = curSub.colorHex
+                    )
+                }
+            }
         }
         host.invalidateStatsCache()
         host.refreshStatsPanel()
@@ -361,10 +379,26 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
                 val curSubjSecs = curSubjMap[subId] ?: 0L
                 val deduct = Math.min(curSubjSecs, block.secs)
                 if (deduct > 0) SubjectTagManager.adjustSubjectStudyTime(host, subId, -deduct, dateStr)
+                val todayStr = host.dateKeyFmt.format(Date())
+                if (dateStr == todayStr && AuthManager.isLoggedIn(host) && LeaderboardManager.isParticipating(host)) {
+                    val realSecs = LeaderboardManager.getRealTimerFocusSecondsForDate(host, todayStr).toInt()
+                    val curSub = SubjectTagManager.getSelectedSubject(host)
+                    val isStudying = (host.currentTimerState == TimerState.STUDYING)
+                    kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                        LeaderboardManager.overrideLeaderboardDailyTotal(
+                            host,
+                            totalSeconds = realSecs,
+                            isStudying = isStudying,
+                            subject = curSub.name,
+                            color = curSub.colorHex
+                        )
+                    }
+                }
             }
             host.invalidateStatsCache()
             host.refreshStatsPanel()
             host.recalculateStreak()
+
             host.checkCelebration()
             StudyWidgetProvider.refresh(host)
             AppToast.show(host, "Interval deleted")
@@ -393,6 +427,19 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
             host.invalidateStatsCache()
             host.refreshStatsPanel()
             host.recalculateStreak()
+
+            val todayStr = host.dateKeyFmt.format(Date())
+            if (dateStr == todayStr && AuthManager.isLoggedIn(host) && LeaderboardManager.isParticipating(host)) {
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                    LeaderboardManager.overrideLeaderboardDailyTotal(
+                        host,
+                        totalSeconds = 0,
+                        isStudying = false,
+                        subject = "",
+                        color = "#3b82f6"
+                    )
+                }
+            }
             AppToast.show(host, "Day records deleted")
         }
     }

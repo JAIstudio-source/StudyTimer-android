@@ -736,9 +736,15 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
         }
         val todayFocusSecs = snap.todayFocus
+        val todayCal = Calendar.getInstance()
+        fun isGoalScheduledToday(goal: PlannerGoal): Boolean {
+            return PlannerHistoryManager.isGoalScheduledOnDay(goal.scheduledDays, todayCal)
+        }
 
+        // Only goals scheduled for today participate in active study duration allocation
+        val scheduledGoals = goalsList.filter { isGoalScheduledToday(it) }
         val progressMap = PlannerHistoryManager.calculateGoalProgress(
-            goalsList, todayFocusSecs, dailySubjectDurations, dailyGoalDurations, dailySubTopicDurations
+            scheduledGoals, todayFocusSecs, dailySubjectDurations, dailyGoalDurations, dailySubTopicDurations
         )
 
         fun reloadPlanner() {
@@ -774,11 +780,11 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
         }
 
-        // Auto-complete goals (subject-tagged or untagged) whose target time has reached
+        // Auto-complete goals (subject-tagged or untagged) whose target time has reached (only on actively scheduled days)
         var goalsUpdated = false
         val activeGoalsList = goalsList.map { goal ->
             val prog = progressMap[goal.id]
-            if (goal.targetMinutes > 0 && prog != null && prog.isAchieved && !goal.completed) {
+            if (isGoalScheduledToday(goal) && goal.targetMinutes > 0 && prog != null && prog.isAchieved && !goal.completed) {
                 goalsUpdated = true
                 goal.copy(completed = true, checkedAt = System.currentTimeMillis())
             } else {
@@ -791,6 +797,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         }
 
         fun isGoalDone(goal: SessionGoal): Boolean {
+            if (!isGoalScheduledToday(goal)) return false
             val prog = progressMap[goal.id]
             val actualMins = prog?.actualMinutes ?: 0
             return goal.completed || (goal.targetMinutes > 0 && actualMins >= goal.targetMinutes)
@@ -803,8 +810,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
         }
 
-        val completedCount = trulyAchievedIds.size
-        val totalCount = activeGoalsList.size
+        // Daily Target summary strictly reflects goals scheduled for today!
+        val scheduledTodayGoals = activeGoalsList.filter { isGoalScheduledToday(it) }
+        val completedCount = scheduledTodayGoals.count { trulyAchievedIds.contains(it.id) }
+        val totalCount = scheduledTodayGoals.size
         val progressPct = if (totalCount > 0) (completedCount * 100) / totalCount else 0
 
         // Upcoming Exam Countdown Capsule (Pinned at Top of Planner - Clean Typography, No Emojis/Pills)
@@ -982,9 +991,15 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         parent.addView(filterRow)
 
         val filteredGoals = when (currentPlannerFilter) {
-            PlannerFilter.ALL -> activeGoalsList
-            PlannerFilter.ACTIVE -> activeGoalsList.filter { !isGoalDone(it) }
-            PlannerFilter.DONE -> activeGoalsList.filter { isGoalDone(it) }
+            PlannerFilter.ALL -> activeGoalsList.filter { isGoalScheduledToday(it) }
+            PlannerFilter.ACTIVE -> activeGoalsList.filter { isGoalScheduledToday(it) && !isGoalDone(it) }
+            PlannerFilter.DONE -> activeGoalsList.filter { isGoalScheduledToday(it) && isGoalDone(it) }
+        }
+
+        val otherDaysGoalsToRender = if (currentPlannerFilter == PlannerFilter.ALL) {
+            activeGoalsList.filterNot { isGoalScheduledToday(it) }
+        } else {
+            emptyList()
         }
 
         val displayedGoals = when (currentPlannerSort) {
@@ -999,7 +1014,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             )
         }
 
-        if (displayedGoals.isEmpty()) {
+        if (displayedGoals.isEmpty() && otherDaysGoalsToRender.isEmpty()) {
             val emptyFilterView = LinearLayout(host).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
@@ -1055,6 +1070,35 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 clipToPadding = false
             }
 
+            if (displayedGoals.isEmpty()) {
+                val emptyFilterView = LinearLayout(host).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER
+                    background = themeCoordinator.createCardBackground()
+                    setPadding(dp(20), dp(24), dp(20), dp(24))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, 0, 0, dp(10))
+                    }
+                }
+                val emptyMsg = when {
+                    scheduledGoals.isEmpty() -> "No Goals Scheduled for Today"
+                    currentPlannerFilter == PlannerFilter.ACTIVE -> "All daily goals completed!"
+                    currentPlannerFilter == PlannerFilter.DONE -> "No completed goals yet."
+                    else -> "No active goals found."
+                }
+                emptyFilterView.addView(TextView(host).apply {
+                    text = emptyMsg
+                    setTextColor(themeCoordinator.textColor)
+                    textSize = 14f
+                    typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    gravity = Gravity.CENTER
+                })
+                goalsContainer.addView(emptyFilterView)
+            }
+
             class GoalDisplayInfo(
                 val isChecked: Boolean,
                 val checkSymbol: String,
@@ -1070,8 +1114,17 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val targetMins = goal.targetMinutes
                 val prog = progressMap[goal.id]
                 val actualMins = prog?.actualMinutes ?: 0
+                val isScheduledToday = isGoalScheduledToday(goal)
 
-                if (targetMins > 0) {
+                if (!isScheduledToday) {
+                    infoMap[goal.id] = GoalDisplayInfo(
+                        isChecked = false,
+                        checkSymbol = "—",
+                        progressText = if (targetMins > 0) "${targetMins}m" else "",
+                        chipColor = tintedColor(themeCoordinator.textColor, 70),
+                        isDeficit = false
+                    )
+                } else if (targetMins > 0) {
                     val isDone = actualMins >= targetMins
                     if (isDone) {
                         infoMap[goal.id] = GoalDisplayInfo(
@@ -1121,12 +1174,17 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
 
             fun updateFilterCounts() {
-                val curTotal = activeGoalsList.size
-                val curDone = activeGoalsList.count { isGoalDone(it) }
+                val curScheduledToday = activeGoalsList.filter { isGoalScheduledToday(it) }
+                val curTotal = curScheduledToday.size
+                val curDone = curScheduledToday.count { isGoalDone(it) }
                 val curActive = (curTotal - curDone).coerceAtLeast(0)
                 parent.findViewWithTag<TextView>("filter_tab_ALL")?.text = "All ($curTotal)"
                 parent.findViewWithTag<TextView>("filter_tab_ACTIVE")?.text = "Active ($curActive)"
                 parent.findViewWithTag<TextView>("filter_tab_DONE")?.text = "Done ($curDone)"
+                val curPct = if (curTotal > 0) (curDone * 100) / curTotal else 0
+                parent.findViewWithTag<TextView>("planner_completed_text")?.text = "$curDone of $curTotal completed"
+                parent.findViewWithTag<TextView>("planner_pct_text")?.text = "$curPct%"
+                parent.findViewWithTag<ProgressBar>("planner_progress_bar")?.progress = curPct
             }
 
             val toggleGoalAction: (SessionGoal) -> Unit = { goalToToggle ->
@@ -1181,8 +1239,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     .start()
             }
 
-            for (goal in displayedGoals) {
-                val info = infoMap[goal.id] ?: continue
+            val todayGoalsToRender = displayedGoals
+
+            fun renderGoalItem(goal: SessionGoal, isDayOff: Boolean, targetContainer: LinearLayout = goalsContainer) {
+                val info = infoMap[goal.id] ?: return
                 val isChecked = info.isChecked
                 val targetMins = goal.targetMinutes
                 val prog = progressMap[goal.id]
@@ -1195,6 +1255,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     clipToPadding = false
                     background = themeCoordinator.createCardBackground()
                     setPadding(dp(14), dp(10), dp(14), dp(10))
+                    if (isDayOff) {
+                        alpha = 0.52f
+                    }
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1214,13 +1277,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val checkBtn = TextView(host).apply {
                     tag = "goal_check_${goal.id}"
                     setTag(R.id.tag_goal_check_state, "${isChecked}_${info.chipColor}")
-                    text = info.checkSymbol
+                    text = if (isDayOff) "—" else info.checkSymbol
                     textSize = 12f
                     gravity = Gravity.CENTER
                     typeface = host.themeCoordinator.getAppTypeface(isBold = true)
-                    setTextColor(Color.WHITE)
-                    val checkColor = if (isChecked) info.chipColor else Color.TRANSPARENT
-                    val strokeColor = if (isChecked) info.chipColor else plannerPrimary
+                    setTextColor(if (isDayOff) tintedColor(themeCoordinator.textColor, 80) else Color.WHITE)
+                    val checkColor = if (isDayOff) Color.TRANSPARENT else if (isChecked) info.chipColor else Color.TRANSPARENT
+                    val strokeColor = if (isDayOff) tintedColor(themeCoordinator.textColor, 70) else if (isChecked) info.chipColor else plannerPrimary
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
                         setColor(checkColor)
@@ -1229,7 +1292,14 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
                 }
                 checkWrapper.addView(checkBtn)
-                checkWrapper.setOnClickListener { animateToggleGoalAction(checkBtn, goal) }
+                if (isDayOff) {
+                    checkWrapper.setOnClickListener {
+                        it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                        showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn, goal) }
+                    }
+                } else {
+                    checkWrapper.setOnClickListener { animateToggleGoalAction(checkBtn, goal) }
+                }
                 goalCard.addView(checkWrapper)
 
                 // 2. Middle: Content Column (Title, Note, Progression Bar, Scope, Timing)
@@ -1469,33 +1539,35 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 }
                 rightCol.addView(chipTv)
 
-                val playIcon = FrameLayout(host).apply {
-                    tag = "goal_action_${goal.id}"
-                    visibility = if (!isChecked) View.VISIBLE else View.GONE
-                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
-                        setMargins(dp(2), 0, dp(2), 0)
+                if (!isDayOff) {
+                    val playIcon = FrameLayout(host).apply {
+                        tag = "goal_action_${goal.id}"
+                        visibility = if (!isChecked) View.VISIBLE else View.GONE
+                        layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply {
+                            setMargins(dp(2), 0, dp(2), 0)
+                        }
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(tintedColor(plannerPrimary, if (themeCoordinator.isDarkMode()) 45 else 25))
+                        }
+                        isClickable = true
+                        isFocusable = true
+                        contentDescription = "Start ${goal.title}"
+                        val iv = ImageView(host).apply {
+                            setImageResource(R.drawable.ic_play_arrow)
+                            imageTintList = ColorStateList.valueOf(plannerPrimary)
+                            layoutParams = FrameLayout.LayoutParams(dp(13), dp(13), Gravity.CENTER)
+                        }
+                        addView(iv)
+                        setOnClickListener { v ->
+                            v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            host.startFocusForGoal(goal)
+                        }
                     }
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL
-                        setColor(tintedColor(plannerPrimary, if (themeCoordinator.isDarkMode()) 45 else 25))
-                    }
-                    isClickable = true
-                    isFocusable = true
-                    contentDescription = "Start ${goal.title}"
-                    val iv = ImageView(host).apply {
-                        setImageResource(R.drawable.ic_play_arrow)
-                        imageTintList = ColorStateList.valueOf(plannerPrimary)
-                        layoutParams = FrameLayout.LayoutParams(dp(13), dp(13), Gravity.CENTER)
-                    }
-                    addView(iv)
-                    setOnClickListener { v ->
-                        v.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                        host.startFocusForGoal(goal)
-                    }
+                    rightCol.addView(playIcon)
                 }
-                rightCol.addView(playIcon)
 
-                if (activeGoalsList.size > 1) {
+                if (!isDayOff && activeGoalsList.size > 1) {
                     val gripBtn = TextView(host).apply {
                         text = "\u283F"
                         textSize = 15f
@@ -1520,16 +1592,27 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
                 goalCard.addView(rightCol)
 
-                goalCard.setOnClickListener {
-                    showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn, goal) }
-                }
-                goalCard.setOnLongClickListener { v ->
-                    v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                    showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn, goal) }
-                    true
+                if (isDayOff) {
+                    goalCard.setOnClickListener {
+                        showGoalActionMenu(goal)
+                    }
+                    goalCard.setOnLongClickListener { v ->
+                        v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        showGoalActionMenu(goal)
+                        true
+                    }
+                } else {
+                    goalCard.setOnClickListener {
+                        showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn, goal) }
+                    }
+                    goalCard.setOnLongClickListener { v ->
+                        v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                        showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn, goal) }
+                        true
+                    }
                 }
 
-                if (activeGoalsList.size > 1) {
+                if (!isDayOff && activeGoalsList.size > 1) {
                     goalCard.setOnDragListener { v, event ->
                         when (event.action) {
                             android.view.DragEvent.ACTION_DRAG_STARTED -> true
@@ -1570,7 +1653,59 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     }
                 }
 
-                goalsContainer.addView(goalCard)
+                targetContainer.addView(goalCard)
+            }
+
+            todayGoalsToRender.forEach { renderGoalItem(it, isDayOff = false, targetContainer = goalsContainer) }
+
+            if (otherDaysGoalsToRender.isNotEmpty()) {
+                val otherDaysContainer = LinearLayout(host).apply {
+                    orientation = LinearLayout.VERTICAL
+                    visibility = View.GONE
+                }
+                otherDaysGoalsToRender.forEach { renderGoalItem(it, isDayOff = true, targetContainer = otherDaysContainer) }
+
+                var isExpanded = false
+                val otherDaysHeader = LinearLayout(host).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = themeCoordinator.createCardBackground(10f)
+                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(0, dp(10), 0, dp(6))
+                    }
+                    isClickable = true
+                    isFocusable = true
+                }
+                val otherDaysTitle = TextView(host).apply {
+                    text = "OTHER DAYS / DAY OFF (${otherDaysGoalsToRender.size})"
+                    textSize = 11f
+                    typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+                    letterSpacing = 0.08f
+                    setTextColor(tintedColor(themeCoordinator.textColor, 140))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val expandArrow = TextView(host).apply {
+                    text = "▾"
+                    textSize = 14f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(tintedColor(themeCoordinator.textColor, 140))
+                }
+                otherDaysHeader.addView(otherDaysTitle)
+                otherDaysHeader.addView(expandArrow)
+
+                otherDaysHeader.setOnClickListener {
+                    isExpanded = !isExpanded
+                    otherDaysContainer.visibility = if (isExpanded) View.VISIBLE else View.GONE
+                    expandArrow.text = if (isExpanded) "▴" else "▾"
+                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                }
+
+                goalsContainer.addView(otherDaysHeader)
+                goalsContainer.addView(otherDaysContainer)
             }
 
             parent.addView(goalsContainer)
@@ -1667,7 +1802,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             text = "▶ Start Focus Timer"
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(themeCoordinator.bgColor)
+            setTextColor(ThemeCoordinator.getContrastColor(plannerPrimary))
             background = rippleBackground(plannerPrimary)
             setPadding(dp(16), dp(12), dp(16), dp(12))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -2650,15 +2785,26 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             statsRow.addView(chip)
         }
 
+        val liveGoals = loadSessionGoalsFromJson(host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("session_goals_json", "[]") ?: "[]")
+        val scheduledDays = snapshot?.scheduledDays?.takeIf { it.isNotEmpty() }
+            ?: liveGoals.find { it.id == goalId }?.scheduledDays
+            ?: emptyList()
+        val cal = Calendar.getInstance().apply {
+            runCatching { time = sdf.parse(dateStr)!! }
+        }
+        val isScheduled = PlannerHistoryManager.isGoalScheduledOnDay(scheduledDays, cal)
+
         val isTargetMet = (targetMins > 0 && actualMins >= targetMins) || (targetMins == 0 && isCompleted)
         val isEarlyStopped = isCompleted && targetMins > 0 && actualMins < targetMins
         val statusText = when {
+            !isScheduled && !isAchieved && actualMins == 0 -> "— Not Scheduled"
             isAchieved || isTargetMet -> "✓ Completed"
             isEarlyStopped -> "✕ Stopped Early"
             actualMins > 0 -> "○ In Progress"
             else -> "○ Incomplete"
         }
         val statusColor = when {
+            !isScheduled && !isAchieved && actualMins == 0 -> if (isDark) 0x88FFFFFF.toInt() else 0xFF94A3B8.toInt()
             isAchieved || isTargetMet -> if (isDark) 0xFF22C55E.toInt() else 0xFF10B981.toInt()
             isEarlyStopped || (!isCompleted && actualMins == 0) -> if (isDark) 0xFFEF4444.toInt() else 0xFFDC2626.toInt()
             else -> plannerPrimary
@@ -3151,24 +3297,24 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         val isUnscheduled = (status == GoalHistoryStatus.NOT_SCHEDULED || (!isScheduled && !isAchieved))
 
                         text = when {
+                            isUnscheduled -> "—"
                             isAchieved -> "\u2713"
                             isMissed -> "\u2715"
                             isToday -> "\u25CB"
-                            isUnscheduled -> "—"
                             d.after(Date()) -> ""
                             else -> "—"
                         }
                         setTextColor(when {
+                            isUnscheduled -> if (isDark) tintedColor(themeCoordinator.textColor, 70) else 0xFF94A3B8.toInt()
                             isAchieved -> greenColor
                             isToday -> plannerPrimary
                             isMissed -> redColor
-                            isUnscheduled -> if (isDark) tintedColor(themeCoordinator.textColor, 70) else 0xFF94A3B8.toInt()
                             else -> if (isDark) tintedColor(themeCoordinator.textColor, 80) else 0xFF94A3B8.toInt()
                         })
-                        textSize = if (isToday) 16f else 14f
+                        textSize = if (isToday && !isUnscheduled) 16f else 14f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                         gravity = Gravity.CENTER
-                        if (isToday) {
+                        if (isToday && !isUnscheduled) {
                             background = GradientDrawable().apply {
                                 setColor(todayBgColor)
                                 cornerRadius = dp(6).toFloat()
@@ -4896,7 +5042,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         btnRow.addView(Button(host).apply {
             text = "Add"
             background = rippleBackground(themeCoordinator.primaryColor)
-            setTextColor(themeCoordinator.bgColor)
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             setOnClickListener {
                 val name = input.text.toString().trim()
                 if (name.isNotEmpty()) {
@@ -5283,13 +5429,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         var scheduleEnabled = false
         val selectedDays = mutableSetOf<Int>() // empty = Every Day
         val scheduleDaysList = listOf(
-            Calendar.MONDAY to "Mon",
-            Calendar.TUESDAY to "Tue",
-            Calendar.WEDNESDAY to "Wed",
-            Calendar.THURSDAY to "Thu",
-            Calendar.FRIDAY to "Fri",
-            Calendar.SATURDAY to "Sat",
-            Calendar.SUNDAY to "Sun"
+            1 to "Mon",
+            2 to "Tue",
+            3 to "Wed",
+            4 to "Thu",
+            5 to "Fri",
+            6 to "Sat",
+            7 to "Sun"
         )
 
         val scheduleCard = LinearLayout(host).apply {
@@ -5526,7 +5672,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         })
         btnRow.addView(Button(host).apply {
             text = "Save Goal"
-            setTextColor(themeCoordinator.bgColor)
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             background = rippleBackground(themeCoordinator.primaryColor)
             setOnClickListener {
                 val titleText = titleInput.text.toString().trim()
@@ -5912,13 +6058,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         var scheduleEnabled = hasInitialSchedule
         val selectedDays = goal.scheduledDays.toMutableSet()
         val scheduleDaysList = listOf(
-            Calendar.MONDAY to "Mon",
-            Calendar.TUESDAY to "Tue",
-            Calendar.WEDNESDAY to "Wed",
-            Calendar.THURSDAY to "Thu",
-            Calendar.FRIDAY to "Fri",
-            Calendar.SATURDAY to "Sat",
-            Calendar.SUNDAY to "Sun"
+            1 to "Mon",
+            2 to "Tue",
+            3 to "Wed",
+            4 to "Thu",
+            5 to "Fri",
+            6 to "Sat",
+            7 to "Sun"
         )
 
         val scheduleCard = LinearLayout(host).apply {
@@ -6180,7 +6326,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         })
         btnRow.addView(Button(host).apply {
             text = "Save Changes"
-            setTextColor(themeCoordinator.bgColor)
+            setTextColor(ThemeCoordinator.getContrastColor(plannerPrimary))
             background = rippleBackground(plannerPrimary)
             setOnClickListener {
                 val newTitle = titleInput.text.toString().trim()
@@ -6569,12 +6715,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setPadding(dp(14), dp(9), dp(14), dp(9))
             }
-            startAmBtn.setOnClickListener { startIsPm = false; startAmBtn.setTextColor(themeCoordinator.bgColor); startAmBtn.background = rippleBackground(themeCoordinator.primaryColor); startPmBtn.setTextColor(themeCoordinator.textColor); startPmBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f) }
-            startPmBtn.setOnClickListener { startIsPm = true; startPmBtn.setTextColor(themeCoordinator.bgColor); startPmBtn.background = rippleBackground(themeCoordinator.primaryColor); startAmBtn.setTextColor(themeCoordinator.textColor); startAmBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f) }
+            val activeToggleTextColor: Int = ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor)
+            startAmBtn.setOnClickListener { startIsPm = false; startAmBtn.setTextColor(activeToggleTextColor); startAmBtn.background = rippleBackground(themeCoordinator.primaryColor); startPmBtn.setTextColor(themeCoordinator.textColor); startPmBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f) }
+            startPmBtn.setOnClickListener { startIsPm = true; startPmBtn.setTextColor(activeToggleTextColor); startPmBtn.background = rippleBackground(themeCoordinator.primaryColor); startAmBtn.setTextColor(themeCoordinator.textColor); startAmBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f) }
 
-            startAmBtn.setTextColor(if (!startIsPm) themeCoordinator.bgColor else themeCoordinator.textColor)
+            startAmBtn.setTextColor(if (!startIsPm) activeToggleTextColor else themeCoordinator.textColor)
             startAmBtn.background = if (!startIsPm) rippleBackground(themeCoordinator.primaryColor) else themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f)
-            startPmBtn.setTextColor(if (startIsPm) themeCoordinator.bgColor else themeCoordinator.textColor)
+            startPmBtn.setTextColor(if (startIsPm) activeToggleTextColor else themeCoordinator.textColor)
             startPmBtn.background = if (startIsPm) rippleBackground(themeCoordinator.primaryColor) else themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f)
 
             val startToggleRow = LinearLayout(host).apply {
@@ -6612,12 +6759,12 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setPadding(dp(14), dp(9), dp(14), dp(9))
             }
-            endAmBtn.setOnClickListener { endIsPm = false; endAmBtn.setTextColor(themeCoordinator.bgColor); endAmBtn.background = rippleBackground(themeCoordinator.primaryColor); endPmBtn.setTextColor(themeCoordinator.textColor); endPmBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f) }
-            endPmBtn.setOnClickListener { endIsPm = true; endPmBtn.setTextColor(themeCoordinator.bgColor); endPmBtn.background = rippleBackground(themeCoordinator.primaryColor); endAmBtn.setTextColor(themeCoordinator.textColor); endAmBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f) }
+            endAmBtn.setOnClickListener { endIsPm = false; endAmBtn.setTextColor(activeToggleTextColor); endAmBtn.background = rippleBackground(themeCoordinator.primaryColor); endPmBtn.setTextColor(themeCoordinator.textColor); endPmBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f) }
+            endPmBtn.setOnClickListener { endIsPm = true; endPmBtn.setTextColor(activeToggleTextColor); endPmBtn.background = rippleBackground(themeCoordinator.primaryColor); endAmBtn.setTextColor(themeCoordinator.textColor); endAmBtn.background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f) }
 
-            endAmBtn.setTextColor(if (!endIsPm) themeCoordinator.bgColor else themeCoordinator.textColor)
+            endAmBtn.setTextColor(if (!endIsPm) activeToggleTextColor else themeCoordinator.textColor)
             endAmBtn.background = if (!endIsPm) rippleBackground(themeCoordinator.primaryColor) else themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f)
-            endPmBtn.setTextColor(if (endIsPm) themeCoordinator.bgColor else themeCoordinator.textColor)
+            endPmBtn.setTextColor(if (endIsPm) activeToggleTextColor else themeCoordinator.textColor)
             endPmBtn.background = if (endIsPm) rippleBackground(themeCoordinator.primaryColor) else themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 20), 10f)
 
             val endToggleRow = LinearLayout(host).apply {
@@ -6830,7 +6977,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             })
             btnRow.addView(Button(host).apply {
                 text = if (editItem != null) "Update Class" else "Save Class"
-                setTextColor(themeCoordinator.bgColor)
+                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
                 background = rippleBackground(themeCoordinator.primaryColor)
                 setOnClickListener {
                     val titleText = titleInput.text.toString().trim().take(100)

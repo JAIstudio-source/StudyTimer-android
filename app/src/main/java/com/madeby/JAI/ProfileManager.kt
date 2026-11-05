@@ -339,14 +339,25 @@ object ProfileManager {
 
     fun saveDraftForm(context: Context, name: String?, bio: String?, exam: String?) {
         getPrefs(context).edit().apply {
-            if (name != null) putString("__draft_profile_name__", name)
+            if (name != null) {
+                val trimmed = name.trim()
+                if (trimmed.isEmpty()) {
+                    remove("__draft_profile_name__")
+                } else {
+                    putString("__draft_profile_name__", trimmed)
+                }
+            }
             if (bio != null) putString("__draft_profile_bio__", bio)
             if (exam != null) putString("__draft_profile_exam__", exam)
             apply()
         }
     }
 
-    fun getDraftName(context: Context): String? = getPrefs(context).getString("__draft_profile_name__", null)
+    fun getDraftName(context: Context): String? {
+        val raw = getPrefs(context).getString("__draft_profile_name__", null)
+        return raw?.trim()?.takeIf { it.isNotBlank() }
+    }
+
     fun getDraftBio(context: Context): String? = getPrefs(context).getString("__draft_profile_bio__", null)
     fun getDraftExam(context: Context): String? = getPrefs(context).getString("__draft_profile_exam__", null)
 
@@ -357,5 +368,17 @@ object ProfileManager {
             remove("__draft_profile_exam__")
             apply()
         }
+    }
+
+    fun cancelPendingApproval(context: Context) {
+        val current = getProfile(context)
+        val updated = current.copy(
+            moderationStatus = ModerationStatus.APPROVED,
+            pendingDisplayName = null,
+            rejectionReason = null,
+            updatedAt = System.currentTimeMillis()
+        )
+        saveProfile(context, updated)
+        clearDraftForm(context)
     }
 }

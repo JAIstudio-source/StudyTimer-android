@@ -177,7 +177,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
         })
         btnRow.addView(Button(host).apply {
             text = "Save"
-            setTextColor(themeCoordinator.bgColor)
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             background = rippleBackground(themeCoordinator.primaryColor)
             setOnClickListener {
                 if (currentPinned.size < 2) {
@@ -256,7 +256,7 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
                     GradientDrawable().apply {
                         cornerRadius = dp(10).toFloat()
                         val cardBg = if (themeCoordinator.isDarkMode()) {
-                            if (themeCoordinator.activeBgMode == "ECLIPSE") 0xFF1E293B.toInt() else 0xFF181A24.toInt()
+                            0xFF181A24.toInt()
                         } else {
                             0xFFEDF0F5.toInt()
                         }
@@ -294,10 +294,13 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
 
         val closeBtn = Button(host).apply {
             text = "Close"
-            setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 20f)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(themeCoordinator.primaryColor)
+            }
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             setOnClickListener { dialog.dismiss() }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { setMargins(0, dp(14), 0, 0) }
         }
@@ -364,10 +367,13 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
 
         val closeBtn = Button(host).apply {
             text = "Close"
-            setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 20f)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(themeCoordinator.secondaryColor)
+            }
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.secondaryColor))
             setOnClickListener { dialog.dismiss() }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { setMargins(0, dp(12), 0, 0) }
         }
@@ -439,10 +445,13 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
 
         val closeBtn = Button(host).apply {
             text = "Close"
-            setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 20f)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(themeCoordinator.primaryColor)
+            }
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             setOnClickListener { dialog.dismiss() }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { setMargins(0, dp(6), 0, 0) }
         }
@@ -518,10 +527,13 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
 
         val closeBtn = Button(host).apply {
             text = "Close"
-            setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 20f)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(themeCoordinator.secondaryColor)
+            }
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.secondaryColor))
             setOnClickListener { dialog.dismiss() }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { setMargins(0, dp(8), 0, 0) }
         }
@@ -562,10 +574,13 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
 
         val closeBtn = Button(host).apply {
             text = "Close"
-            setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 20f)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(themeCoordinator.primaryColor)
+            }
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             setOnClickListener { dialog.dismiss() }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { setMargins(0, dp(8), 0, 0) }
         }
@@ -623,10 +638,13 @@ class WeeklySummaryShareHelper(private val host: MainActivity) {
 
         val closeBtn = Button(host).apply {
             text = "Close"
-            setTextColor(Color.WHITE)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            background = themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 20f)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(20).toFloat()
+                setColor(themeCoordinator.secondaryColor)
+            }
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.secondaryColor))
             setOnClickListener { dialog.dismiss() }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { setMargins(0, dp(8), 0, 0) }
         }

@@ -17,11 +17,11 @@ class StatsEngine(private val context: Context) {
 
         fun getDailyGoalSecs(prefs: android.content.SharedPreferences): Long {
             if (prefs.contains("daily_goal_secs")) {
-                val s = prefs.getLong("daily_goal_secs", 0L)
+                val s = prefs.safeLong("daily_goal_secs", 0L)
                 if (s > 0L) return s
             }
             if (prefs.contains("daily_goal_minutes")) {
-                val m = prefs.getInt("daily_goal_minutes", 0)
+                val m = prefs.safeInt("daily_goal_minutes", 0)
                 if (m > 0) {
                     return m * 60L
                 }
@@ -385,12 +385,12 @@ class StatsEngine(private val context: Context) {
             val finalFocusSum = if (storedFocus > 0L && trueFocusSum == 0L) {
                 storedFocus
             } else {
-                maxOf(storedFocus, trueFocusSum)
+                trueFocusSum
             }
             val finalBreakSum = if (storedBreak > 0L && trueBreakSum == 0L) {
                 storedBreak
             } else {
-                maxOf(storedBreak, trueBreakSum)
+                trueBreakSum
             }
 
             if (storedFocus != finalFocusSum || storedBreak != finalBreakSum) {
@@ -418,8 +418,8 @@ class StatsEngine(private val context: Context) {
         val breakKey = "${dateStr}_break_total"
         val storedFocus = prefs.safeLong(focusKey, 0L)
         val storedBreak = prefs.safeLong(breakKey, 0L)
-        val effectiveFocus = if (storedFocus > 0L && focusSum == 0L) storedFocus else maxOf(storedFocus, focusSum)
-        val effectiveBreak = if (storedBreak > 0L && breakSum == 0L) storedBreak else maxOf(storedBreak, breakSum)
+        val effectiveFocus = focusSum
+        val effectiveBreak = breakSum
         if (storedFocus != effectiveFocus || storedBreak != effectiveBreak) {
             val editor = prefs.edit()
             if (storedFocus != effectiveFocus) {
@@ -439,28 +439,10 @@ class StatsEngine(private val context: Context) {
         val breakSum = breaks.filter { !it.running }.sumOf { it.secs }
         val focusKey = "${dateStr}_focus_total"
         val breakKey = "${dateStr}_break_total"
-        val storedFocus = prefs.safeLong(focusKey, 0L)
-        val storedBreak = prefs.safeLong(breakKey, 0L)
-        val isTimerActive = (prefs.safeString("timerState", "IDLE") ?: "IDLE") != "IDLE" || prefs.safeLong("accumulatedStudy", 0L) > 0L
-        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-        val effectiveFocus = if (isTimerActive && dateStr == todayStr) {
-            maxOf(storedFocus, focusSum)
-        } else if (storedFocus > 0L && focusSum == 0L) {
-            storedFocus
-        } else {
-            maxOf(storedFocus, focusSum)
-        }
-        val effectiveBreak = if (isTimerActive && dateStr == todayStr) {
-            maxOf(storedBreak, breakSum)
-        } else if (storedBreak > 0L && breakSum == 0L) {
-            storedBreak
-        } else {
-            maxOf(storedBreak, breakSum)
-        }
 
         prefs.edit()
-            .putLong(focusKey, effectiveFocus)
-            .putLong(breakKey, effectiveBreak)
+            .putLong(focusKey, focusSum)
+            .putLong(breakKey, breakSum)
             .apply()
         TimelineLogger.reconcileSubjectDurationsFromTimeline(context, dateStr)
     }
@@ -687,12 +669,17 @@ class StatsEngine(private val context: Context) {
     }
 
     fun applyBlockEdit(dateStr: String, block: BlockInfo, isBreak: Boolean, newStartMs: Long, newEndMs: Long) {
-        val startState = if (isBreak) "MANUAL_BREAK" else "MANUAL_FOCUS"
+        val newSecs = (newEndMs - newStartMs) / 1000L
+        val startState = if (isBreak) {
+            if (block.manual) "MANUAL_BREAK" else "BREAK"
+        } else {
+            // If the session was an authentic timer session and is being trimmed or adjusted within real bounds, preserve STUDYING
+            if (!block.manual && newSecs <= block.secs) "STUDYING" else if (block.manual) "MANUAL_FOCUS" else "STUDYING"
+        }
         TimelineLogger.replaceBlock(context, block.startMs, block.endMs, newStartMs, newEndMs, startState)
 
         if (!isBreak) {
             val oldSecs = block.secs
-            val newSecs = (newEndMs - newStartMs) / 1000L
             val delta = newSecs - oldSecs
             val subId = block.subjectId ?: SubjectTagManager.getSelectedSubject(context).id
             if (delta != 0L) {

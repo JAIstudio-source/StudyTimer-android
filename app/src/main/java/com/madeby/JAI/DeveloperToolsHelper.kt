@@ -1,6 +1,13 @@
 package com.madeby.JAI
 
 import android.app.DatePickerDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlinx.coroutines.withContext
 import android.app.Dialog
 import android.app.TimePickerDialog
 import androidx.core.widget.NestedScrollView
@@ -1239,6 +1246,48 @@ object DeveloperToolsHelper {
             })
         }
 
+        // 8b. System Broadcasts & Outage Lab
+        addSection("SYSTEM BROADCASTS & OUTAGE ALERTS", "📢") {
+            addView(devButton("📢 Broadcast Announcement Composer", "Compose, preview, and dispatch announcements or server error notices", Color.parseColor("#EC4899")) {
+                dialog.dismiss()
+                showBroadcastComposerDialog(activity, themeCoordinator)
+            })
+
+            addView(devButton("🚨 Simulate Force Update (Hard Blocking)", "Tests the non-dismissable hard-blocking critical update dialog", Color.parseColor("#EF4444")) {
+                dialog.dismiss()
+                val mockForceUpdate = UpdateInfo(
+                    versionCode = 999,
+                    versionName = "4.0.0-CRITICAL",
+                    url = "https://get-studytimer.vercel.app/?download=true",
+                    apkUrl = "https://raw.githubusercontent.com/JAIstudio-source/StudyTimer/main/StudyTimer-release.apk",
+                    releaseNotes = "• Critical Security & Database Compatibility Update\n• Older versions are permanently deprecated\n• Update required to proceed",
+                    minSupportedVersionCode = 999,
+                    forceUpdate = true
+                )
+                activity.systemDialogHelper.showUpdateAvailableDialog(mockForceUpdate, isForce = true)
+            })
+
+            addView(devButton("⚡ Simulate Emergency Outage Notice", "Previews a high-priority system error banner on screen", Color.parseColor("#F59E0B")) {
+                dialog.dismiss()
+                val mockNotice = BroadcastMessage(
+                    id = "emergency_test_${System.currentTimeMillis()}",
+                    title = "Database Upgrades Underway",
+                    message = "We are currently running database index maintenance. Cloud sync will automatically resume in 20 minutes. All local sessions are completely safe.",
+                    type = "warning",
+                    canDismiss = true,
+                    actionUrl = "https://get-studytimer.vercel.app",
+                    actionText = "System Status"
+                )
+                activity.systemDialogHelper.showBroadcastDialog(mockNotice)
+            })
+
+            addView(devButton("🗑️ Deactivate Active Cloud Broadcast", "Deactivates any active broadcast stored in Supabase", Color.parseColor("#64748B")) {
+                deactivateBroadcastInSupabase(activity) { success, msg ->
+                    AppToast.show(activity, msg)
+                }
+            })
+        }
+
         addSection("UI & EDGE CASE PREVIEWS", "🎨") {
             addView(devButton("Force Toggle AMOLED / Light Mode", "Instantly swaps color matrix between pitch black and light") {
                 val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
@@ -1393,7 +1442,7 @@ object DeveloperToolsHelper {
             text = "⏰ Start: ${timeFmt.format(startCal.time)}"
             setTextColor(themeCoordinator.textColor)
             textSize = 12.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 12f)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -1405,7 +1454,7 @@ object DeveloperToolsHelper {
             text = "🏁 End: ${timeFmt.format(endCal.time)}"
             setTextColor(themeCoordinator.textColor)
             textSize = 12.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.textColor)
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 40), 12f)
             setPadding(dp(12), dp(10), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
@@ -2530,7 +2579,7 @@ object DeveloperToolsHelper {
             text = "Start: ${timeFmt.format(startCal.time)} ▾"
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(themeCoordinator.textColor)
             gravity = Gravity.CENTER
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 10f)
             setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -2542,7 +2591,7 @@ object DeveloperToolsHelper {
             text = "End: ${timeFmt.format(endCal.time)} ▾"
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(themeCoordinator.textColor)
             gravity = Gravity.CENTER
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 10f)
             setPadding(dp(8), dp(8), dp(8), dp(8))
@@ -3127,13 +3176,13 @@ object DeveloperToolsHelper {
                     sharedPrefs.edit().putLong("accumulatedStudy", 0L).apply()
                 }
 
-                if (isFocusCategory && syncLeaderboard) {
+                if (isFocusCategory && (actionMode == 1 || syncLeaderboard)) {
                     val subName = selectedSubject?.name ?: "General Focus"
                     val subColor = selectedSubject?.colorHex ?: "#3b82f6"
                     kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                         LeaderboardManager.overrideLeaderboardDailyTotal(
                             context = activity,
-                            totalSeconds = newTotalFocus.toInt(),
+                            totalSeconds = if (syncLeaderboard && actionMode != 1) newTotalFocus.toInt() else LeaderboardManager.getRealTimerFocusSecondsForDate(activity, targetDateStr).toInt(),
                             subject = subName,
                             color = subColor
                         )
@@ -3720,4 +3769,527 @@ object DeveloperToolsHelper {
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    
+
+
+    fun verifyAdminPasskey(input: String): Boolean {
+        if (!BuildConfig.DEBUG) return false
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) return false
+        return try {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(trimmed.toByteArray(Charsets.UTF_8))
+                .joinToString("") { "%02x".format(it) }
+            digest.equals(BuildConfig.DEV_ADMIN_HASH, ignoreCase = true)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun hasBroadcastPermission(context: Context): Boolean {
+        if (!BuildConfig.DEBUG) return false
+        val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("admin_broadcast_permission", false)
+    }
+
+    fun requestBroadcastPermission(
+        activity: MainActivity,
+        themeCoordinator: ThemeCoordinator,
+        onGranted: () -> Unit
+    ) {
+        if (!BuildConfig.DEBUG) return
+        if (activity.isDevModeUnlocked && hasBroadcastPermission(activity)) {
+            onGranted()
+            return
+        }
+        val dp = { v: Int -> (v * activity.resources.displayMetrics.density).toInt() }
+        val dialog = Dialog(activity)
+        dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+
+        val root = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(28f)
+            setPadding(dp(22), dp(22), dp(22), dp(20))
+        }
+
+        root.addView(TextView(activity).apply {
+            text = "🔐 ADMIN AUTHORIZATION"
+            setTextColor(themeCoordinator.primaryColor)
+            textSize = 12f
+            letterSpacing = 0.16f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        })
+
+        root.addView(TextView(activity).apply {
+            text = "Developer Broadcast Access"
+            setTextColor(themeCoordinator.textColor)
+            textSize = 19f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(0, dp(4), 0, 0)
+        })
+
+        root.addView(TextView(activity).apply {
+            text = "Enter master developer passkey to access Developer Tools and broadcast permissions."
+            setTextColor(themeCoordinator.textColor)
+            alpha = 0.65f
+            textSize = 13f
+            setPadding(0, dp(6), 0, dp(14))
+        })
+
+        val pinInput = EditText(activity).apply {
+            hint = "Enter Master Passkey"
+            setHintTextColor(tintedColor(themeCoordinator.textColor, 70))
+            setTextColor(themeCoordinator.textColor)
+            textSize = 15f
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(tintedColor(themeCoordinator.textColor, 20))
+                setStroke(dp(1), tintedColor(themeCoordinator.textColor, 40))
+            }
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        root.addView(pinInput)
+
+        val btnRow = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(18), 0, 0)
+        }
+        val cancelBtn = TextView(activity).apply {
+            text = "Cancel"
+            gravity = Gravity.CENTER
+            setTextColor(themeCoordinator.textColor)
+            textSize = 13f
+            letterSpacing = 0.12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = GradientDrawable().apply { cornerRadius = 22f; setColor(tintedColor(themeCoordinator.textColor, 18)) }
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                setMargins(0, 0, dp(10), 0)
+            }
+            setOnClickListener { dialog.dismiss() }
+        }
+        val authBtn = TextView(activity).apply {
+            text = "Authorize"
+            gravity = Gravity.CENTER
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
+            textSize = 13f
+            letterSpacing = 0.12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            background = activity.rippleBackground(themeCoordinator.primaryColor)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener {
+                val entered = pinInput.text.toString().trim()
+                if (verifyAdminPasskey(entered)) {
+                    val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                    prefs.edit().putBoolean("admin_broadcast_permission", true).putBoolean("dev_mode_unlocked", true).apply()
+                    activity.isDevModeUnlocked = true
+                    AppToast.show(activity, "Developer Broadcast Permission Granted")
+                    dialog.dismiss()
+                    onGranted()
+                } else {
+                    AppToast.show(activity, "Incorrect Passkey")
+                }
+            }
+        }
+        btnRow.addView(cancelBtn)
+        btnRow.addView(authBtn)
+        root.addView(btnRow)
+
+        dialog.setContentView(root)
+        dialog.window?.let {
+            it.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            it.setLayout((activity.resources.displayMetrics.widthPixels * 0.88).toInt(), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        dialog.show()
+    }
+
+    fun generateVersionJsonSnippet(broadcast: BroadcastMessage): String {
+        val bObj = JSONObject().apply {
+            put("id", broadcast.id)
+            put("title", broadcast.title)
+            put("message", broadcast.message)
+            put("type", broadcast.type)
+            if (!broadcast.canDismiss) put("canDismiss", false)
+            broadcast.actionUrl?.let { put("actionUrl", it) }
+            broadcast.actionText?.let { put("actionText", it) }
+        }
+        return "\"broadcast\": " + bObj.toString(2)
+    }
+
+    fun publishBroadcastToSupabase(
+        context: Context,
+        broadcast: BroadcastMessage,
+        onResult: (success: Boolean, message: String) -> Unit
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val supabaseUrl = BuildConfig.SUPABASE_URL
+            val anonKey = BuildConfig.SUPABASE_ANON_KEY
+            if (supabaseUrl.isBlank() || anonKey.isBlank()) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, "Supabase credentials missing.")
+                }
+                return@launch
+            }
+
+            try {
+                val url = URL("$supabaseUrl/rest/v1/app_broadcasts?on_conflict=id")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("apikey", anonKey)
+                conn.setRequestProperty("Authorization", "Bearer $anonKey")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.setRequestProperty("Prefer", "resolution=merge-duplicates")
+                conn.doOutput = true
+
+                val json = JSONObject().apply {
+                    put("id", broadcast.id)
+                    put("title", broadcast.title)
+                    put("message", broadcast.message)
+                    put("type", broadcast.type)
+                    put("can_dismiss", broadcast.canDismiss)
+                    put("action_url", broadcast.actionUrl ?: JSONObject.NULL)
+                    put("action_text", broadcast.actionText ?: JSONObject.NULL)
+                    put("min_version_code", broadcast.minVersionCode)
+                    put("max_version_code", broadcast.maxVersionCode)
+                    put("is_active", true)
+                }
+
+                conn.outputStream.use { os ->
+                    os.write(json.toString().toByteArray(Charsets.UTF_8))
+                }
+
+                val code = conn.responseCode
+                val respBody = try {
+                    val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                    BufferedReader(InputStreamReader(stream)).use { it.readText() }
+                } catch (_: Exception) { "" }
+
+                withContext(Dispatchers.Main) {
+                    if (code in 200..299) {
+                        onResult(true, "Broadcast published to Cloud! Users will see it on launch.")
+                    } else if (code == 404) {
+                        onResult(false, "Supabase table 'app_broadcasts' not created yet. Run the SQL schema or use version.json.")
+                    } else {
+                        onResult(false, "Supabase HTTP $code: $respBody")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    onResult(false, "Error: ${e.message}")
+                }
+            }
+        }
+    }
+
+    fun deactivateBroadcastInSupabase(
+        context: Context,
+        broadcastId: String? = null,
+        onResult: (success: Boolean, message: String) -> Unit
+    ) {
+        CoroutineScope(Dispatchers.IO).launch {
+            val supabaseUrl = BuildConfig.SUPABASE_URL
+            val anonKey = BuildConfig.SUPABASE_ANON_KEY
+            if (supabaseUrl.isBlank() || anonKey.isBlank()) {
+                withContext(Dispatchers.Main) { onResult(false, "Supabase credentials missing.") }
+                return@launch
+            }
+            try {
+                val query = if (broadcastId.isNullOrBlank()) "is_active=eq.true" else "id=eq.$broadcastId"
+                val url = URL("$supabaseUrl/rest/v1/app_broadcasts?$query")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "PATCH"
+                conn.setRequestProperty("apikey", anonKey)
+                conn.setRequestProperty("Authorization", "Bearer $anonKey")
+                conn.setRequestProperty("Content-Type", "application/json")
+                conn.doOutput = true
+
+                val json = JSONObject().apply {
+                    put("is_active", false)
+                }
+                conn.outputStream.use { it.write(json.toString().toByteArray(Charsets.UTF_8)) }
+
+                val code = conn.responseCode
+                withContext(Dispatchers.Main) {
+                    if (code in 200..299) {
+                        onResult(true, "Active broadcast cleared from cloud.")
+                    } else {
+                        onResult(false, "Supabase HTTP $code")
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { onResult(false, "Error: ${e.message}") }
+            }
+        }
+    }
+
+    fun showBroadcastComposerDialog(activity: MainActivity, themeCoordinator: ThemeCoordinator) {
+        requestBroadcastPermission(activity, themeCoordinator) {
+            val dp = { v: Int -> (v * activity.resources.displayMetrics.density).toInt() }
+            val dialog = BottomSheetDialog(activity, R.style.TransparentBottomSheetDialogTheme)
+            val displayMetrics = activity.resources.displayMetrics
+
+            val rootScroll = NestedScrollView(activity).apply {
+                isVerticalScrollBarEnabled = true
+                layoutParams = ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    (displayMetrics.heightPixels * 0.85f).toInt()
+                )
+            }
+            val root = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                background = themeCoordinator.createDialogBackground(30f)
+                setPadding(dp(22), dp(20), dp(22), dp(24))
+            }
+
+            val headerRow = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(14))
+            }
+            val titleCol = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            titleCol.addView(TextView(activity).apply {
+                text = "📢 Broadcast & Alerts Suite"
+                setTextColor(themeCoordinator.textColor)
+                textSize = 18f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            })
+            titleCol.addView(TextView(activity).apply {
+                text = "Dispatch announcements, maintenance alerts, or outage info"
+                setTextColor(themeCoordinator.primaryColor)
+                textSize = 12f
+                alpha = 0.85f
+                setPadding(0, dp(2), 0, 0)
+            })
+            headerRow.addView(titleCol)
+
+            val closeBtn = TextView(activity).apply {
+                text = "✕"
+                textSize = 16f
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.6f
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                setOnClickListener { dialog.dismiss() }
+            }
+            headerRow.addView(closeBtn)
+            root.addView(headerRow)
+
+            fun createFieldLabel(label: String): TextView = TextView(activity).apply {
+                text = label
+                setTextColor(themeCoordinator.textColor)
+                textSize = 11.5f
+                letterSpacing = 0.12f
+                alpha = 0.75f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setPadding(0, dp(10), 0, dp(4))
+            }
+
+            fun createInputField(hintText: String, lines: Int = 1): EditText = EditText(activity).apply {
+                hint = hintText
+                setHintTextColor(tintedColor(themeCoordinator.textColor, 70))
+                setTextColor(themeCoordinator.textColor)
+                textSize = 13.5f
+                if (lines > 1) {
+                    setLines(lines)
+                    gravity = Gravity.TOP or Gravity.START
+                }
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat()
+                    setColor(tintedColor(themeCoordinator.textColor, 18))
+                    setStroke(dp(1), tintedColor(themeCoordinator.textColor, 35))
+                }
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+
+            root.addView(createFieldLabel("NOTICE ID (UNIQUE IDENTIFIER)"))
+            val idInput = createInputField("e.g. notice_2026_11").apply {
+                setText("notice_${System.currentTimeMillis() / 1000}")
+            }
+            root.addView(idInput)
+
+            root.addView(createFieldLabel("SEVERITY / BANNER TYPE"))
+            var selectedType = "info"
+            val typeRow = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 0, 0, dp(4))
+            }
+            val typeButtons = ArrayList<TextView>()
+            val types = listOf(
+                "info" to ("📢 Info" to themeCoordinator.primaryColor),
+                "warning" to ("⚡ Warning" to 0xFFF59E0B.toInt()),
+                "error" to ("⚠️ Error" to 0xFFEF4444.toInt()),
+                "maintenance" to ("🛠️ Maint." to 0xFF8B5CF6.toInt())
+            )
+
+            fun updateTypeButtons() {
+                for (i in types.indices) {
+                    val (typeKey, pair) = types[i]
+                    val isSelected = selectedType == typeKey
+                    val btn = typeButtons[i]
+                    btn.background = if (isSelected) {
+                        activity.rippleBackground(pair.second)
+                    } else {
+                        GradientDrawable().apply {
+                            cornerRadius = dp(10).toFloat()
+                            setColor(tintedColor(themeCoordinator.textColor, 18))
+                        }
+                    }
+                    btn.setTextColor(if (isSelected) ThemeCoordinator.getContrastColor(pair.second) else themeCoordinator.textColor)
+                }
+            }
+
+            for ((typeKey, pair) in types) {
+                val btn = TextView(activity).apply {
+                    text = pair.first
+                    gravity = Gravity.CENTER
+                    textSize = 11.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        setMargins(dp(2), 0, dp(2), 0)
+                    }
+                    setOnClickListener {
+                        selectedType = typeKey
+                        updateTypeButtons()
+                    }
+                }
+                typeButtons.add(btn)
+                typeRow.addView(btn)
+            }
+            updateTypeButtons()
+            root.addView(typeRow)
+
+            root.addView(createFieldLabel("TITLE"))
+            val titleInput = createInputField("e.g. Scheduled Cloud Maintenance").apply {
+                setText("Important Service Announcement")
+            }
+            root.addView(titleInput)
+
+            root.addView(createFieldLabel("MESSAGE CONTENT"))
+            val msgInput = createInputField("Type broadcast message details for users...", lines = 3).apply {
+                setText("We are performing routine cloud database optimizations. Your local timer data remains completely safe.")
+            }
+            root.addView(msgInput)
+
+            var canDismiss = true
+            val dismissToggleRow = LinearLayout(activity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(10), 0, dp(6))
+            }
+            val dismissLabel = TextView(activity).apply {
+                text = "User can dismiss this notice: YES"
+                setTextColor(themeCoordinator.textColor)
+                textSize = 12.5f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val dismissToggleBtn = TextView(activity).apply {
+                text = "Toggle"
+                textSize = 11f
+                setTextColor(themeCoordinator.primaryColor)
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 10f)
+                setPadding(dp(12), dp(5), dp(12), dp(5))
+                setOnClickListener {
+                    canDismiss = !canDismiss
+                    dismissLabel.text = if (canDismiss) "User can dismiss this notice: YES" else "User can dismiss this notice: NO (Blocking Alert)"
+                    dismissLabel.setTextColor(if (canDismiss) themeCoordinator.textColor else 0xFFEF4444.toInt())
+                }
+            }
+            dismissToggleRow.addView(dismissLabel)
+            dismissToggleRow.addView(dismissToggleBtn)
+            root.addView(dismissToggleRow)
+
+            root.addView(createFieldLabel("ACTION LINK (OPTIONAL)"))
+            val urlInput = createInputField("https://get-studytimer.vercel.app")
+            root.addView(urlInput)
+
+            root.addView(createFieldLabel("ACTION BUTTON TEXT (OPTIONAL)"))
+            val urlTextInput = createInputField("e.g. Learn More / Status Page")
+            root.addView(urlTextInput)
+
+            val ctaContainer = LinearLayout(activity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, dp(18), 0, 0)
+            }
+
+            fun buildBroadcast(): BroadcastMessage {
+                return BroadcastMessage(
+                    id = idInput.text.toString().trim().ifBlank { "notice_${System.currentTimeMillis() / 1000}" },
+                    title = titleInput.text.toString().trim().ifBlank { "Notice" },
+                    message = msgInput.text.toString().trim(),
+                    type = selectedType,
+                    canDismiss = canDismiss,
+                    actionUrl = urlInput.text.toString().trim().ifBlank { null },
+                    actionText = urlTextInput.text.toString().trim().ifBlank { null }
+                )
+            }
+
+            fun createCtaButton(label: String, bgColor: Int, onClick: () -> Unit): View {
+                return Button(activity).apply {
+                    text = label
+                    textSize = 12.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(ThemeCoordinator.getContrastColor(bgColor))
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(bgColor)
+                    }
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply {
+                        setMargins(0, dp(4), 0, dp(4))
+                    }
+                    setOnClickListener { onClick() }
+                }
+            }
+
+            ctaContainer.addView(createCtaButton("👁️ Preview Broadcast on Screen", themeCoordinator.primaryColor) {
+                val b = buildBroadcast()
+                if (b.message.isBlank()) {
+                    AppToast.show(activity, "Please enter a message.")
+                    return@createCtaButton
+                }
+                activity.systemDialogHelper.showBroadcastDialog(b)
+            })
+
+            ctaContainer.addView(createCtaButton("📋 Copy JSON for version.json", 0xFF6366F1.toInt()) {
+                val b = buildBroadcast()
+                val snippet = generateVersionJsonSnippet(b)
+                val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("version.json broadcast", snippet))
+                AppToast.show(activity, "Copied broadcast JSON for version.json to clipboard!")
+            })
+
+            ctaContainer.addView(createCtaButton("☁️ Publish to Supabase Cloud", 0xFF10B981.toInt()) {
+                val b = buildBroadcast()
+                if (b.message.isBlank()) {
+                    AppToast.show(activity, "Please enter a message.")
+                    return@createCtaButton
+                }
+                AppToast.show(activity, "Publishing broadcast to cloud...")
+                publishBroadcastToSupabase(activity, b) { success, msg ->
+                    AppToast.show(activity, msg)
+                }
+            })
+
+            ctaContainer.addView(createCtaButton("🗑️ Clear / Deactivate Cloud Broadcast", 0xFFEF4444.toInt()) {
+                deactivateBroadcastInSupabase(activity) { success, msg ->
+                    AppToast.show(activity, msg)
+                }
+            })
+
+            root.addView(ctaContainer)
+            rootScroll.addView(root)
+            dialog.setContentView(rootScroll)
+            dialog.show()
+        }
+    }
 }
+

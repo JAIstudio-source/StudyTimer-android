@@ -10,7 +10,8 @@ data class AppFontItem(
     val category: String,
     val sampleText: String,
     val systemFamily: String,
-    val style: Int = Typeface.NORMAL
+    val style: Int = Typeface.NORMAL,
+    val fontResId: Int? = null
 )
 
 object FontStyleManager {
@@ -27,6 +28,7 @@ object FontStyleManager {
         AppFontItem("sans_thin", "Ultra Thin", "Modern Sans", "25:00 Focus Sharp", "sans-serif-thin"),
 
         // Monospace & Digital Clocks (Timer Favorites)
+        AppFontItem("tabular_clock", "Anti-Jitter Clock", "Timer Favorites", "00:25:00 Steady", "monospace", Typeface.NORMAL, R.font.timer_numbers_tabular),
         AppFontItem("mono_default", "Clean Monospace", "Monospace", "00:25:00", "monospace"),
         AppFontItem("mono_bold", "Bold Console Mono", "Monospace", "00:25:00", "monospace", Typeface.BOLD),
         AppFontItem("mono_sans", "Sans Mono", "Monospace", "00:25:00", "sans-serif-monospace"),
@@ -76,11 +78,32 @@ object FontStyleManager {
         return typefaceCache.getOrPut(cacheKey) {
             val item = FONT_OPTIONS.find { it.id == id } ?: FONT_OPTIONS[0]
             val finalStyle = overrideStyle ?: item.style
-            try {
-                Typeface.create(item.systemFamily, finalStyle)
-            } catch (_: Exception) {
-                Typeface.DEFAULT
+            if (item.fontResId != null) {
+                try {
+                    androidx.core.content.res.ResourcesCompat.getFont(context, item.fontResId)
+                        ?: Typeface.create(item.systemFamily, finalStyle)
+                } catch (_: Exception) {
+                    Typeface.DEFAULT
+                }
+            } else {
+                try {
+                    Typeface.create(item.systemFamily, finalStyle)
+                } catch (_: Exception) {
+                    Typeface.DEFAULT
+                }
             }
+        }
+    }
+
+    /**
+     * Dedicated tabular font with zero horizontal width jitter for countdown timers.
+     */
+    fun getTabularClockTypeface(context: Context): Typeface {
+        return try {
+            androidx.core.content.res.ResourcesCompat.getFont(context, R.font.timer_numbers_tabular)
+                ?: Typeface.MONOSPACE
+        } catch (_: Exception) {
+            Typeface.MONOSPACE
         }
     }
 

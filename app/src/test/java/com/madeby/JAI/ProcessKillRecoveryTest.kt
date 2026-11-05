@@ -144,13 +144,14 @@ class ProcessKillRecoveryTest {
         val tSecs = nowSecs - 7200L // 2 hours ago (guaranteed > MAX_ACCEPTABLE_GAP_SECS)
         val tMs = tSecs * 1000L
         val studyStartMs = tMs - 3600_000L // T - 3600s
+        val sessionDateStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(studyStartMs))
 
         val fakePrefs = FakeSharedPreferences(
             mutableMapOf(
                 "timerState" to "STUDYING",
                 "lastTimestamp" to tSecs,
-                "active_session_date_str" to todayStr,
-                "${todayStr}_focus_total" to 0L,
+                "active_session_date_str" to sessionDateStr,
+                "${sessionDateStr}_focus_total" to 0L,
                 "accumulatedStudy" to 0L
             )
         )
@@ -169,14 +170,15 @@ class ProcessKillRecoveryTest {
         assertEquals("IDLE", lastEntry?.state)
         assertEquals(tMs, lastEntry?.timestamp)
 
-        // Assert: (b) focusSum for today = 3600
-        val (sessions, _) = StatsEngine(context).dayBlocks(todayStr)
+        // Assert: (b) focusSum for session date = 3600
+        val (sessions, _) = StatsEngine(context).dayBlocks(sessionDateStr)
         val focusSum = sessions.filter { !it.running }.sumOf { it.secs }
         assertEquals(3600L, focusSum)
 
-        // Assert: (c) computeStatsSnapshot().todayFocus == 3600
+        // Assert: (c) computeStatsSnapshot() focus on session date == 3600
         val snapshot = StatsEngine(context).computeStatsSnapshot()
-        assertEquals(3600L, snapshot.todayFocus)
+        val sessionFocus = if (sessionDateStr == todayStr) snapshot.todayFocus else (snapshot.dayFocus[sessionDateStr] ?: 0L)
+        assertEquals(3600L, sessionFocus)
     }
 
     @Test

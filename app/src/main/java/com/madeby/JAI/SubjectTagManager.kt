@@ -510,6 +510,7 @@ object SubjectTagManager {
             arr.put(obj)
             prefs.edit().putString(KEY_CUSTOM_SUBJECTS_JSON, arr.toString()).apply()
             invalidateCache()
+            runCatching { BackupManager(context).markDataModified() }
         } catch (_: Exception) {}
         return newSub
     }
@@ -548,6 +549,7 @@ object SubjectTagManager {
 
         // 2. Update timeline entry logs so past historical logs immediately reflect the new name & color!
         TimelineLogger.updateSubjectMetadata(context, safeUpdated.id, safeUpdated.name, safeUpdated.colorHex)
+        runCatching { BackupManager(context).markDataModified() }
     }
 
     fun removeSubject(context: Context, subjectId: String) {
@@ -578,6 +580,7 @@ object SubjectTagManager {
         if (getSelectedSubject(context).id == subjectId || prefs.getString(KEY_SELECTED_SUBJECT, "general") == subjectId) {
             setSelectedSubject(context, "general")
         }
+        runCatching { BackupManager(context).markDataModified() }
     }
 
     private fun reassignSubjectDurationsToGeneral(context: Context, deletedSubjectId: String) {

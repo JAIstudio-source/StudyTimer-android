@@ -148,7 +148,7 @@ object AppAnalytics {
     }
 
     fun trackSessionEnd(context: Context, mode: String, durationSecs: Long, completed: Boolean) {
-        if (durationSecs <= 0L) return
+        if (durationSecs < 60L) return
         scope.launch {
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             val currentTotal = prefs.getLong(KEY_TOTAL_STUDY_SECS, 0L) + durationSecs

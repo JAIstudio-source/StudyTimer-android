@@ -21,4 +21,7 @@ StudyTimer-debug.apk
 /tools/testing_tool/reports/
 /tools/testing_tool/.venv/
 /tools/testing_tool/**/__pycache__/
+/comparision/
+*.xml_dump
+current_dump.xml
 
