@@ -79,7 +79,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
             container.addView(title)
 
             val subtitle = TextView(host).apply {
-                text = "Tap to select • Tap Chapters to manage topics"
+                text = "Tap to select • Long press for options"
                 textSize = 12f
                 setTextColor(themeCoordinator.textColor)
                 alpha = 0.5f
@@ -227,8 +227,8 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
 
             val addBtn = TextView(host).apply {
-                text = "+ Add"
-                textSize = 12f
+                text = "+ Add Subject"
+                textSize = 12.5f
                 gravity = Gravity.CENTER
                 isSingleLine = true
                 maxLines = 1
@@ -238,7 +238,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 setTextColor(themeCoordinator.primaryColor)
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 14f)
                 layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                    setMargins(0, 0, dp(3), 0)
+                    setMargins(0, 0, dp(4), 0)
                 }
                 isClickable = true
                 isFocusable = true
@@ -249,34 +249,9 @@ class SubjectDialogHelper(private val host: MainActivity) {
             }
             bottomActionRow.addView(addBtn)
 
-            val chaptersBtn = TextView(host).apply {
-                text = "Chapters"
-                textSize = 12f
-                gravity = Gravity.CENTER
-                isSingleLine = true
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                includeFontPadding = false
-                typeface = themeCoordinator.getAppTypeface(isBold = true)
-                setTextColor(themeCoordinator.accentColor)
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.accentColor, 35), 14f)
-                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1.15f).apply {
-                    setMargins(dp(3), 0, dp(3), 0)
-                }
-                isClickable = true
-                isFocusable = true
-                setOnClickListener {
-                    dialog.dismiss()
-                    showSubTopicPickerDialog(currentSelectedSubj) {
-                        host.navigateToPanel(AppPanel.FOCUS)
-                    }
-                }
-            }
-            bottomActionRow.addView(chaptersBtn)
-
             val manageBtn = TextView(host).apply {
                 text = "Manage"
-                textSize = 12f
+                textSize = 12.5f
                 gravity = Gravity.CENTER
                 isSingleLine = true
                 maxLines = 1
@@ -285,8 +260,8 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.textColor)
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 14f)
-                layoutParams = LinearLayout.LayoutParams(0, dp(48), 0.95f).apply {
-                    setMargins(dp(3), 0, 0, 0)
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
+                    setMargins(dp(4), 0, 0, 0)
                 }
                 isClickable = true
                 isFocusable = true
@@ -797,6 +772,47 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 topicsContainer.addView(allRow)
+
+                if (allTopics.isEmpty()) {
+                    val emptyCard = LinearLayout(host).apply {
+                        orientation = LinearLayout.VERTICAL
+                        gravity = Gravity.CENTER
+                        setPadding(dp(16), dp(22), dp(16), dp(22))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, dp(6), 0, dp(6))
+                        }
+                    }
+                    val emptyEmoji = TextView(host).apply {
+                        text = "📖"
+                        textSize = 26f
+                        gravity = Gravity.CENTER
+                        setPadding(0, 0, 0, dp(4))
+                    }
+                    emptyCard.addView(emptyEmoji)
+
+                    val emptyTitle = TextView(host).apply {
+                        text = "No chapters added yet"
+                        textSize = 13.5f
+                        typeface = themeCoordinator.getAppTypeface(isBold = true)
+                        setTextColor(themeCoordinator.textColor)
+                        gravity = Gravity.CENTER
+                    }
+                    emptyCard.addView(emptyTitle)
+
+                    val emptySub = TextView(host).apply {
+                        text = "Add chapters or topics below to track study sessions in detail."
+                        textSize = 11.5f
+                        typeface = themeCoordinator.getAppTypeface(isBold = false)
+                        setTextColor(tintedColor(themeCoordinator.textColor, 135))
+                        gravity = Gravity.CENTER
+                        setPadding(dp(12), dp(3), dp(12), 0)
+                    }
+                    emptyCard.addView(emptySub)
+                    topicsContainer.addView(emptyCard)
+                }
 
                 for (topic in allTopics) {
                     val isSelected = topic.equals(currentSubTopic, ignoreCase = true)

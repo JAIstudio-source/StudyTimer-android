@@ -540,14 +540,18 @@ class StatsPanelBuilder(private val host: MainActivity) {
         mainColumn.addView(header)
 
         // 2. Insights Subtab Segment Control (Overview vs Timeline & History)
+        val isWallpaperActive = WallpaperManager.getWallpaperType(host) != "NONE"
+        val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(host)
+        val isBrightSurface = (isWallpaperActive && isBrightUnder) || !themeCoordinator.isDarkMode()
+
         val tabSegment = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             val isDark = themeCoordinator.isDarkMode()
             background = GradientDrawable().apply {
                 cornerRadius = dp(20).toFloat()
-                setColor(if (isDark) 0x331E293B.toInt() else 0x22CBD5E1.toInt())
-                setStroke(dp(1), if (isDark) 0x44475569.toInt() else 0x40CBD5E1.toInt())
+                setColor(if (isBrightSurface) 0xF0FFFFFF.toInt() else if (isDark) 0x331E293B.toInt() else 0x22CBD5E1.toInt())
+                setStroke(dp(1), if (isBrightSurface) 0xFFCBD5E1.toInt() else if (isDark) 0x44475569.toInt() else 0x40CBD5E1.toInt())
             }
             setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = LinearLayout.LayoutParams(
@@ -565,8 +569,8 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 textSize = 12.5f
                 gravity = Gravity.CENTER
                 typeface = themeCoordinator.getAppTypeface(isBold = isSelected)
-                setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
-                alpha = if (isSelected) 1f else 0.7f
+                setTextColor(if (isSelected) Color.WHITE else if (isBrightSurface) 0xFF334155.toInt() else themeCoordinator.textColor)
+                alpha = if (isSelected) 1f else if (isBrightSurface) 0.95f else 0.7f
                 background = if (isSelected) {
                     GradientDrawable().apply {
                         cornerRadius = dp(16).toFloat()
