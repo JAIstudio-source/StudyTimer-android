@@ -8,5 +8,6 @@
     android:maxResizeHeight="300dp"
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/study_widget_layout"
+    android:previewImage="@drawable/widget_timer_preview"
     android:resizeMode="horizontal|vertical"
     android:widgetCategory="home_screen" />
