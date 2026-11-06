@@ -8,7 +8,6 @@ import android.view.Gravity
 import android.view.View
 import android.view.Window
 import android.view.WindowManager
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -96,12 +95,12 @@ object OemGuideBottomSheet {
         }
         root.addView(subtitleView)
 
-        // Scrollable content container for brand steps & visuals
+        // Scrollable content container for brand steps
         val scrollView = ScrollView(activity).apply {
             isVerticalScrollBarEnabled = false
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(340)
+                LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
         val contentContainer = LinearLayout(activity).apply {
@@ -169,40 +168,6 @@ object OemGuideBottomSheet {
                 }
                 stepRow.addView(stepLabel)
                 contentContainer.addView(stepRow)
-            }
-
-            // Visual guide images if available
-            if (selectedBrand.drawableResIds.isNotEmpty()) {
-                val visualHeader = TextView(activity).apply {
-                    text = "VISUAL GUIDE"
-                    setTextColor(primary)
-                    textSize = 11f
-                    letterSpacing = 0.1f
-                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setPadding(0, dp(14), 0, dp(8))
-                }
-                contentContainer.addView(visualHeader)
-
-                selectedBrand.drawableResIds.forEach { resId ->
-                    val imgCard = ImageView(activity).apply {
-                        adjustViewBounds = true
-                        scaleType = ImageView.ScaleType.FIT_CENTER
-                        setImageResource(resId)
-                        background = GradientDrawable().apply {
-                            cornerRadius = dp(14).toFloat()
-                            setColor(if (isDark) 0x1AFFFFFF.toInt() else 0x0A000000.toInt())
-                            setStroke(dp(1), if (isDark) 0x22FFFFFF.toInt() else 0x14000000.toInt())
-                        }
-                        clipToOutline = true
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            bottomMargin = dp(10)
-                        }
-                    }
-                    contentContainer.addView(imgCard)
-                }
             }
         }
 

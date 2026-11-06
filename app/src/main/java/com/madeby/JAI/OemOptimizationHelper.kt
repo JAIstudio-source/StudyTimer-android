@@ -19,8 +19,7 @@ object OemOptimizationHelper {
 
     enum class OemBrand(
         val brandName: String,
-        val steps: List<String>,
-        val drawableResIds: List<Int>
+        val steps: List<String>
     ) {
         XIAOMI(
             brandName = "Xiaomi / Redmi / POCO",
@@ -28,8 +27,7 @@ object OemOptimizationHelper {
                 "Enable 'Autostart' for StudyTimer so your timer can wake you up.",
                 "Set Battery Saver to 'No restrictions' to prevent sleep drops.",
                 "In Recent Apps, press and hold StudyTimer and tap the Lock icon."
-            ),
-            drawableResIds = listOf(R.drawable.guide_oem_xiaomi)
+            )
         ),
         SAMSUNG(
             brandName = "Samsung Galaxy",
@@ -37,8 +35,7 @@ object OemOptimizationHelper {
                 "Open App info → Battery and select 'Unrestricted'.",
                 "Ensure StudyTimer is not added to 'Deep sleeping apps'.",
                 "In Recent Apps, tap the StudyTimer icon and select 'Keep open'."
-            ),
-            drawableResIds = listOf(R.drawable.guide_oem_samsung)
+            )
         ),
         VIVO(
             brandName = "Vivo / iQOO",
@@ -46,10 +43,6 @@ object OemOptimizationHelper {
                 "Allow StudyTimer in 'Autostart' management.",
                 "Set Background power consumption to 'Allow high background power consumption'.",
                 "In Recent Apps, swipe down on the StudyTimer card to lock it in memory."
-            ),
-            drawableResIds = listOf(
-                R.drawable.guide_oem_vivo_autostart,
-                R.drawable.guide_oem_vivo_powersave
             )
         ),
         HUAWEI(
@@ -58,10 +51,6 @@ object OemOptimizationHelper {
                 "Open Battery → App Launch and set StudyTimer to 'Manage manually'.",
                 "Turn ON: Auto-launch, Secondary launch, and Run in background.",
                 "In Recent Apps, swipe down on StudyTimer to lock it."
-            ),
-            drawableResIds = listOf(
-                R.drawable.guide_oem_huawei_autostart,
-                R.drawable.guide_oem_huawei_powersave
             )
         ),
         ASUS(
@@ -69,10 +58,6 @@ object OemOptimizationHelper {
             steps = listOf(
                 "Open Mobile Manager → Auto-start Manager and enable StudyTimer.",
                 "Ensure Notification access and background execution are allowed."
-            ),
-            drawableResIds = listOf(
-                R.drawable.guide_oem_asus_autostart,
-                R.drawable.guide_oem_asus_notification
             )
         ),
         OTHER(
@@ -81,8 +66,7 @@ object OemOptimizationHelper {
                 "Go to App info → Battery and choose 'Unrestricted'.",
                 "Turn off 'Pause app activity if unused'.",
                 "Ensure battery saver does not stop background notifications."
-            ),
-            drawableResIds = emptyList()
+            )
         );
 
         fun openSettings(activity: Activity): Boolean {
