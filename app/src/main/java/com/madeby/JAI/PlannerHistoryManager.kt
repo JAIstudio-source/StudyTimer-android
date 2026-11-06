@@ -215,7 +215,7 @@ object PlannerHistoryManager {
             val isDurationAchieved = if (g.targetMinutes > 0) (actualMins >= g.targetMinutes) else g.completed
             val isCompleted = if (isScheduled) (g.completed || isDurationAchieved) else false
             // Off-day goals are not active goals and must never be recorded as achieved on off days
-            val isAchieved = if (isScheduled) (if (g.targetMinutes > 0) isDurationAchieved else isCompleted) else false
+            val isAchieved = if (isScheduled) (isDurationAchieved || g.completed) else false
 
             val obj = JSONObject().apply {
                 put("goalId", g.id)
@@ -359,11 +359,9 @@ object PlannerHistoryManager {
                 historyMap[dateKey] = GoalHistoryStatus.NOT_SCHEDULED
             } else {
                 if (match != null) {
-                    val isTargetMet = match.isAchieved || (match.targetMinutes > 0 && match.actualMinutes >= match.targetMinutes) || (match.targetMinutes == 0 && match.completed)
-                    val isEarlyDeficit = match.completed && match.targetMinutes > 0 && match.actualMinutes < match.targetMinutes
+                    val isTargetMet = match.isAchieved || (match.targetMinutes > 0 && match.actualMinutes >= match.targetMinutes) || match.completed
                     val status = when {
                         isTargetMet -> GoalHistoryStatus.ACHIEVED
-                        isEarlyDeficit -> GoalHistoryStatus.DEFICIT
                         dateKey == todayStr -> null // Today is active and in-progress: never mark as NOT_COMPLETED or missed
                         else -> GoalHistoryStatus.NOT_COMPLETED
                     }

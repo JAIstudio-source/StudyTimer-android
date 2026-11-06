@@ -24,4 +24,5 @@ StudyTimer-debug.apk
 /comparision/
 *.xml_dump
 current_dump.xml
+.vscode/
 

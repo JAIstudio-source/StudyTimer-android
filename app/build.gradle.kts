@@ -51,8 +51,8 @@ android {
         minSdk = 28
         targetSdk = 34
         
-        versionCode = 50
-        versionName = "3.3.6"
+        versionCode = 51
+        versionName = "3.3.7"
 
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -63,7 +63,6 @@ android {
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"${secret("GOOGLE_WEB_CLIENT_ID")}\"")
         buildConfigField("String", "TELEGRAM_BOT_TOKEN", "\"${secret("TELEGRAM_BOT_TOKEN")}\"")
         buildConfigField("String", "TELEGRAM_CHAT_ID", "\"${secret("TELEGRAM_CHAT_ID")}\"")
-        buildConfigField("boolean", "STUDY_ROOM_ENABLED", "false")
         val adminPasskey = secret("DEV_ADMIN_PASSKEY", "JAI#Admin7370")
         buildConfigField("String", "DEV_ADMIN_HASH", "\"${hashPasskey(adminPasskey)}\"")
     }

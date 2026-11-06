@@ -10,7 +10,7 @@ The app is built as a single `MainActivity` with programmatic view building (no 
 * `FocusPanelBuilder.kt` — Focus / Timer Screen
 * `PlannerPanelBuilder.kt` — Planner Screen (Tasks, Timeline, Schedule)
 * `StatsPanelBuilder.kt` — Insights / Analytics Screen
-* `CommunityPanelBuilder.kt` & `LeaderboardPanelBuilder.kt` — Social & Study Rooms
+* `CommunityPanelBuilder.kt` & `LeaderboardPanelBuilder.kt` — Social & Leaderboard
 * `SettingsPanelBuilder.kt` — Settings & Customization Hub
 
 ### Global Navigation (`StudyBottomNavBar.kt`)
@@ -99,7 +99,6 @@ The app is built as a single `MainActivity` with programmatic view building (no 
 ## 5. Screen 4: Community Screen (`CommunityPanelBuilder.kt` & `LeaderboardPanelBuilder.kt`)
 
 ### Feature Breakdown:
-* **Study Rooms:** Live virtual study rooms (`StudyRoomManager`) where users study together with realtime counters.
 * **Global & Friends Leaderboard:**
   * Daily, Weekly, Monthly rankings.
   * User profile cards with streak, badges, rank, and study hours.

@@ -939,8 +939,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         summaryCard.addView(progressBar)
         parent.addView(summaryCard)
 
-        // 2. Filter Tabs (Direction 3: Focus Deck Filter Segments - Minimum to None Pills, Clean Typography)
+        // 2. Filter Tabs (Dynamic high-contrast glass capsules adapting to light and dark wallpapers)
         val activeCount = (totalCount - completedCount).coerceAtLeast(0)
+        val isPomoWhite = host.isPomodoroPureWhiteActive()
+        val isWallpaperActive = WallpaperManager.getWallpaperType(host) != "NONE"
+        val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(host)
+        val isBrightSurface = isPomoWhite || (isWallpaperActive && isBrightUnderTimer) || !themeCoordinator.isDarkMode()
+
         val filterRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -959,14 +964,34 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 text = "$label ($count)"
                 textSize = 12f
                 typeface = host.themeCoordinator.getAppTypeface(isBold = isSelected)
-                setTextColor(if (isSelected) plannerPrimary else tintedColor(themeCoordinator.textColor, 130))
-                setPadding(dp(12), dp(6), dp(12), dp(6))
-                background = if (isSelected) {
-                    GradientDrawable().apply {
-                        cornerRadius = dp(8).toFloat()
-                        setColor(tintedColor(plannerPrimary, if (themeCoordinator.isDarkMode()) 36 else 24))
+                setPadding(dp(14), dp(7), dp(14), dp(7))
+
+                if (isBrightSurface) {
+                    // Bright wallpaper: Solid dark slate capsule matching the cards for maximum contrast
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        if (isSelected) {
+                            setColor(plannerPrimary)
+                        } else {
+                            setColor(0xFF1E293B.toInt())
+                            setStroke(dp(1), 0xFF334155.toInt())
+                        }
                     }
-                } else null
+                    setTextColor(if (isSelected) ThemeCoordinator.getContrastColor(plannerPrimary) else Color.WHITE)
+                } else {
+                    // Dark wallpaper: Translucent glass capsule with glowing selected state
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        if (isSelected) {
+                            setColor(plannerPrimary)
+                        } else {
+                            setColor(0x22FFFFFF.toInt())
+                            setStroke(dp(1), 0x33FFFFFF.toInt())
+                        }
+                    }
+                    setTextColor(if (isSelected) ThemeCoordinator.getContrastColor(plannerPrimary) else tintedColor(themeCoordinator.textColor, 220))
+                }
+
                 isClickable = true
                 isFocusable = true
                 setOnClickListener {
@@ -980,13 +1005,13 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(0, 0, dp(6), 0)
+                    setMargins(0, 0, dp(8), 0)
                 }
             }
         }
 
         filterRow.addView(createFilterTab(PlannerFilter.ALL, "All", totalCount))
-        filterRow.addView(createFilterTab(PlannerFilter.ACTIVE, "Active", activeCount))
+        filterRow.addView(createFilterTab(PlannerFilter.ACTIVE, "Remaining", activeCount))
         filterRow.addView(createFilterTab(PlannerFilter.DONE, "Done", completedCount))
         parent.addView(filterRow)
 
@@ -1179,7 +1204,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val curDone = curScheduledToday.count { isGoalDone(it) }
                 val curActive = (curTotal - curDone).coerceAtLeast(0)
                 parent.findViewWithTag<TextView>("filter_tab_ALL")?.text = "All ($curTotal)"
-                parent.findViewWithTag<TextView>("filter_tab_ACTIVE")?.text = "Active ($curActive)"
+                parent.findViewWithTag<TextView>("filter_tab_ACTIVE")?.text = "Remaining ($curActive)"
                 parent.findViewWithTag<TextView>("filter_tab_DONE")?.text = "Done ($curDone)"
                 val curPct = if (curTotal > 0) (curDone * 100) / curTotal else 0
                 parent.findViewWithTag<TextView>("planner_completed_text")?.text = "$curDone of $curTotal completed"

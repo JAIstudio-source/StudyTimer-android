@@ -147,7 +147,11 @@ class MainActivity : AppCompatActivity() {
 
     private var pauseBlinkAnimator: ValueAnimator? = null
 
-    internal var isDevModeUnlocked = false
+    internal var isDevModeUnlocked: Boolean
+        get() = BuildConfig.DEBUG || getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getBoolean("dev_mode_unlocked", false)
+        set(value) {
+            getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putBoolean("dev_mode_unlocked", value).apply()
+        }
     internal var isAdjustingFocusMode = true
     internal var showFocusHueBar = false
     internal var showBreakHueBar = false
@@ -528,6 +532,12 @@ class MainActivity : AppCompatActivity() {
     internal lateinit var studyBottomNavBar: StudyBottomNavBar
     internal lateinit var navHeader: View
     internal lateinit var statusBadgeContainer: LinearLayout
+    internal var landscapeHeaderView: View? = null
+    internal var landscapeDockView: View? = null
+    internal var landscapeSubjectPillView: View? = null
+    internal var landscapeGoalProgressBar: ProgressBar? = null
+    internal var landscapeTodayFocusText: TextView? = null
+    internal var landscapeGoalPercentText: TextView? = null
     internal var extraControlsContainer: LinearLayout? = null
     internal var gestureHintView: View? = null
     internal var statsFloatingIcon: ImageView? = null
@@ -1463,11 +1473,8 @@ class MainActivity : AppCompatActivity() {
         PlannerPanelBuilder(this).build(target)
     }
 
-    internal var defaultCommunitySegment: CommunityPanelBuilder.CommunitySegment? = null
     private fun buildCommunityPanel(target: android.view.ViewGroup = panelContainer) {
-        val initialSeg = defaultCommunitySegment ?: CommunityPanelBuilder.CommunitySegment.LEADERBOARD
-        defaultCommunitySegment = null
-        CommunityPanelBuilder(this).build(target, initialSeg)
+        CommunityPanelBuilder(this).build(target)
     }
 
     internal fun navigateToPanel(targetPanel: AppPanel) {
@@ -1519,9 +1526,7 @@ class MainActivity : AppCompatActivity() {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
 
-        if (targetPanel != AppPanel.SETTINGS) {
-            isDevModeUnlocked = false
-        } else if (currentPanel != AppPanel.SETTINGS) {
+        if (currentPanel != AppPanel.SETTINGS && targetPanel == AppPanel.SETTINGS) {
             settingsOriginPanel = currentPanel
             settingsOriginWasSubTab = (currentSettingsTab != AppSettingsTab.HUB)
         }
@@ -2392,8 +2397,8 @@ class MainActivity : AppCompatActivity() {
                     if (lastIsBreakingState != isBreaking) {
                         lastIsBreakingState = isBreaking
                         val isCountdown = (timerMode == "COUNTDOWN")
-                        val activeTextSize = if (isCountdown) 72f else 104f
-                        val subTextSize = if (isCountdown) 18f else 22f
+                        val activeTextSize = if (isCountdown) 46f else 72f
+                        val subTextSize = if (isCountdown) 15f else 17f
                         if (isBreaking) {
                             breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
                             breakTimerDisplay.textSize = activeTextSize
@@ -2401,7 +2406,7 @@ class MainActivity : AppCompatActivity() {
 
                             studyTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
                             studyTimerDisplay.textSize = subTextSize
-                            studyTimerDisplay.setPadding(0, 0, 0, 20)
+                            studyTimerDisplay.setPadding(0, 0, 0, 16)
                         } else {
                             studyTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
                             studyTimerDisplay.textSize = activeTextSize
@@ -2409,9 +2414,10 @@ class MainActivity : AppCompatActivity() {
 
                             breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
                             breakTimerDisplay.textSize = subTextSize
-                            breakTimerDisplay.setPadding(0, 0, 0, 20)
+                            breakTimerDisplay.setPadding(0, 0, 0, 16)
                         }
                     }
+                    updateLandscapeDockStats()
                 } else {
                     if (lastIsBreakingState != isBreaking || timerStateChanged) {
                         lastIsBreakingState = isBreaking
@@ -2470,9 +2476,7 @@ class MainActivity : AppCompatActivity() {
                     val prog = progressMap[goal.id]
                     val targetMins = goal.targetMinutes
                     val actualMins = prog?.actualMinutes ?: 0
-                    if (targetMins > 0) {
-                        if (actualMins >= targetMins) trulyAchievedIds.add(goal.id)
-                    } else if (goal.completed) {
+                    if (goal.completed || (targetMins > 0 && actualMins >= targetMins)) {
                         trulyAchievedIds.add(goal.id)
                     }
                 }
@@ -2498,7 +2502,7 @@ class MainActivity : AppCompatActivity() {
 
                 val activeCount = (totalCount - completedCount).coerceAtLeast(0)
                 (statsContainer.findViewWithTag<TextView>("filter_tab_ALL"))?.text = "All ($totalCount)"
-                (statsContainer.findViewWithTag<TextView>("filter_tab_ACTIVE"))?.text = "Active ($activeCount)"
+                (statsContainer.findViewWithTag<TextView>("filter_tab_ACTIVE"))?.text = "Remaining ($activeCount)"
                 (statsContainer.findViewWithTag<TextView>("filter_tab_DONE"))?.text = "Done ($completedCount)"
 
                 val greenColor = 0xFF22C55E.toInt()
@@ -2538,9 +2542,8 @@ class MainActivity : AppCompatActivity() {
                     } else if (targetMins > 0) {
                         val isDone = actualMins >= targetMins
                         val isChecked = isDone || goal.completed
-                        val isDeficit = !isDone && goal.completed
                         val progressText = "${actualMins}/${targetMins}m"
-                        val chipColor = if (isDone) greenColor else if (goal.completed) redColor else plannerPrimary
+                        val chipColor = if (isChecked) greenColor else plannerPrimary
 
                         (statsContainer.findViewWithTag<TextView>("goal_chip_${goal.id}"))?.let { chip ->
                             val shouldShow = if (isChecked) true else (targetMins > 0 || actualMins > 0)
@@ -2551,9 +2554,9 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         (statsContainer.findViewWithTag<TextView>("goal_check_${goal.id}"))?.let { checkBtn ->
-                            val symbol = if (isChecked) (if (isDeficit) "✕" else "✓") else ""
+                            val symbol = if (isChecked) "✓" else ""
                             checkBtn.text = symbol
-                            checkBtn.textSize = if (symbol == "✕") 12f else 13f
+                            checkBtn.textSize = 13f
                             val checkColor = if (isChecked) chipColor else Color.TRANSPARENT
                             val strokeColor = if (isChecked) chipColor else plannerPrimary
                             checkBtn.background = GradientDrawable().apply {
@@ -3117,6 +3120,11 @@ class MainActivity : AppCompatActivity() {
             studyBottomNavBar.setStudyingDim(currentTimerState == TimerState.STUDYING)
         }
 
+        // Mode switch pill is only visible when no timer is running
+        panelContainer.findViewWithTag<View>("mode_pill")?.let { pill ->
+            pill.visibility = if (currentTimerState == TimerState.IDLE) View.VISIBLE else View.GONE
+        }
+
         val selectedTf = FontStyleManager.getTypeface(this)
         val selectedBoldTf = FontStyleManager.getBoldTypeface(this)
         if (::studyTimerDisplay.isInitialized) {
@@ -3451,39 +3459,70 @@ class MainActivity : AppCompatActivity() {
     private fun applyLandscapeActionControlLayout() {
         if (!::controlActionContainer.isInitialized) return
         controlActionContainer.orientation = LinearLayout.HORIZONTAL
-        controlActionContainer.gravity = Gravity.CENTER_HORIZONTAL
-
-        // Remove extra buttons in landscape (e.g. mainBtn "Break") to keep desk clock clean & distraction-free
-        if (::mainBtn.isInitialized) {
-            mainBtn.visibility = View.GONE
-        }
-
-        val btnHeight = dp(46)
-        val btnWidth = dp(145)
-        val startBtnWidth = dp(175)
+        controlActionContainer.gravity = Gravity.CENTER
 
         val isIdle = (currentTimerState == TimerState.IDLE)
+        val btnHeight = dp(44)
+
         if (isIdle) {
             if (::pauseBtn.isInitialized && pauseBtn.visibility == View.VISIBLE) {
-                pauseBtn.layoutParams = LinearLayout.LayoutParams(startBtnWidth, btnHeight).apply {
-                    gravity = Gravity.CENTER
-                    setMargins(0, 0, 0, 0)
+                pauseBtn.layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    dp(48)
+                ).apply {
+                    setMargins(0, dp(4), 0, dp(4))
                 }
             }
-            if (::stopBtn.isInitialized) {
-                stopBtn.visibility = View.GONE
-            }
+            if (::mainBtn.isInitialized) mainBtn.visibility = View.GONE
+            if (::stopBtn.isInitialized) stopBtn.visibility = View.GONE
         } else {
+            val showPause = pauseButtonVisibility() == View.VISIBLE
+            val showBreak = ::mainBtn.isInitialized && mainBtn.visibility == View.VISIBLE
+            val showStop = ::stopBtn.isInitialized && stopBtn.visibility == View.VISIBLE
+
             if (::pauseBtn.isInitialized && pauseBtn.visibility == View.VISIBLE) {
-                pauseBtn.layoutParams = LinearLayout.LayoutParams(btnWidth, btnHeight).apply {
-                    setMargins(dp(8), 0, dp(8), 0)
+                pauseBtn.layoutParams = LinearLayout.LayoutParams(0, btnHeight, 1f).apply {
+                    setMargins(0, 0, if (showBreak || showStop) dp(4) else 0, 0)
+                }
+            }
+            if (::mainBtn.isInitialized && mainBtn.visibility == View.VISIBLE) {
+                mainBtn.layoutParams = LinearLayout.LayoutParams(0, btnHeight, 1f).apply {
+                    setMargins(dp(2), 0, if (showStop) dp(2) else 0, 0)
                 }
             }
             if (::stopBtn.isInitialized && stopBtn.visibility == View.VISIBLE) {
-                stopBtn.layoutParams = LinearLayout.LayoutParams(btnWidth, btnHeight).apply {
-                    setMargins(dp(8), 0, dp(8), 0)
+                stopBtn.layoutParams = LinearLayout.LayoutParams(0, btnHeight, 1.15f).apply {
+                    setMargins(dp(4), 0, 0, 0)
                 }
             }
+        }
+    }
+
+    internal fun updateLandscapeDockStats() {
+        val bar = landscapeGoalProgressBar ?: return
+        val todayTxt = landscapeTodayFocusText ?: return
+        val percentTxt = landscapeGoalPercentText ?: return
+
+        val todayStr = cachedTodayStr.ifEmpty { dateKeyFmt.format(Date()) }
+        val storedTodayFocus = appPrefs.getLong("${todayStr}_focus_total", 0L)
+        val runningSecs = if (currentTimerState != TimerState.IDLE) accumulatedStudy else 0L
+        val totalTodaySecs = storedTodayFocus + runningSecs
+        val goal = resolveGoalFor(todayStr)
+
+        val h = totalTodaySecs / 3600
+        val m = (totalTodaySecs % 3600) / 60
+        todayTxt.text = if (h > 0) "${h}h ${m}m" else "${m}m"
+
+        if (goal > 0L) {
+            val pct = ((totalTodaySecs.toFloat() / goal.toFloat()) * 100f).toInt().coerceIn(0, 100)
+            bar.progress = pct
+            val gh = goal / 3600
+            val gm = (goal % 3600) / 60
+            val goalStr = if (gh > 0) "${gh}h ${gm}m" else "${gm}m"
+            percentTxt.text = "$pct% of $goalStr"
+        } else {
+            bar.progress = 100
+            percentTxt.text = "No goal target"
         }
     }
 
@@ -3737,21 +3776,47 @@ class MainActivity : AppCompatActivity() {
         if (currentTimerState == TimerState.IDLE) {
             controlActionContainer.visibility = View.VISIBLE
             controlActionContainer.alpha = 1f
+            landscapeDockView?.visibility = View.VISIBLE
+            landscapeDockView?.alpha = 1f
+            landscapeHeaderView?.visibility = View.VISIBLE
+            landscapeHeaderView?.alpha = 1f
             isZenModeActive = false
             return
         }
 
+        val animDuration = 200L
         if (controlActionContainer.visibility == View.VISIBLE && controlActionContainer.alpha > 0.5f) {
             isZenModeActive = true
             controlActionContainer.animate()
                 .alpha(0f)
-                .setDuration(180L)
+                .setDuration(animDuration)
                 .withEndAction {
                     controlActionContainer.visibility = View.GONE
                 }
                 .start()
+            landscapeDockView?.animate()
+                ?.alpha(0f)
+                ?.setDuration(animDuration)
+                ?.withEndAction {
+                    landscapeDockView?.visibility = View.GONE
+                }
+                ?.start()
+            landscapeHeaderView?.animate()
+                ?.alpha(0f)
+                ?.setDuration(animDuration)
+                ?.withEndAction {
+                    landscapeHeaderView?.visibility = View.GONE
+                }
+                ?.start()
+            landscapeSubjectPillView?.animate()
+                ?.alpha(0f)
+                ?.setDuration(animDuration)
+                ?.withEndAction {
+                    landscapeSubjectPillView?.visibility = View.GONE
+                }
+                ?.start()
             if (::statusBadgeContainer.isInitialized) {
-                statusBadgeContainer.animate().alpha(0f).setDuration(180L).start()
+                statusBadgeContainer.animate().alpha(0f).setDuration(animDuration).start()
             }
         } else {
             isZenModeActive = false
@@ -3759,10 +3824,28 @@ class MainActivity : AppCompatActivity() {
             controlActionContainer.alpha = 0f
             controlActionContainer.animate()
                 .alpha(1f)
-                .setDuration(180L)
+                .setDuration(animDuration)
                 .start()
+            landscapeDockView?.visibility = View.VISIBLE
+            landscapeDockView?.alpha = 0f
+            landscapeDockView?.animate()
+                ?.alpha(1f)
+                ?.setDuration(animDuration)
+                ?.start()
+            landscapeHeaderView?.visibility = View.VISIBLE
+            landscapeHeaderView?.alpha = 0f
+            landscapeHeaderView?.animate()
+                ?.alpha(1f)
+                ?.setDuration(animDuration)
+                ?.start()
+            landscapeSubjectPillView?.visibility = View.VISIBLE
+            landscapeSubjectPillView?.alpha = 0f
+            landscapeSubjectPillView?.animate()
+                ?.alpha(1f)
+                ?.setDuration(animDuration)
+                ?.start()
             if (::statusBadgeContainer.isInitialized) {
-                statusBadgeContainer.animate().alpha(1f).setDuration(180L).start()
+                statusBadgeContainer.animate().alpha(1f).setDuration(animDuration).start()
             }
         }
     }
@@ -3787,6 +3870,12 @@ class MainActivity : AppCompatActivity() {
                 controlActionContainer.visibility = View.VISIBLE
                 controlActionContainer.alpha = 1f
             }
+            landscapeDockView?.visibility = View.VISIBLE
+            landscapeDockView?.alpha = 1f
+            landscapeHeaderView?.visibility = View.VISIBLE
+            landscapeHeaderView?.alpha = 1f
+            landscapeSubjectPillView?.visibility = View.VISIBLE
+            landscapeSubjectPillView?.alpha = 1f
             if (::statusBadgeContainer.isInitialized) {
                 statusBadgeContainer.visibility = View.VISIBLE
                 statusBadgeContainer.alpha = 1f
@@ -3914,6 +4003,9 @@ class MainActivity : AppCompatActivity() {
             val revealViews = mutableListOf<View>()
             if (::navHeader.isInitialized) { navHeader.visibility = View.VISIBLE; revealViews.add(navHeader) }
             modeOptionsPill?.let { it.visibility = View.VISIBLE; revealViews.add(it) }
+            panelContainer.findViewWithTag<View>("mode_pill")?.let { pill ->
+                pill.visibility = if (currentTimerState == TimerState.IDLE) View.VISIBLE else View.GONE
+            }
             if (::statusBadgeContainer.isInitialized) { statusBadgeContainer.visibility = View.VISIBLE; revealViews.add(statusBadgeContainer) }
             extraControlsContainer?.let { it.visibility = View.VISIBLE; revealViews.add(it) }
             val isHintDismissed = sharedPrefs.getBoolean("gesture_hint_dismissed", false)

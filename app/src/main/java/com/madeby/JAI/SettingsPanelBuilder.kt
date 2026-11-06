@@ -846,12 +846,10 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         devClickCount++
                         if (devClickCount >= 5) {
                             devClickCount = 0
-                            DeveloperToolsHelper.requestBroadcastPermission(host, themeCoordinator) {
-                                isDevModeUnlocked = true
-                                AppToast.show(context, "Developer Mode Activated")
-                                currentSettingsTab = AppSettingsTab.DEVELOPER
-                                navigateToPanel(AppPanel.SETTINGS)
-                            }
+                            isDevModeUnlocked = true
+                            AppToast.show(context, "Developer Mode Activated")
+                            currentSettingsTab = AppSettingsTab.DEVELOPER
+                            navigateToPanel(AppPanel.SETTINGS)
                         }
                     }
                 }
@@ -2583,6 +2581,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 fun commitGoal() {
                     GoalHistoryManager.setDailyGoal(host, currentGoalSecs)
+                    if (currentGoalSecs != StatsEngine.DEFAULT_DAILY_GOAL_SECS) {
+                        GoalHistoryManager.repairCorruptedHistoricalGoals(host, currentGoalSecs)
+                    }
                     host.invalidateStatsCache()
                     host.recalculateStreak()
                     StudyWidgetProvider.refresh(host)

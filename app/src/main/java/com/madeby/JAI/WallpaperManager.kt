@@ -496,8 +496,8 @@ object WallpaperManager {
         }
 
         val dimAlpha = getWallpaperDimAlpha(context)
-        // If dim scrim is >= 40%, the background is guaranteed dark enough for white text
-        if (dimAlpha >= 0.40f) {
+        // If dim scrim is >= 65%, the background is guaranteed dark enough for white text
+        if (dimAlpha >= 0.65f) {
             return false
         }
 
@@ -546,7 +546,7 @@ object WallpaperManager {
                 }
                 if (count > 0) {
                     val avgLum = totalLum / count
-                    return avgLum > 0.48
+                    return avgLum > 0.25
                 }
             } catch (_: Exception) {}
         }

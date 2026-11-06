@@ -558,15 +558,6 @@ class TimerService : Service() {
     private fun syncPresence(isStudying: Boolean, subName: String = "", subColor: String = "#3b82f6") {
         serviceScope.launch {
             LeaderboardManager.updateStudyPresence(this@TimerService, isStudying, subName, subColor)
-            if (BuildConfig.STUDY_ROOM_ENABLED) {
-                StudyRoomManager.updateRoomPresenceIfActive(
-                    this@TimerService,
-                    isStudying,
-                    subName,
-                    subColor,
-                    accumulatedStudy.toInt()
-                )
-            }
         }
     }
 
@@ -613,9 +604,6 @@ class TimerService : Service() {
                 LeaderboardManager.syncStudyProgress(this@TimerService, remainingSecs, isStudying = false, currentSub.name, currentSub.colorHex)
             } else {
                 LeaderboardManager.updateStudyPresence(this@TimerService, false)
-            }
-            if (BuildConfig.STUDY_ROOM_ENABLED) {
-                StudyRoomManager.updateRoomPresenceIfActive(this@TimerService, false, currentSub.name, currentSub.colorHex, if (isMicroSession) 0 else accumulatedStudy.toInt())
             }
         }
 
@@ -1141,15 +1129,6 @@ class TimerService : Service() {
                                     if (!synced) {
                                         // Retain unsynced chunk so next tick or reconnection retries it
                                         lastLeaderboardSyncStudySecs = (lastLeaderboardSyncStudySecs - chunk).coerceAtLeast(0L)
-                                    }
-                                    if (BuildConfig.STUDY_ROOM_ENABLED) {
-                                        StudyRoomManager.updateRoomPresenceIfActive(
-                                            this@TimerService,
-                                            isStudying = true,
-                                            subject = sub.name,
-                                            colorHex = sub.colorHex,
-                                            elapsedSeconds = accumulatedStudy.toInt()
-                                        )
                                     }
                                 }
                             }

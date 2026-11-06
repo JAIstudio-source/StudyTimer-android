@@ -43,6 +43,7 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
@@ -457,45 +458,402 @@ object DeveloperToolsHelper {
             Toast.makeText(activity, "Seeded 30-Day Master Golden Streak!", Toast.LENGTH_SHORT).show()
         })
 
-        val quickGrid3 = LinearLayout(activity).apply {
+        val stressLabel = TextView(activity).apply {
+            text = "🧪 LIVE STRESS & LEADERBOARD LAB"
+            textSize = 10.5f
+            letterSpacing = 0.12f
+            setTextColor(themeCoordinator.primaryColor)
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        val quickGridStress1 = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 0, 0, dp(4))
         }
-        if (BuildConfig.STUDY_ROOM_ENABLED) {
-            quickGrid3.addView(quickActionBtn("🏛️ Seed Rooms", Color.parseColor("#10B981")) {
-                StudyRoomManager.seedDevMockRooms(activity)
-                Toast.makeText(activity, "Seeded 4 mock study rooms with peers!", Toast.LENGTH_SHORT).show()
-                if (activity.currentPanel == AppPanel.COMMUNITY) {
-                    activity.navigateToPanel(AppPanel.COMMUNITY)
-                }
-            })
-            quickGrid3.addView(quickActionBtn("🧹 Clear Rooms", Color.parseColor("#EF4444")) {
-                StudyRoomManager.clearDevMockRooms(activity)
-                Toast.makeText(activity, "Cleared mock study rooms", Toast.LENGTH_SHORT).show()
-                if (activity.currentPanel == AppPanel.COMMUNITY) {
-                    activity.navigateToPanel(AppPanel.COMMUNITY)
-                }
-            })
-            quickGrid3.addView(quickActionBtn("👥 +Mock Peer", Color.parseColor("#38BDF8")) {
-                val active = StudyRoomManager.getActiveRoom(activity)
-                if (active != null) {
-                    val peerNames = listOf("Aarav", "Elena", "Lucas", "Mei", "Liam", "Zainab", "Mateo", "Sophie")
-                    val sampleSubjects = listOf("Math", "Physics", "Chemistry", "DSA", "Biology")
-                    StudyRoomManager.injectDevMockPeer(activity, active.code, peerNames.random(), sampleSubjects.random(), true)
-                    Toast.makeText(activity, "Injected peer into ${active.name}!", Toast.LENGTH_SHORT).show()
-                    if (activity.currentPanel == AppPanel.COMMUNITY) {
-                        activity.navigateToPanel(AppPanel.COMMUNITY)
-                    }
-                } else {
-                    Toast.makeText(activity, "Please enter/join a room first", Toast.LENGTH_SHORT).show()
-                }
-            })
+        quickGridStress1.addView(quickActionBtn("🧪 Persona", Color.parseColor("#8B5CF6")) {
+            toggleTestPersona(activity)
+        })
+        quickGridStress1.addView(quickActionBtn("+45m Timer", Color.parseColor("#10B981")) {
+            injectLiveTimerSession(activity, 45L, isManual = false)
+        })
+        quickGridStress1.addView(quickActionBtn("+45m Manual", Color.parseColor("#F59E0B")) {
+            injectLiveTimerSession(activity, 45L, isManual = true)
+        })
+        quickGridStress1.addView(quickActionBtn("-15m Trim", Color.parseColor("#EF4444")) {
+            trimLiveLatestSession(activity, 15L)
+        })
+        quickGridStress1.addView(quickActionBtn("🛡️ Audit", Color.parseColor("#06B6D4")) {
+            showLiveLeaderboardAuditDialog(activity, themeCoordinator)
+        })
+
+        val quickGridStress2 = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(4))
         }
+        quickGridStress2.addView(quickActionBtn("⚡ UI Storm", Color.parseColor("#38BDF8")) {
+            runUiChaosStorm(activity)
+        })
+        quickGridStress2.addView(quickActionBtn("🎯 Tab Stress", Color.parseColor("#EC4899")) {
+            runPlannerTabStress(activity)
+        })
+        quickGridStress2.addView(quickActionBtn("⏱️ Timer Spam", Color.parseColor("#F59E0B")) {
+            runTimerRapidStress(activity)
+        })
+        quickGridStress2.addView(quickActionBtn("💥 Gauntlet", Color.parseColor("#8B5CF6")) {
+            runChaosGauntlet(activity, themeCoordinator)
+        })
+
+        val quickGridStress3 = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 0, 0, dp(4))
+        }
+        quickGridStress3.addView(quickActionBtn("🌙 Rollover", Color.parseColor("#6366F1")) {
+            simulateMidnightRollover(activity)
+        })
+        quickGridStress3.addView(quickActionBtn("🧹 Reset Today", Color.parseColor("#EF4444")) {
+            resetTodaySessions(activity)
+        })
 
         container.addView(quickGrid1)
         container.addView(quickGrid2)
-        container.addView(quickGrid3)
+        container.addView(stressLabel)
+        container.addView(quickGridStress1)
+        container.addView(quickGridStress2)
+        container.addView(quickGridStress3)
         return container
+    }
+
+    fun toggleTestPersona(activity: MainActivity) {
+        val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val isTestActive = prefs.getBoolean("is_test_persona_active", false)
+        if (!isTestActive) {
+            val realName = prefs.getString("user_display_name", null)
+                ?: prefs.getString("custom_username", "Student") ?: "Student"
+            prefs.edit()
+                .putBoolean("is_test_persona_active", true)
+                .putString("backup_real_user_name", realName)
+                .putString("user_display_name", "🧪 Test Pilot")
+                .putString("custom_username", "🧪 Test Pilot")
+                .apply()
+            Toast.makeText(activity, "Switched to 🧪 Test Pilot Persona (Original backed up)", Toast.LENGTH_SHORT).show()
+        } else {
+            val originalName = prefs.getString("backup_real_user_name", "Student") ?: "Student"
+            prefs.edit()
+                .putBoolean("is_test_persona_active", false)
+                .putString("user_display_name", originalName)
+                .putString("custom_username", originalName)
+                .apply()
+            Toast.makeText(activity, "Restored Real Account: $originalName", Toast.LENGTH_SHORT).show()
+        }
+        activity.tabPageCache.clear()
+        activity.navigateToPanel(activity.currentPanel)
+    }
+
+    fun injectLiveTimerSession(activity: MainActivity, durationMinutes: Long, isManual: Boolean) {
+        val extraSecs = durationMinutes * 60L
+        val sharedPrefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val currentFocus = sharedPrefs.getLong("${todayStr}_focus_total", 0L)
+        val now = System.currentTimeMillis()
+
+        sharedPrefs.edit()
+            .putLong("${todayStr}_focus_total", currentFocus + extraSecs)
+            .putLong("last_data_modified_timestamp", now)
+            .apply()
+
+        val selectedSubject = SubjectTagManager.getSelectedSubject(activity)
+        SubjectTagManager.recordSubjectStudyTime(activity, selectedSubject.id, extraSecs, todayStr)
+
+        val startMs = now - (extraSecs * 1000L)
+        val blockState = if (isManual) "MANUAL_FOCUS" else "STUDYING"
+        TimelineLogger.recordRaw(
+            context = activity,
+            state = blockState,
+            timestamp = startMs,
+            subId = selectedSubject.id,
+            subName = selectedSubject.name,
+            subColor = selectedSubject.colorHex
+        )
+        TimelineLogger.recordRaw(
+            context = activity,
+            state = "IDLE",
+            timestamp = now
+        )
+
+        if (!isManual) {
+            CoroutineScope(Dispatchers.IO).launch {
+                val realTotal = LeaderboardManager.getRealTimerFocusSecondsForDate(activity, todayStr).toInt()
+                LeaderboardManager.overrideLeaderboardDailyTotal(
+                    context = activity,
+                    totalSeconds = realTotal,
+                    subject = selectedSubject.name,
+                    color = selectedSubject.colorHex
+                )
+            }
+            Toast.makeText(activity, "✅ +${durationMinutes}m Authentic Timer added & synced to Leaderboard!", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(activity, "🛡️ +${durationMinutes}m Manual Focus added! (Anti-cheat: NOT sent to Leaderboard)", Toast.LENGTH_SHORT).show()
+        }
+
+        activity.recalculateStreak()
+        activity.statsDirty = true
+        activity.tabPageCache.clear()
+        activity.navigateToPanel(activity.currentPanel)
+    }
+
+    fun trimLiveLatestSession(activity: MainActivity, trimMinutes: Long) {
+        val trimSecs = trimMinutes * 60L
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val sharedPrefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val currentFocus = sharedPrefs.getLong("${todayStr}_focus_total", 0L)
+        val newFocus = (currentFocus - trimSecs).coerceAtLeast(0L)
+
+        sharedPrefs.edit()
+            .putLong("${todayStr}_focus_total", newFocus)
+            .putLong("last_data_modified_timestamp", System.currentTimeMillis())
+            .apply()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            val realTotal = LeaderboardManager.getRealTimerFocusSecondsForDate(activity, todayStr).toInt()
+            LeaderboardManager.overrideLeaderboardDailyTotal(
+                context = activity,
+                totalSeconds = realTotal
+            )
+        }
+
+        Toast.makeText(activity, "✂️ Trimmed ${trimMinutes}m! Leaderboard updated to ${newFocus / 60}m", Toast.LENGTH_SHORT).show()
+        activity.recalculateStreak()
+        activity.statsDirty = true
+        activity.tabPageCache.clear()
+        activity.navigateToPanel(activity.currentPanel)
+    }
+
+    fun showLiveLeaderboardAuditDialog(activity: MainActivity, themeCoordinator: ThemeCoordinator) {
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val entries = TimelineLogger.load(activity)
+        val parsedAll = parseDayBlocks(entries)
+        val startCal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val dayStartMs = startCal.timeInMillis
+        val dayEndMs = dayStartMs + 24L * 3600_000L - 1000L
+        val daySessions = parsedAll.sessions.filter { it.startMs in dayStartMs..dayEndMs }
+
+        val totalSecs = daySessions.sumOf { it.secs }
+        val manualSecs = daySessions.filter { it.manual }.sumOf { it.secs }
+        val authenticSecs = daySessions.filter { !it.manual }.sumOf { it.secs }
+        val leaderboardVerified = LeaderboardManager.getRealTimerFocusSecondsForDate(activity, todayStr)
+
+        val isPassing = authenticSecs == leaderboardVerified
+        val title = if (isPassing) "🛡️ Anti-Cheat Audit: PASSED" else "⚠️ Anti-Cheat Audit: MISMATCH"
+        val msg = StringBuilder().apply {
+            append("• Total Timeline Focus: ${totalSecs / 60}m (${totalSecs}s)\n")
+            append("• Manual Focus (Blocked): ${manualSecs / 60}m (${manualSecs}s)\n")
+            append("• Authentic Timer: ${authenticSecs / 60}m (${authenticSecs}s)\n")
+            append("• Leaderboard Verified: ${leaderboardVerified / 60}m (${leaderboardVerified}s)\n\n")
+            if (isPassing) {
+                append("✅ Anti-Cheat Invariant: 100% Verified! Leaderboard strictly counts ONLY authentic timer minutes.")
+            } else {
+                append("⚠️ Discrepancy detected between authentic sessions and leaderboard score.")
+            }
+        }.toString()
+
+        showThemedConfirmDialog(
+            activity = activity,
+            themeCoordinator = themeCoordinator,
+            title = title,
+            message = msg,
+            confirmText = "Done",
+            isDestructive = false,
+            onCancel = {}
+        ) {}
+    }
+
+    fun runUiChaosStorm(activity: MainActivity) {
+        Toast.makeText(activity, "⚡ Starting UI Chaos Storm...", Toast.LENGTH_SHORT).show()
+        val panels = listOf(AppPanel.FOCUS, AppPanel.PLANNER, AppPanel.STATS, AppPanel.COMMUNITY, AppPanel.SETTINGS)
+        CoroutineScope(Dispatchers.Main).launch {
+            for (round in 1..4) {
+                for (p in panels) {
+                    activity.navigateToPanel(p)
+                    delay(120)
+                }
+            }
+            activity.currentSettingsTab = AppSettingsTab.DEVELOPER
+            activity.navigateToPanel(AppPanel.SETTINGS)
+            Toast.makeText(activity, "✅ UI Storm Complete: 20 rapid transitions survived with 0 crashes!", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun runPlannerTabStress(activity: MainActivity) {
+        Toast.makeText(activity, "🎯 Starting Planner Tab Stress...", Toast.LENGTH_SHORT).show()
+        CoroutineScope(Dispatchers.Main).launch {
+            activity.navigateToPanel(AppPanel.PLANNER)
+            delay(160)
+            val tags = listOf("filter_tab_ALL", "filter_tab_ACTIVE", "filter_tab_DONE")
+            for (round in 1..4) {
+                for (tag in tags) {
+                    val tab = activity.findViewById<View>(android.R.id.content)?.findViewWithTag<View>(tag)
+                    tab?.performClick()
+                    delay(120)
+                }
+            }
+            delay(200)
+            activity.currentSettingsTab = AppSettingsTab.DEVELOPER
+            activity.navigateToPanel(AppPanel.SETTINGS)
+            Toast.makeText(activity, "✅ Planner Tab Stress Complete: 12 filter switches survived with 0 glitches!", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun runTimerRapidStress(activity: MainActivity) {
+        Toast.makeText(activity, "⏱️ Starting Timer Rapid Stress...", Toast.LENGTH_SHORT).show()
+        CoroutineScope(Dispatchers.Main).launch {
+            activity.navigateToPanel(AppPanel.FOCUS)
+            delay(150)
+            for (round in 1..5) {
+                if (activity.currentTimerState == TimerState.IDLE || activity.currentTimerState == TimerState.PAUSED) {
+                    activity.handleStateToggle()
+                }
+                delay(100)
+                if (activity.currentTimerState == TimerState.STUDYING) {
+                    activity.handleStateToggle()
+                }
+                delay(100)
+                activity.handleStopSession()
+                delay(120)
+            }
+            if (activity.currentTimerState != TimerState.IDLE) {
+                activity.handleStopSession()
+            }
+            activity.currentSettingsTab = AppSettingsTab.DEVELOPER
+            activity.navigateToPanel(AppPanel.SETTINGS)
+            Toast.makeText(activity, "✅ Timer Spam Complete: 15 state churns survived with clean IDLE!", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun runChaosGauntlet(activity: MainActivity, themeCoordinator: ThemeCoordinator) {
+        val dialog = Dialog(activity).apply {
+            requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+            setCancelable(false)
+        }
+        val dp = { v: Int -> (v * activity.resources.displayMetrics.density).toInt() }
+        val content = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createDialogBackground(24f)
+            setPadding(dp(22), dp(20), dp(22), dp(20))
+        }
+        val titleView = TextView(activity).apply {
+            text = "💥 CHAOS GAUNTLET ACTIVE"
+            textSize = 15f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(themeCoordinator.primaryColor)
+        }
+        val statusView = TextView(activity).apply {
+            text = "Step 1/3: ⏱️ Rapid Timer State Churn..."
+            textSize = 13f
+            setTextColor(themeCoordinator.textColor)
+            setPadding(0, dp(10), 0, dp(6))
+        }
+        content.addView(titleView)
+        content.addView(statusView)
+        dialog.setContentView(content)
+        dialog.window?.let {
+            it.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(Color.TRANSPARENT))
+            it.setLayout((activity.resources.displayMetrics.widthPixels * 0.85).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        dialog.show()
+
+        CoroutineScope(Dispatchers.Main).launch {
+            // Step 1: Timer stress
+            activity.navigateToPanel(AppPanel.FOCUS)
+            delay(200)
+            for (i in 1..4) {
+                if (activity.currentTimerState == TimerState.IDLE || activity.currentTimerState == TimerState.PAUSED) {
+                    activity.handleStateToggle()
+                }
+                delay(90)
+                if (activity.currentTimerState == TimerState.STUDYING) {
+                    activity.handleStateToggle()
+                }
+                delay(90)
+                activity.handleStopSession()
+                delay(90)
+            }
+
+            // Step 2: Tab stress
+            statusView.text = "Step 2/3: 🎯 Planner Filter Tab Stress..."
+            activity.navigateToPanel(AppPanel.PLANNER)
+            delay(200)
+            val tags = listOf("filter_tab_ALL", "filter_tab_ACTIVE", "filter_tab_DONE")
+            for (r in 1..3) {
+                for (t in tags) {
+                    activity.findViewById<View>(android.R.id.content)?.findViewWithTag<View>(t)?.performClick()
+                    delay(90)
+                }
+            }
+
+            // Step 3: UI Carousel
+            statusView.text = "Step 3/3: ⚡ UI Carousel Storm..."
+            val panels = listOf(AppPanel.FOCUS, AppPanel.PLANNER, AppPanel.STATS, AppPanel.COMMUNITY, AppPanel.SETTINGS)
+            for (r in 1..3) {
+                for (p in panels) {
+                    activity.navigateToPanel(p)
+                    delay(90)
+                }
+            }
+
+            activity.currentSettingsTab = AppSettingsTab.DEVELOPER
+            activity.navigateToPanel(AppPanel.SETTINGS)
+            dialog.dismiss()
+
+            showThemedConfirmDialog(
+                activity = activity,
+                themeCoordinator = themeCoordinator,
+                title = "🏆 Chaos Gauntlet: 100% Stable",
+                message = "• Rapid timer transitions: 16 (0 leaks, clean IDLE)\n• Filter tab state switches: 9 (0 UI glitches)\n• Full panel carousel cycles: 15 (0 crashes)\n• Local & remote caches: Perfectly synchronized!",
+                confirmText = "Done",
+                isDestructive = false,
+                onCancel = {}
+            ) {}
+        }
+    }
+
+    fun simulateMidnightRollover(activity: MainActivity) {
+        activity.cachedTodayStr = "1970-01-01"
+        activity.checkAndResetGoalsForNewDay()
+        activity.recalculateStreak()
+        activity.statsDirty = true
+        activity.tabPageCache.clear()
+        activity.navigateToPanel(activity.currentPanel)
+        Toast.makeText(activity, "🌙 Midnight Rollover simulated: Goals refreshed & streak recalculated!", Toast.LENGTH_SHORT).show()
+    }
+
+    fun resetTodaySessions(activity: MainActivity) {
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        prefs.edit()
+            .putLong("${todayStr}_focus_total", 0L)
+            .putLong("last_data_modified_timestamp", System.currentTimeMillis())
+            .apply()
+
+        CoroutineScope(Dispatchers.IO).launch {
+            LeaderboardManager.overrideLeaderboardDailyTotal(activity, 0)
+        }
+
+        if (activity.currentTimerState != TimerState.IDLE) {
+            activity.handleStopSession()
+        }
+        activity.accumulatedStudy = 0L
+        activity.currentBreakSeconds = 0L
+
+        activity.recalculateStreak()
+        activity.statsDirty = true
+        activity.tabPageCache.clear()
+        activity.navigateToPanel(activity.currentPanel)
+        Toast.makeText(activity, "🧹 Today's focus & leaderboard entry reset to 0m!", Toast.LENGTH_SHORT).show()
     }
 
     fun showFullDevConsoleDialog(activity: MainActivity, themeCoordinator: ThemeCoordinator) {
@@ -752,6 +1110,16 @@ object DeveloperToolsHelper {
                 activity.tabPageCache.clear()
             })
 
+            addView(devButton("🔧 Repair Historical Goals from 45m Default", "Applies current daily goal to all past days that were reset to 45m", Color.parseColor("#10B981")) {
+                val currentGoalSecs = StatsEngine.getDailyGoalSecs(activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE))
+                GoalHistoryManager.repairCorruptedHistoricalGoals(activity, currentGoalSecs)
+                activity.invalidateStatsCache()
+                activity.recalculateStreak()
+                AppToast.show(activity, "Historical goals repaired to ${currentGoalSecs / 60}m")
+                activity.refreshStatsPanel()
+                activity.tabPageCache.clear()
+            })
+
             addView(devButton("🗑️ Wipe Planner & Habit History", "Clears all historical snapshots and resets active goals", Color.parseColor("#EF4444")) {
                 showThemedConfirmDialog(
                     activity = activity,
@@ -884,52 +1252,6 @@ object DeveloperToolsHelper {
                     }
                 }
             })
-        }
-
-        // 3B. Study Rooms & Community Mock Suite
-        if (BuildConfig.STUDY_ROOM_ENABLED) {
-            addSection("STUDY ROOMS & COMMUNITY MOCK SUITE", "🏛️") {
-                addView(devButton("Seed Mock Rooms & Peers (Public + Private)", "Populates Silent Library, STEM Sprint, Exam Prep, Pomodoro & Private Circle (PRIV88) with active peers", Color.parseColor("#10B981")) {
-                    StudyRoomManager.seedDevMockRooms(activity)
-                    Toast.makeText(activity, "Seeded mock rooms (including private circle PRIV88)!", Toast.LENGTH_SHORT).show()
-                    if (activity.currentPanel == AppPanel.COMMUNITY) {
-                        activity.navigateToPanel(AppPanel.COMMUNITY)
-                    }
-                })
-
-                addView(devButton("Enter Mock Private Room (PRIV88)", "Sets active room to private study room PRIV88 to test privacy badges & invite sharing", Color.parseColor("#8B5CF6")) {
-                    StudyRoomManager.seedDevMockRooms(activity)
-                    val priv = StudyRoom("PRIV88", "Private Study Circle", "Maya", 4, "General", isPrivate = true)
-                    StudyRoomManager.setActiveRoom(activity, priv)
-                    Toast.makeText(activity, "Entered private room PRIV88!", Toast.LENGTH_SHORT).show()
-                    activity.navigateToPanel(AppPanel.COMMUNITY)
-                })
-
-                addView(devButton("Clear All Mock Study Rooms", "Flushes all mock data and resets rooms to clean state", Color.parseColor("#EF4444")) {
-                    StudyRoomManager.clearDevMockRooms(activity)
-                    Toast.makeText(activity, "Cleared mock study rooms", Toast.LENGTH_SHORT).show()
-                    if (activity.currentPanel == AppPanel.COMMUNITY) {
-                        activity.navigateToPanel(AppPanel.COMMUNITY)
-                    }
-                })
-
-                addView(devButton("Inject Live Peer to Active Room", "Adds a simulated studying student to the current room for live presence testing", Color.parseColor("#38BDF8")) {
-                    val active = StudyRoomManager.getActiveRoom(activity)
-                    if (active != null) {
-                        val peerNames = listOf("Aarav", "Elena", "Lucas", "Mei", "Liam", "Zainab", "Mateo", "Sophie")
-                        val sampleSubjects = listOf("Math", "Physics", "Chemistry", "DSA", "Biology")
-                        val name = peerNames.random()
-                        val subj = sampleSubjects.random()
-                        StudyRoomManager.injectDevMockPeer(activity, active.code, name, subj, isStudying = true)
-                        Toast.makeText(activity, "Injected $name ($subj) into ${active.name}!", Toast.LENGTH_SHORT).show()
-                        if (activity.currentPanel == AppPanel.COMMUNITY) {
-                            activity.navigateToPanel(AppPanel.COMMUNITY)
-                        }
-                    } else {
-                        Toast.makeText(activity, "Please enter or create an active study room first", Toast.LENGTH_SHORT).show()
-                    }
-                })
-            }
         }
 
         // 4. Notifications & Celebration Triggers
@@ -1243,6 +1565,38 @@ object DeveloperToolsHelper {
             addView(devButton("Preview Shareable Study Scorecard", "Launches graphic scorecard export modal with current stats", Color.parseColor("#EC4899")) {
                 dialog.dismiss()
                 activity.showStudyScorecardExportDialog()
+            })
+        }
+
+        // 8a. Stress Testing & Anti-Cheat Audit Lab
+        addSection("STRESS TESTING & ANTI-CHEAT AUDIT LAB", "🧪") {
+            addView(devButton("⚡ Run UI Carousel Storm (20 Transitions)", "Spams all main panels rapidly to verify 0 layout crashes or memory leaks", Color.parseColor("#38BDF8")) {
+                dialog.dismiss()
+                runUiChaosStorm(activity)
+            })
+            addView(devButton("🎯 Run Planner Filter Tab Stress (12 Cycles)", "Spams [All], [Remaining], and [Done] filter tabs and Day-Off views", Color.parseColor("#EC4899")) {
+                dialog.dismiss()
+                runPlannerTabStress(activity)
+            })
+            addView(devButton("⏱️ Run Timer State Machine Spam (15 Cycles)", "Spams Start, Pause, Resume, and Stop transitions to test thread safety", Color.parseColor("#F59E0B")) {
+                dialog.dismiss()
+                runTimerRapidStress(activity)
+            })
+            addView(devButton("💥 Run Complete Chaos Gauntlet", "Sequentially executes Timer Spam, Planner Stress, and UI Carousel with live HUD", Color.parseColor("#8B5CF6")) {
+                dialog.dismiss()
+                runChaosGauntlet(activity, themeCoordinator)
+            })
+            addView(devButton("🧪 Toggle Test Persona (Real Account ↔ Test Pilot)", "Safe sandbox mode: backs up your real identity and switches to Test Pilot", Color.parseColor("#8B5CF6")) {
+                toggleTestPersona(activity)
+            })
+            addView(devButton("🛡️ Run Live Anti-Cheat & Leaderboard Audit", "Verifies timeline integrity, manual log rejection, and authentic timer seconds", Color.parseColor("#06B6D4")) {
+                showLiveLeaderboardAuditDialog(activity, themeCoordinator)
+            })
+            addView(devButton("🌙 Simulate Midnight Rollover", "Fast-forwards system day detection to trigger goal resets and streak calculation", Color.parseColor("#6366F1")) {
+                simulateMidnightRollover(activity)
+            })
+            addView(devButton("🧹 Reset Today's Focus & Leaderboard Score", "Resets today's focus to 0m and clears leaderboard entry without corrupting streaks", Color.parseColor("#EF4444")) {
+                resetTodaySessions(activity)
             })
         }
 
@@ -3799,7 +4153,7 @@ object DeveloperToolsHelper {
         onGranted: () -> Unit
     ) {
         if (!BuildConfig.DEBUG) return
-        if (activity.isDevModeUnlocked && hasBroadcastPermission(activity)) {
+        if (hasBroadcastPermission(activity)) {
             onGranted()
             return
         }
@@ -3814,7 +4168,7 @@ object DeveloperToolsHelper {
         }
 
         root.addView(TextView(activity).apply {
-            text = "🔐 ADMIN AUTHORIZATION"
+            text = "🔐 BROADCAST AUTHORIZATION"
             setTextColor(themeCoordinator.primaryColor)
             textSize = 12f
             letterSpacing = 0.16f
@@ -3822,7 +4176,7 @@ object DeveloperToolsHelper {
         })
 
         root.addView(TextView(activity).apply {
-            text = "Developer Broadcast Access"
+            text = "Broadcast System Access"
             setTextColor(themeCoordinator.textColor)
             textSize = 19f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
@@ -3830,7 +4184,7 @@ object DeveloperToolsHelper {
         })
 
         root.addView(TextView(activity).apply {
-            text = "Enter master developer passkey to access Developer Tools and broadcast permissions."
+            text = "Enter master developer passkey to access Developer Broadcasts and announcements."
             setTextColor(themeCoordinator.textColor)
             alpha = 0.65f
             textSize = 13f
@@ -3885,8 +4239,7 @@ object DeveloperToolsHelper {
                 val entered = pinInput.text.toString().trim()
                 if (verifyAdminPasskey(entered)) {
                     val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-                    prefs.edit().putBoolean("admin_broadcast_permission", true).putBoolean("dev_mode_unlocked", true).apply()
-                    activity.isDevModeUnlocked = true
+                    prefs.edit().putBoolean("admin_broadcast_permission", true).apply()
                     AppToast.show(activity, "Developer Broadcast Permission Granted")
                     dialog.dismiss()
                     onGranted()

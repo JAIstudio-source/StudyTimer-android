@@ -72,7 +72,13 @@ object GoalHistoryManager {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val allKeys = prefs.all.keys.toList()
-        val futureGoalKeys = allKeys.filter { it != "daily_goal_secs" && it.removeSuffix("_goal_secs").matches(Regex("""^\d{4}-\d{2}-\d{2}$""")) && it.removeSuffix("_goal_secs") > todayStr }
+        val futureGoalKeys = allKeys.filter { 
+            it != "daily_goal_secs" && 
+            it != "daily_goal_minutes" && 
+            it.endsWith("_goal_secs") && 
+            it.removeSuffix("_goal_secs").matches(Regex("""^\d{4}-\d{2}-\d{2}$""")) && 
+            it.removeSuffix("_goal_secs") > todayStr 
+        }
         if (futureGoalKeys.isNotEmpty()) {
             val editor = prefs.edit()
             for (k in futureGoalKeys) {
@@ -108,7 +114,13 @@ object GoalHistoryManager {
         // Clean up any future-dated keys in prefs so future days always reflect the new goal
         if (isTodayOrFuture) {
             val allKeys = prefs.all.keys.toList()
-            val futureGoalKeys = allKeys.filter { it != "daily_goal_secs" && it.removeSuffix("_goal_secs").matches(Regex("""^\d{4}-\d{2}-\d{2}$""")) && it.removeSuffix("_goal_secs") > todayStr }
+            val futureGoalKeys = allKeys.filter { 
+            it != "daily_goal_secs" && 
+            it != "daily_goal_minutes" && 
+            it.endsWith("_goal_secs") && 
+            it.removeSuffix("_goal_secs").matches(Regex("""^\d{4}-\d{2}-\d{2}$""")) && 
+            it.removeSuffix("_goal_secs") > todayStr 
+        }
             if (futureGoalKeys.isNotEmpty()) {
                 val cleanEditor = prefs.edit()
                 for (k in futureGoalKeys) {
@@ -211,6 +223,11 @@ object GoalHistoryManager {
 
         cleanFutureGoalCaches(context)
 
+        // Self-heal corrupted historical entries that were reset to 2700s (45m) by prior update bug
+        if (globalGoal > 0L && globalGoal != StatsEngine.DEFAULT_DAILY_GOAL_SECS) {
+            repairCorruptedHistoricalGoals(context, globalGoal)
+        }
+
         val history = loadHistory(context)
         if (history.isEmpty()) {
             setDailyGoal(context, globalGoal, forDateStr = todayStr)
@@ -223,6 +240,8 @@ object GoalHistoryManager {
                         snapshotKeys.map { it.removeSuffix("_planner_snapshot") } +
                         setOf(todayStr)).toSet()
 
+        val editor = prefs.edit()
+        var modified = false
         for (dStr in allDates) {
             if (dStr > todayStr) continue // Never lock future dates!
             val goalKey = "${dStr}_goal_secs"
@@ -231,8 +250,64 @@ object GoalHistoryManager {
                 continue
             }
             val resolved = resolveGoalForDate(context, dStr, globalGoal)
-            setDailyGoal(context, resolved, forDateStr = dStr)
+            editor.putLong(goalKey, resolved)
+            modified = true
         }
+        if (modified) editor.apply()
+    }
+
+    /**
+     * Repairs past dates where daily goals were erroneously set to 2700s (45m)
+     * by applying the user's active/chosen daily goal to those days.
+     */
+    fun repairCorruptedHistoricalGoals(context: Context, newGoalSecs: Long) {
+        if (newGoalSecs <= 0L) return
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val allKeys = prefs.all.keys.toList()
+        val editor = prefs.edit()
+        var modified = false
+
+        // 1. Repair date-specific keys that were set to default 2700s
+        for (k in allKeys) {
+            if (k != "daily_goal_secs" && k != "daily_goal_minutes" && k.endsWith("_goal_secs")) {
+                val datePart = k.removeSuffix("_goal_secs")
+                if (datePart.matches(Regex("""^\d{4}-\d{2}-\d{2}$"""))) {
+                    val currentVal = prefs.getLong(k, 0L)
+                    if (currentVal == StatsEngine.DEFAULT_DAILY_GOAL_SECS) {
+                        editor.putLong(k, newGoalSecs)
+                        modified = true
+                    }
+                }
+            }
+        }
+
+        // 2. Repair history entries that had 2700s
+        val history = loadHistory(context)
+        if (history.isNotEmpty()) {
+            val updatedHistory = history.map { entry ->
+                if (entry.goalSecs == StatsEngine.DEFAULT_DAILY_GOAL_SECS) {
+                    entry.copy(goalSecs = newGoalSecs)
+                } else {
+                    entry
+                }
+            }
+            val arr = JSONArray()
+            for (e in updatedHistory) {
+                arr.put(JSONObject().apply {
+                    put("date", e.date)
+                    put("goalSecs", e.goalSecs)
+                    put("timestamp", e.timestamp)
+                })
+            }
+            editor.putString(HISTORY_KEY, arr.toString())
+            modified = true
+        }
+
+        if (modified) editor.apply()
+
+        // 3. Ensure active daily goal is updated
+        setDailyGoal(context, newGoalSecs, forDateStr = todayStr)
     }
 
     fun mergeCloudHistory(localJson: String, cloudJson: String): String {

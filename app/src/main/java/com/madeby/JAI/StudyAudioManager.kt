@@ -104,7 +104,11 @@ object StudyAudioManager {
 
     fun isAmbientEnabled(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(KEY_AMBIENT_ENABLED, false)
+        return try {
+            prefs.getBoolean(KEY_AMBIENT_ENABLED, false)
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun setAmbientEnabled(context: Context, enabled: Boolean) {
@@ -124,7 +128,22 @@ object StudyAudioManager {
 
     fun getAmbientVolume(context: Context): Float {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getFloat(KEY_AMBIENT_VOLUME, 0.65f).coerceIn(0.05f, 1.0f)
+        return try {
+            prefs.getFloat(KEY_AMBIENT_VOLUME, 0.65f).coerceIn(0.05f, 1.0f)
+        } catch (_: ClassCastException) {
+            try {
+                val raw = prefs.all[KEY_AMBIENT_VOLUME]
+                val v = when (raw) {
+                    is Number -> raw.toFloat()
+                    is String -> raw.toFloatOrNull() ?: 0.65f
+                    else -> 0.65f
+                }
+                prefs.edit().putFloat(KEY_AMBIENT_VOLUME, v).apply()
+                v.coerceIn(0.05f, 1.0f)
+            } catch (_: Exception) {
+                0.65f
+            }
+        }
     }
 
     fun setAmbientVolume(context: Context, volume: Float) {
