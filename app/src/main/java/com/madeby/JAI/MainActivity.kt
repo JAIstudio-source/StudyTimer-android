@@ -570,6 +570,16 @@ class MainActivity : AppCompatActivity() {
     private var lastNavLeftInset = 0
     private var lastIsThreeButtonNav = false
     private var lastFullscreenToggleTime = 0L
+
+    internal fun isLandscapeMode(): Boolean {
+        if (lastConfigOrientation == Configuration.ORIENTATION_LANDSCAPE) return true
+        if (lastConfigOrientation == Configuration.ORIENTATION_PORTRAIT) return false
+        val conf = resources.configuration
+        if (conf.orientation == Configuration.ORIENTATION_LANDSCAPE) return true
+        if (conf.orientation == Configuration.ORIENTATION_PORTRAIT) return false
+        val dm = resources.displayMetrics
+        return dm.widthPixels > dm.heightPixels
+    }
     private var lastActionTriggerTime = 0L
     private var isZenModeActive = false
     private var isNavigatingBack = false
@@ -1011,7 +1021,7 @@ class MainActivity : AppCompatActivity() {
         panelHost.addView(panelContainer)
         rootLayout.addView(panelHost)
 
-        val isInitialLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isInitialLandscape = isLandscapeMode()
         studyBottomNavBar = StudyBottomNavBar(this).apply {
             applyTheme(themeCoordinator)
             visibility = if (isInitialLandscape) View.GONE else View.VISIBLE
@@ -1147,9 +1157,9 @@ class MainActivity : AppCompatActivity() {
 
 
 
-    internal fun applyLayoutInsetsForOrientation(orientation: Int = resources.configuration.orientation) {
+    internal fun applyLayoutInsetsForOrientation(orientation: Int = lastConfigOrientation) {
         if (!::panelHost.isInitialized) return
-        val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isLandscape = isLandscapeMode()
         if (isLandscape) {
             if (::studyBottomNavBar.isInitialized) {
                 studyBottomNavBar.animate().cancel()
@@ -1194,9 +1204,7 @@ class MainActivity : AppCompatActivity() {
         val orientationChanged = (newConfig.orientation != lastConfigOrientation)
         lastConfigOrientation = newConfig.orientation
 
-        val sharedPrefs = appPrefs
-        val isLandscapeEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
-        val isLandscape = (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) && isLandscapeEnabled
+        val isLandscape = isLandscapeMode()
 
         applyLayoutInsetsForOrientation(newConfig.orientation)
 
@@ -1521,7 +1529,7 @@ class MainActivity : AppCompatActivity() {
             }
             studyBottomNavBar.selectTab(bottomNavPanel, animated = true)
 
-            val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            val isLandscape = isLandscapeMode()
             val shouldHide = isLandscape ||
                 targetPanel == AppPanel.SETTINGS ||
                 targetPanel == AppPanel.HEATMAP ||
@@ -2426,7 +2434,7 @@ class MainActivity : AppCompatActivity() {
                     breakTimerDisplay.text = nextBreakText
                 }
 
-                val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+                val isLandscape = isLandscapeMode()
                 if (isLandscape) {
                     if (lastIsBreakingState != isBreaking) {
                         lastIsBreakingState = isBreaking
@@ -3139,7 +3147,7 @@ class MainActivity : AppCompatActivity() {
 
 
     internal fun updateVisualStyles() {
-        val isLandscapeOrientation = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isLandscapeOrientation = isLandscapeMode()
         val isPomoWhite = isPomodoroPureWhiteActive()
         if (currentPanel == AppPanel.FOCUS) {
             if (isPomoWhite) {
@@ -3807,7 +3815,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun toggleLandscapeControls() {
-        if (resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) return
+        if (!isLandscapeMode()) return
         val sharedPrefs = appPrefs
         val isLandscapeEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
         if (!isLandscapeEnabled) return
@@ -3894,7 +3902,7 @@ class MainActivity : AppCompatActivity() {
     internal fun applyTrueFullscreenMode() {
         val sharedPrefs = appPrefs
         val isLandscapeEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
-        val isLandscape = (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) && isLandscapeEnabled
+        val isLandscape = isLandscapeMode()
 
         if (!isLandscape) {
             isZenModeActive = false
@@ -3942,7 +3950,7 @@ class MainActivity : AppCompatActivity() {
     internal fun applyImmersiveModeForLandscape() {
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
         val isLandscapeEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
-        val isLandscape = (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) && isLandscapeEnabled
+        val isLandscape = isLandscapeMode()
         if (::studyBottomNavBar.isInitialized) {
             studyBottomNavBar.visibility = if (isLandscape || currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.HEATMAP) View.GONE else View.VISIBLE
         }
@@ -3968,7 +3976,7 @@ class MainActivity : AppCompatActivity() {
     private val autoFullscreenRunnable = Runnable {
         if (!isDestroyed && !isFinishing && currentPanel == AppPanel.FOCUS
             && (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK)
-            && !isPortraitFullscreenActive && resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) {
+            && !isPortraitFullscreenActive && !isLandscapeMode()) {
             enterPortraitFullscreenMode()
         }
     }
@@ -3989,7 +3997,7 @@ class MainActivity : AppCompatActivity() {
         if (now - lastFullscreenToggleTime < 350L) return
         lastFullscreenToggleTime = now
 
-        if (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) return
+        if (isLandscapeMode()) return
         if (currentPanel != AppPanel.FOCUS) return
         if (isPortraitFullscreenActive) {
             exitPortraitFullscreenMode()
@@ -4043,7 +4051,7 @@ class MainActivity : AppCompatActivity() {
         isPortraitFullscreenActive = false
         showSystemUI()
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
-        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isLandscape = isLandscapeMode()
         if (!isLandscape) {
             val revealViews = mutableListOf<View>()
             if (::navHeader.isInitialized) { navHeader.visibility = View.VISIBLE; revealViews.add(navHeader) }
@@ -4086,7 +4094,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun applyPortraitFullscreenLayout() {
-        val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val isLandscape = isLandscapeMode()
         if (isLandscape) return
         if (!::studyTimerDisplay.isInitialized || !::breakTimerDisplay.isInitialized) return
         val isBreaking = currentTimerState == TimerState.BREAK ||

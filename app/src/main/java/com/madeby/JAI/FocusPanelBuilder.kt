@@ -30,11 +30,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
     fun build() {
         with(host) {
             val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val isLandscapeEnabled = sharedPrefs.getBoolean(
-                "is_landscape_mode_enabled",
-                sharedPrefs.getBoolean("true_fullscreen_landscape", true)
-            )
-            val isLandscape = (resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) && isLandscapeEnabled
+            val isLandscape = isLandscapeMode()
 
             if (isLandscape) {
                 buildLandscapeLayout(sharedPrefs)
