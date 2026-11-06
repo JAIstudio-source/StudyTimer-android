@@ -158,38 +158,6 @@ enum class FestivalType(
         )
     ),
 
-    RAKSHA_BANDHAN(
-        key = "raksha_bandhan",
-        displayName = "Raksha Bandhan",
-        defaultTitle = "Happy Raksha Bandhan{name}!",
-        greetings = listOf(
-            FestivalGreeting(
-                titleTemplate = "Happy Raksha Bandhan{name}!",
-                messageTemplate = "Celebrating the bond of love, care, and encouragement. Have a wonderful day of togetherness with your family!"
-            ),
-            FestivalGreeting(
-                titleTemplate = "Happy Raksha Bandhan{name}!",
-                messageTemplate = "May the encouragement and support of your loved ones inspire you on your journey. Enjoy every moment today!"
-            )
-        )
-    ),
-
-    MAKAR_SANKRANTI(
-        key = "makar_sankranti",
-        displayName = "Makar Sankranti and Pongal",
-        defaultTitle = "Happy Makar Sankranti{name}!",
-        greetings = listOf(
-            FestivalGreeting(
-                titleTemplate = "Happy Makar Sankranti{name}!",
-                messageTemplate = "May your goals and aspirations soar high. Wishing you and your family happiness, sweetness, and great beginnings!"
-            ),
-            FestivalGreeting(
-                titleTemplate = "Happy Pongal and Sankranti{name}!",
-                messageTemplate = "Wishing you good health, prosperity, and renewed energy for all your studies ahead. Enjoy the celebrations!"
-            )
-        )
-    ),
-
     NEW_YEAR(
         key = "new_year",
         displayName = "New Year's Day",
@@ -286,7 +254,6 @@ object FestivalManager {
         "2024-04-10" to FestivalType.EID_UL_FITR,
         "2024-04-11" to FestivalType.EID_UL_FITR,
         "2024-06-17" to FestivalType.EID_UL_ADHA,
-        "2024-08-19" to FestivalType.RAKSHA_BANDHAN,
         "2024-10-12" to FestivalType.DUSSEHRA,
         "2024-10-31" to FestivalType.DIWALI,
         "2024-11-01" to FestivalType.DIWALI,
@@ -295,7 +262,6 @@ object FestivalManager {
         "2025-03-14" to FestivalType.HOLI,
         "2025-03-31" to FestivalType.EID_UL_FITR,
         "2025-06-07" to FestivalType.EID_UL_ADHA,
-        "2025-08-09" to FestivalType.RAKSHA_BANDHAN,
         "2025-10-02" to FestivalType.DUSSEHRA,
         "2025-10-20" to FestivalType.DIWALI,
 
@@ -303,7 +269,6 @@ object FestivalManager {
         "2026-03-04" to FestivalType.HOLI,
         "2026-03-20" to FestivalType.EID_UL_FITR,
         "2026-05-27" to FestivalType.EID_UL_ADHA,
-        "2026-08-28" to FestivalType.RAKSHA_BANDHAN,
         "2026-10-20" to FestivalType.DUSSEHRA,
         "2026-11-08" to FestivalType.DIWALI,
 
@@ -311,7 +276,6 @@ object FestivalManager {
         "2027-03-10" to FestivalType.EID_UL_FITR,
         "2027-03-23" to FestivalType.HOLI,
         "2027-05-16" to FestivalType.EID_UL_ADHA,
-        "2027-08-17" to FestivalType.RAKSHA_BANDHAN,
         "2027-10-09" to FestivalType.DUSSEHRA,
         "2027-10-29" to FestivalType.DIWALI,
 
@@ -319,7 +283,6 @@ object FestivalManager {
         "2028-02-27" to FestivalType.EID_UL_FITR,
         "2028-03-11" to FestivalType.HOLI,
         "2028-05-05" to FestivalType.EID_UL_ADHA,
-        "2028-08-05" to FestivalType.RAKSHA_BANDHAN,
         "2028-09-27" to FestivalType.DUSSEHRA,
         "2028-10-17" to FestivalType.DIWALI,
 
@@ -327,7 +290,6 @@ object FestivalManager {
         "2029-02-15" to FestivalType.EID_UL_FITR,
         "2029-03-01" to FestivalType.HOLI,
         "2029-04-24" to FestivalType.EID_UL_ADHA,
-        "2029-08-23" to FestivalType.RAKSHA_BANDHAN,
         "2029-10-16" to FestivalType.DUSSEHRA,
         "2029-11-05" to FestivalType.DIWALI,
 
@@ -335,7 +297,6 @@ object FestivalManager {
         "2030-02-05" to FestivalType.EID_UL_FITR,
         "2030-03-20" to FestivalType.HOLI,
         "2030-04-13" to FestivalType.EID_UL_ADHA,
-        "2030-08-13" to FestivalType.RAKSHA_BANDHAN,
         "2030-10-06" to FestivalType.DUSSEHRA,
         "2030-10-26" to FestivalType.DIWALI,
 
@@ -343,7 +304,6 @@ object FestivalManager {
         "2031-01-24" to FestivalType.EID_UL_FITR,
         "2031-03-09" to FestivalType.HOLI,
         "2031-04-02" to FestivalType.EID_UL_ADHA,
-        "2031-08-02" to FestivalType.RAKSHA_BANDHAN,
         "2031-10-25" to FestivalType.DUSSEHRA,
         "2031-11-14" to FestivalType.DIWALI,
 
@@ -351,7 +311,6 @@ object FestivalManager {
         "2032-01-14" to FestivalType.EID_UL_FITR,
         "2032-02-26" to FestivalType.HOLI,
         "2032-03-22" to FestivalType.EID_UL_ADHA,
-        "2032-08-20" to FestivalType.RAKSHA_BANDHAN,
         "2032-10-14" to FestivalType.DUSSEHRA,
         "2032-11-02" to FestivalType.DIWALI,
 
@@ -359,7 +318,6 @@ object FestivalManager {
         "2033-01-02" to FestivalType.EID_UL_FITR,
         "2033-03-11" to FestivalType.EID_UL_ADHA,
         "2033-03-16" to FestivalType.HOLI,
-        "2033-08-10" to FestivalType.RAKSHA_BANDHAN,
         "2033-10-03" to FestivalType.DUSSEHRA,
         "2033-10-22" to FestivalType.DIWALI,
         "2033-12-23" to FestivalType.EID_UL_FITR,
@@ -367,7 +325,6 @@ object FestivalManager {
         // --- 2034 ---
         "2034-03-01" to FestivalType.EID_UL_ADHA,
         "2034-03-06" to FestivalType.HOLI,
-        "2034-08-29" to FestivalType.RAKSHA_BANDHAN,
         "2034-10-22" to FestivalType.DUSSEHRA,
         "2034-11-10" to FestivalType.DIWALI,
         "2034-12-12" to FestivalType.EID_UL_FITR,
@@ -375,7 +332,6 @@ object FestivalManager {
         // --- 2035 ---
         "2035-02-18" to FestivalType.EID_UL_ADHA,
         "2035-03-24" to FestivalType.HOLI,
-        "2035-08-18" to FestivalType.RAKSHA_BANDHAN,
         "2035-10-11" to FestivalType.DUSSEHRA,
         "2035-10-30" to FestivalType.DIWALI,
         "2035-12-01" to FestivalType.EID_UL_FITR,
@@ -383,7 +339,6 @@ object FestivalManager {
         // --- 2036 ---
         "2036-02-07" to FestivalType.EID_UL_ADHA,
         "2036-03-12" to FestivalType.HOLI,
-        "2036-08-07" to FestivalType.RAKSHA_BANDHAN,
         "2036-09-29" to FestivalType.DUSSEHRA,
         "2036-10-18" to FestivalType.DIWALI,
         "2036-11-20" to FestivalType.EID_UL_FITR
@@ -416,7 +371,6 @@ object FestivalManager {
             val mmDd = dateStr.substring(5, 10)
             when (mmDd) {
                 "01-01" -> return FestivalType.NEW_YEAR
-                "01-14" -> return FestivalType.MAKAR_SANKRANTI
                 "01-26" -> return FestivalType.REPUBLIC_DAY
                 "08-15" -> return FestivalType.INDEPENDENCE_DAY
                 "12-25" -> return FestivalType.CHRISTMAS

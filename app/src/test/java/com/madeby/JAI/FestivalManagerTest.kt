@@ -129,7 +129,6 @@ class FestivalManagerTest {
         val testYears = listOf(2025, 2026, 2028, 2030, 2035)
         for (y in testYears) {
             assertEquals("Jan 1 should be New Year", FestivalType.NEW_YEAR, FestivalManager.getFestivalForDate("$y-01-01"))
-            assertEquals("Jan 14 should be Makar Sankranti", FestivalType.MAKAR_SANKRANTI, FestivalManager.getFestivalForDate("$y-01-14"))
             assertEquals("Jan 26 should be Republic Day", FestivalType.REPUBLIC_DAY, FestivalManager.getFestivalForDate("$y-01-26"))
             assertEquals("Aug 15 should be Independence Day", FestivalType.INDEPENDENCE_DAY, FestivalManager.getFestivalForDate("$y-08-15"))
             assertEquals("Dec 25 should be Christmas", FestivalType.CHRISTMAS, FestivalManager.getFestivalForDate("$y-12-25"))
@@ -159,10 +158,6 @@ class FestivalManagerTest {
         // Dussehra
         assertEquals(FestivalType.DUSSEHRA, FestivalManager.getFestivalForDate("2025-10-02"))
         assertEquals(FestivalType.DUSSEHRA, FestivalManager.getFestivalForDate("2026-10-20"))
-
-        // Raksha Bandhan
-        assertEquals(FestivalType.RAKSHA_BANDHAN, FestivalManager.getFestivalForDate("2025-08-09"))
-        assertEquals(FestivalType.RAKSHA_BANDHAN, FestivalManager.getFestivalForDate("2026-08-28"))
     }
 
     @Test
