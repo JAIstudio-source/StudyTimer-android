@@ -1365,19 +1365,20 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     }
                 }
 
-                // 1. Left: Checkbox (top-aligned with title)
+                // 1. Left: Checkbox (generous 44dp x 44dp touch target to prevent mis-tapping the card)
                 val checkWrapper = FrameLayout(host).apply {
-                    layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
-                        setMargins(0, 0, dp(6), 0)
-                        gravity = Gravity.TOP
-                        topMargin = dp(1)
+                    layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply {
+                        setMargins(dp(-4), dp(-4), dp(4), dp(-4))
+                        gravity = Gravity.CENTER_VERTICAL
                     }
+                    isClickable = true
+                    isFocusable = true
                 }
                 val checkBtn = TextView(host).apply {
                     tag = "goal_check_${goal.id}"
                     setTag(R.id.tag_goal_check_state, "${isChecked}_${info.isGreyMark}_${info.chipColor}")
                     text = if (isDayOff) "—" else info.checkSymbol
-                    textSize = 12f
+                    textSize = 12.5f
                     gravity = Gravity.CENTER
                     typeface = host.themeCoordinator.getAppTypeface(isBold = true)
                     setTextColor(if (isDayOff) tintedColor(themeCoordinator.textColor, 80) else Color.WHITE)
@@ -1398,7 +1399,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         setColor(checkColor)
                         setStroke(dp(1.8f), strokeColor)
                     }
-                    layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
+                    layoutParams = FrameLayout.LayoutParams(dp(23), dp(23), Gravity.CENTER)
                 }
                 checkWrapper.addView(checkBtn)
                 if (isDayOff) {
@@ -1871,20 +1872,25 @@ class PlannerPanelBuilder(private val host: MainActivity) {
     }
 
     private fun showGoalActionMenu(goal: PlannerGoal, onToggle: (() -> Unit)? = null) {
+        val prefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val freshGoals = loadSessionGoalsFromJson(prefs.getString("session_goals_json", "[]") ?: "[]")
+        val currentGoal = freshGoals.find { it.id == goal.id } ?: goal
+        val isCompleted = currentGoal.completed
+
         val (dialog, content) = DialogFactory.createBaseDialog(host, themeCoordinator)
         val (plannerPrimary, _) = resolvePlannerColors()
 
         content.addView(TextView(host).apply {
-            text = goal.title
+            text = currentGoal.title
             setTextColor(plannerPrimary)
             textSize = 16.5f
             typeface = host.themeCoordinator.getAppTypeface(isBold = true)
             setPadding(0, 0, 0, dp(4))
         })
 
-        if (!goal.note.isNullOrBlank()) {
+        if (!currentGoal.note.isNullOrBlank()) {
             content.addView(TextView(host).apply {
-                text = goal.note
+                text = currentGoal.note
                 textSize = 12f
                 setTextColor(tintedColor(themeCoordinator.textColor, 170))
                 setPadding(0, 0, 0, dp(10))
@@ -1894,7 +1900,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         // Action 1: Toggle Completion
         if (onToggle != null) {
             val toggleAction = Button(host).apply {
-                text = if (goal.completed) "Mark Incomplete ◯" else "Mark Complete ✓"
+                text = if (isCompleted) "Mark Incomplete ◯" else "Mark Complete ✓"
                 textSize = 13.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setTextColor(themeCoordinator.textColor)
@@ -1924,7 +1930,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
             setOnClickListener {
                 dialog.dismiss()
-                host.startFocusForGoal(goal)
+                host.startFocusForGoal(currentGoal)
             }
         }
         content.addView(focusAction)
@@ -1942,7 +1948,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
             setOnClickListener {
                 dialog.dismiss()
-                showEditSessionGoalDialog(goal)
+                showEditSessionGoalDialog(currentGoal)
             }
         }
         content.addView(editAction)
@@ -1960,7 +1966,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             }
             setOnClickListener {
                 dialog.dismiss()
-                showGoalHistoryDialog(goal)
+                showGoalHistoryDialog(currentGoal)
             }
         }
         content.addView(historyAction)
@@ -1980,12 +1986,12 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 dialog.dismiss()
                 showConfirmDialog(
                     title = "Delete Goal?",
-                    message = "Are you sure you want to remove '${goal.title}' from your planner?"
+                    message = "Are you sure you want to remove '${currentGoal.title}' from your planner?"
                 ) {
                     val currentGoals = loadSessionGoalsFromJson(host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).getString("session_goals_json", "[]") ?: "[]").toMutableList()
-                    val updated = currentGoals.filter { it.id != goal.id }
+                    val updated = currentGoals.filter { it.id != currentGoal.id }
                     saveSessionGoalsToJson(updated)
-                    GoalReminderScheduler.cancelGoalReminder(host, goal.id)
+                    GoalReminderScheduler.cancelGoalReminder(host, currentGoal.id)
                     PlannerHistoryManager.snapshotToday(host, updated)
                     refreshStatsPanel()
                 }
