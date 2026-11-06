@@ -179,4 +179,66 @@ class FestivalManagerTest {
         assertEquals(f.greetings[1], v1)
         assertEquals(f.greetings[2], v2)
     }
+
+    @Test
+    fun testFestivalCountryApplicability() {
+        // Global holidays apply to any country
+        assertTrue("New Year must apply to India", FestivalType.NEW_YEAR.isApplicableForCountry("IN"))
+        assertTrue("New Year must apply to US", FestivalType.NEW_YEAR.isApplicableForCountry("US"))
+        assertTrue("New Year must apply to null/empty", FestivalType.NEW_YEAR.isApplicableForCountry(null))
+        assertTrue("Christmas must apply to UK", FestivalType.CHRISTMAS.isApplicableForCountry("GB"))
+
+        // India-specific holidays
+        assertTrue("Republic Day applies to IN", FestivalType.REPUBLIC_DAY.isApplicableForCountry("IN"))
+        assertFalse("Republic Day does not apply to US", FestivalType.REPUBLIC_DAY.isApplicableForCountry("US"))
+        assertTrue("Independence Day applies to IN", FestivalType.INDEPENDENCE_DAY.isApplicableForCountry("IN"))
+        assertFalse("Independence Day does not apply to GB", FestivalType.INDEPENDENCE_DAY.isApplicableForCountry("GB"))
+
+        // Diwali
+        assertTrue("Diwali applies to India", FestivalType.DIWALI.isApplicableForCountry("IN"))
+        assertTrue("Diwali applies to Nepal", FestivalType.DIWALI.isApplicableForCountry("NP"))
+        assertTrue("Diwali applies to Singapore", FestivalType.DIWALI.isApplicableForCountry("SG"))
+        assertFalse("Diwali does not apply to Germany", FestivalType.DIWALI.isApplicableForCountry("DE"))
+
+        // Eid
+        assertTrue("Eid applies to India", FestivalType.EID_UL_FITR.isApplicableForCountry("IN"))
+        assertTrue("Eid applies to UAE", FestivalType.EID_UL_FITR.isApplicableForCountry("AE"))
+        assertTrue("Eid applies to Saudi Arabia", FestivalType.EID_UL_FITR.isApplicableForCountry("SA"))
+        assertFalse("Eid does not apply to Japan", FestivalType.EID_UL_FITR.isApplicableForCountry("JP"))
+    }
+
+    @Test
+    fun testLanguageFailsafeAndCountryName() {
+        val lang = CountryDetector.detectLanguageCode()
+        assertNotNull("Language must not be null", lang)
+        assertTrue("Language must be at least 2 chars", lang.length >= 2)
+        assertFalse("Language must not be und", lang.equals("und", ignoreCase = true))
+
+        val langName = CountryDetector.detectLanguageName()
+        assertNotNull(langName)
+        assertTrue(langName.isNotBlank())
+
+        assertEquals("India", CountryDetector.getCountryName("IN"))
+        assertEquals("United States", CountryDetector.getCountryName("US"))
+        assertEquals("United Kingdom", CountryDetector.getCountryName("GB"))
+    }
+
+    @Test
+    fun testHindiGreetingFormatting() {
+        val diwaliGreeting = FestivalType.DIWALI.greetings[0]
+        
+        // English formatting
+        val (enTitle, enMsg) = diwaliGreeting.format("Aarav", "en")
+        assertEquals("Happy Diwali, Aarav!", enTitle)
+        assertTrue(enMsg.contains("festival of lights"))
+
+        // Hindi formatting
+        val (hiTitle, hiMsg) = diwaliGreeting.format("Aarav", "hi")
+        assertEquals("दीपावली की हार्दिक शुभकामनाएँ, Aarav!", hiTitle)
+        assertTrue(hiMsg.contains("दीपों का यह पावन पर्व"))
+
+        // Fallback for null name in Hindi
+        val (hiTitleNoName, _) = diwaliGreeting.format(null, "hi")
+        assertEquals("दीपावली की हार्दिक शुभकामनाएँ!", hiTitleNoName)
+    }
 }

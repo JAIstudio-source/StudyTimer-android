@@ -17,12 +17,18 @@ import java.util.Locale
  */
 data class FestivalGreeting(
     val titleTemplate: String,
-    val messageTemplate: String
+    val messageTemplate: String,
+    val hiTitleTemplate: String? = null,
+    val hiMessageTemplate: String? = null
 ) {
-    fun format(userName: String?): Pair<String, String> {
+    fun format(userName: String?, languageCode: String? = null): Pair<String, String> {
+        val useHindi = languageCode?.equals("hi", ignoreCase = true) == true &&
+                !hiTitleTemplate.isNullOrBlank() && !hiMessageTemplate.isNullOrBlank()
+        val tTemplate = if (useHindi) hiTitleTemplate!! else titleTemplate
+        val mTemplate = if (useHindi) hiMessageTemplate!! else messageTemplate
         val nameSuffix = if (!userName.isNullOrBlank()) ", ${userName.trim()}" else ""
-        val resolvedTitle = titleTemplate.replace("{name}", nameSuffix)
-        val resolvedMessage = messageTemplate.replace("{name}", userName?.trim() ?: "")
+        val resolvedTitle = tTemplate.replace("{name}", nameSuffix)
+        val resolvedMessage = mTemplate.replace("{name}", userName?.trim() ?: "")
         return Pair(resolvedTitle, resolvedMessage)
     }
 }
@@ -36,24 +42,32 @@ enum class FestivalType(
     val key: String,
     val displayName: String,
     val defaultTitle: String,
+    val countryCodes: List<String> = listOf("ALL"),
     val greetings: List<FestivalGreeting>
 ) {
     DIWALI(
         key = "diwali",
         displayName = "Diwali",
         defaultTitle = "Happy Diwali{name}!",
+        countryCodes = listOf("IN", "NP", "MU", "FJ", "GY", "SR", "TT", "SG", "MY"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy Diwali{name}!",
-                messageTemplate = "May this festival of lights illuminate your goals and bring happiness to you and your family. Enjoy the celebrations and keep moving towards your dreams!"
+                messageTemplate = "May this festival of lights illuminate your goals and bring happiness to you and your family. Enjoy the celebrations and keep moving towards your dreams!",
+                hiTitleTemplate = "दीपावली की हार्दिक शुभकामनाएँ{name}!",
+                hiMessageTemplate = "दीपों का यह पावन पर्व आपके जीवन में नई उमंग, सुख और सफलता लेकर आए। अपने लक्ष्यों की ओर निरंतर बढ़ते रहें!"
             ),
             FestivalGreeting(
                 titleTemplate = "Wishing you a Happy Diwali{name}!",
-                messageTemplate = "Celebrate the joy, sweets, and lights today! Wishing you great focus, happiness, and continuous success in everything you strive for."
+                messageTemplate = "Celebrate the joy, sweets, and lights today! Wishing you great focus, happiness, and continuous success in everything you strive for.",
+                hiTitleTemplate = "शुभ दीपावली{name}!",
+                hiMessageTemplate = "उमंग, मिठास और दीपों का यह पर्व आपके अध्ययन और जीवन में सुख, शांति और प्रगति लाए।"
             ),
             FestivalGreeting(
                 titleTemplate = "Shubh Deepavali{name}!",
-                messageTemplate = "May your journey ahead shine bright. Enjoy the festivities with your loved ones and stay inspired!"
+                messageTemplate = "May your journey ahead shine bright. Enjoy the festivities with your loved ones and stay inspired!",
+                hiTitleTemplate = "शुभ दीपावली{name}!",
+                hiMessageTemplate = "ईश्वर से प्रार्थना है कि आपकी मेहनत और लगन आपको उच्चतम मुकाम तक पहुँचाए। उत्सव का आनंद लें!"
             )
         )
     ),
@@ -62,18 +76,25 @@ enum class FestivalType(
         key = "holi",
         displayName = "Holi",
         defaultTitle = "Happy Holi{name}!",
+        countryCodes = listOf("IN", "NP"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy Holi{name}!",
-                messageTemplate = "Wishing you a vibrant day filled with colors, laughter, and sweet moments with family and friends. Enjoy every moment of the celebration!"
+                messageTemplate = "Wishing you a vibrant day filled with colors, laughter, and sweet moments with family and friends. Enjoy every moment of the celebration!",
+                hiTitleTemplate = "होली की हार्दिक शुभकामनाएँ{name}!",
+                hiMessageTemplate = "रंगों का यह पावन त्यौहार आपके जीवन में खुशियाँ, नई ऊर्जा और सफलता लेकर आए। पूरे उत्साह से मनाएँ!"
             ),
             FestivalGreeting(
                 titleTemplate = "Wishing you a joyful Holi{name}!",
-                messageTemplate = "May this colorful day bring fresh energy and positivity to your life and learning journey. Have a wonderful celebration!"
+                messageTemplate = "May this colorful day bring fresh energy and positivity to your life and learning journey. Have a wonderful celebration!",
+                hiTitleTemplate = "आनंदमयी होली की शुभकामनाएँ{name}!",
+                hiMessageTemplate = "यह रंगोत्सव आपके अध्ययन पथ पर सकारात्मकता, नई प्रेरणा और नई उपलब्धियाँ लेकर आए।"
             ),
             FestivalGreeting(
                 titleTemplate = "Happy Holi{name}!",
-                messageTemplate = "Celebrate with colors, joy, and good cheer today. Here is to new energy, happiness, and success ahead!"
+                messageTemplate = "Celebrate with colors, joy, and good cheer today. Here is to new energy, happiness, and success ahead!",
+                hiTitleTemplate = "होली की हार्दिक बधाई{name}!",
+                hiMessageTemplate = "रंगों, उल्लास और मिठास के साथ आज का दिन मनाएँ और नए जोश के साथ अपने सपनों को पूरा करें!"
             )
         )
     ),
@@ -82,18 +103,25 @@ enum class FestivalType(
         key = "eid_ul_fitr",
         displayName = "Eid-ul-Fitr",
         defaultTitle = "Eid Mubarak{name}!",
+        countryCodes = listOf("IN", "PK", "BD", "AE", "SA", "ID", "MY", "EG", "TR", "KW", "QA", "OM", "BH", "JO"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Eid Mubarak{name}!",
-                messageTemplate = "Wishing you and your family peace, happiness, and prosperity on this blessed occasion. Enjoy the celebrations and stay inspired!"
+                messageTemplate = "Wishing you and your family peace, happiness, and prosperity on this blessed occasion. Enjoy the celebrations and stay inspired!",
+                hiTitleTemplate = "ईद मुबारक{name}!",
+                hiMessageTemplate = "ईद-उल-फ़ित्र के इस मुबारक मौके पर आपको और आपके परिवार को दिली मुबारकबाद। सुख, शांति और तरक्की की दुआ!"
             ),
             FestivalGreeting(
                 titleTemplate = "Eid Mubarak{name}!",
-                messageTemplate = "May the joy and blessings of this day fill your heart and inspire your journey ahead. Have a wonderful time with your loved ones!"
+                messageTemplate = "May the joy and blessings of this day fill your heart and inspire your journey ahead. Have a wonderful time with your loved ones!",
+                hiTitleTemplate = "ईद की दिली मुबारकबाद{name}!",
+                hiMessageTemplate = "यह पावन पर्व आपके जीवन में खुशियाँ, बरकत और नई ऊर्जा भरे। अपनों के साथ जश्न मनाएँ!"
             ),
             FestivalGreeting(
                 titleTemplate = "Warm Eid Wishes{name}!",
-                messageTemplate = "Celebrating dedication, patience, and joy. Wishing you success in all your goals and a wonderful day of festivities!"
+                messageTemplate = "Celebrating dedication, patience, and joy. Wishing you success in all your goals and a wonderful day of festivities!",
+                hiTitleTemplate = "ईद मुबारक{name}!",
+                hiMessageTemplate = "सब्र, निष्ठा और समर्पण की भावना आपके लक्ष्यों को नई ऊँचाइयों तक पहुँचाए। ईद की शुभकामनाएँ!"
             )
         )
     ),
@@ -102,18 +130,25 @@ enum class FestivalType(
         key = "eid_ul_adha",
         displayName = "Eid-ul-Adha",
         defaultTitle = "Eid-ul-Adha Mubarak{name}!",
+        countryCodes = listOf("IN", "PK", "BD", "AE", "SA", "ID", "MY", "EG", "TR", "KW", "QA", "OM", "BH", "JO"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Eid-ul-Adha Mubarak{name}!",
-                messageTemplate = "May this special day bring peace, gratitude, and happiness to your home. Enjoy the celebration with family and friends!"
+                messageTemplate = "May this special day bring peace, gratitude, and happiness to your home. Enjoy the celebration with family and friends!",
+                hiTitleTemplate = "बकरीद मुबारक{name}!",
+                hiMessageTemplate = "ईद-उल-अज़हा के इस पावन पर्व पर आपके जीवन में अमन, भाईचारा और खुशियाँ हमेशा बनी रहें।"
             ),
             FestivalGreeting(
                 titleTemplate = "Eid Mubarak{name}!",
-                messageTemplate = "Wishing you joy, togetherness, and renewed inspiration. Have a memorable celebration with your loved ones!"
+                messageTemplate = "Wishing you joy, togetherness, and renewed inspiration. Have a memorable celebration with your loved ones!",
+                hiTitleTemplate = "ईद मुबारक{name}!",
+                hiMessageTemplate = "त्याग, विश्वास और समर्पण का यह त्यौहार आपके जीवन में नई रोशनी और उमंग लाए।"
             ),
             FestivalGreeting(
                 titleTemplate = "Blessed Eid-ul-Adha{name}!",
-                messageTemplate = "May your dedication and perseverance lead to great achievements. Enjoy the festive moments today!"
+                messageTemplate = "May your dedication and perseverance lead to great achievements. Enjoy the festive moments today!",
+                hiTitleTemplate = "ईद-उल-अज़हा की मुबारकबाद{name}!",
+                hiMessageTemplate = "आपकी मेहनत, लगन और एकाग्रता आपको सफलता के सर्वोच्च शिखर तक पहुँचाए। मुबारकबाद!"
             )
         )
     ),
@@ -122,18 +157,25 @@ enum class FestivalType(
         key = "christmas",
         displayName = "Christmas",
         defaultTitle = "Merry Christmas{name}!",
+        countryCodes = listOf("ALL"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Merry Christmas{name}!",
-                messageTemplate = "Wishing you a wonderful holiday season filled with warmth, peace, and cheer. Enjoy the celebration with your loved ones!"
+                messageTemplate = "Wishing you a wonderful holiday season filled with warmth, peace, and cheer. Enjoy the celebration with your loved ones!",
+                hiTitleTemplate = "क्रिसमस की हार्दिक शुभकामनाएँ{name}!",
+                hiMessageTemplate = "क्रिसमस का यह पावन पर्व आपके और आपके परिवार के जीवन में शांति, सुख और खुशहाली लेकर आए।"
             ),
             FestivalGreeting(
                 titleTemplate = "Christmas Greetings{name}!",
-                messageTemplate = "May your Christmas season be joyful and inspiring. Take time to relax, recharge, and look forward to new achievements ahead!"
+                messageTemplate = "May your Christmas season be joyful and inspiring. Take time to relax, recharge, and look forward to new achievements ahead!",
+                hiTitleTemplate = "क्रिसमस की ढेरों शुभकामनाएँ{name}!",
+                hiMessageTemplate = "यह त्यौहार आपके जीवन में नई ऊर्जा, प्रेरणा और नए लक्ष्यों की ओर बढ़ने का उत्साह भरे।"
             ),
             FestivalGreeting(
                 titleTemplate = "Merry Christmas{name}!",
-                messageTemplate = "Wishing you happiness, good health, and bright beginnings for all your learning goals!"
+                messageTemplate = "Wishing you happiness, good health, and bright beginnings for all your learning goals!",
+                hiTitleTemplate = "मैरी क्रिसमस{name}!",
+                hiMessageTemplate = "उत्सव का आनंद लें और अपने सपनों की ओर पूरे विश्वास के साथ आगे बढ़ते रहें!"
             )
         )
     ),
@@ -142,18 +184,25 @@ enum class FestivalType(
         key = "dussehra",
         displayName = "Dussehra",
         defaultTitle = "Happy Dussehra{name}!",
+        countryCodes = listOf("IN", "NP"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy Dussehra{name}!",
-                messageTemplate = "Celebrating the victory of wisdom, perseverance, and dedication. May you overcome every challenge and achieve your highest goals!"
+                messageTemplate = "Celebrating the victory of wisdom, perseverance, and dedication. May you overcome every challenge and achieve your highest goals!",
+                hiTitleTemplate = "दशहरे की हार्दिक शुभकामनाएँ{name}!",
+                hiMessageTemplate = "बुराई पर अच्छाई और अज्ञान पर ज्ञान की विजय का यह पर्व आपके जीवन में नई प्रेरणा और दृढ़ संकल्प लेकर आए!"
             ),
             FestivalGreeting(
                 titleTemplate = "Shubh Vijayadashami{name}!",
-                messageTemplate = "May focus and hard work lead you to continuous success. Enjoy the festivities and keep striving forward with confidence!"
+                messageTemplate = "May focus and hard work lead you to continuous success. Enjoy the festivities and keep striving forward with confidence!",
+                hiTitleTemplate = "शुभ विजयादशमी{name}!",
+                hiMessageTemplate = "कड़ी मेहनत और एकाग्रता से आप हर कठिनाई पर विजय प्राप्त करें। विजयादशमी की हार्दिक बधाई!"
             ),
             FestivalGreeting(
                 titleTemplate = "Happy Dussehra{name}!",
-                messageTemplate = "A celebration of strength, focus, and triumph. Wishing you great confidence in everything you set out to achieve!"
+                messageTemplate = "A celebration of strength, focus, and triumph. Wishing you great confidence in everything you set out to achieve!",
+                hiTitleTemplate = "दशहरा पर्व की शुभकामनाएँ{name}!",
+                hiMessageTemplate = "आत्मविश्वास, संकल्प और अनुशासन से अपने लक्ष्यों को हासिल करें और निरंतर आगे बढ़ें!"
             )
         )
     ),
@@ -162,18 +211,25 @@ enum class FestivalType(
         key = "new_year",
         displayName = "New Year's Day",
         defaultTitle = "Happy New Year{name}!",
+        countryCodes = listOf("ALL"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy New Year{name}!",
-                messageTemplate = "A brand new year with fresh opportunities and goals. Wishing you consistency, focus, and great success in the year ahead!"
+                messageTemplate = "A brand new year with fresh opportunities and goals. Wishing you consistency, focus, and great success in the year ahead!",
+                hiTitleTemplate = "नव वर्ष की हार्दिक शुभकामनाएँ{name}!",
+                hiMessageTemplate = "यह नया साल आपके लिए नई उम्मीदें, अटूट संकल्प और शानदार उपलब्धियाँ लेकर आए। निरंतर आगे बढ़ते रहें!"
             ),
             FestivalGreeting(
                 titleTemplate = "Welcome to a New Year{name}!",
-                messageTemplate = "Every day is a step toward your dreams. May this year be your most rewarding, focused, and accomplished year yet!"
+                messageTemplate = "Every day is a step toward your dreams. May this year be your most rewarding, focused, and accomplished year yet!",
+                hiTitleTemplate = "नूतन वर्ष की शुभकामनाएँ{name}!",
+                hiMessageTemplate = "हर दिन अपने सपनों को साकार करने का एक नया अवसर है। यह वर्ष आपके अध्ययन और करियर में मील का पत्थर साबित हो!"
             ),
             FestivalGreeting(
                 titleTemplate = "Happy New Year{name}!",
-                messageTemplate = "Make this year count with strong habits and clear goals. Wishing you continuous growth and achievement!"
+                messageTemplate = "Make this year count with strong habits and clear goals. Wishing you continuous growth and achievement!",
+                hiTitleTemplate = "नव वर्ष मंगलमय हो{name}!",
+                hiMessageTemplate = "मजबूत आदतों और स्पष्ट लक्ष्यों के साथ इस वर्ष को खास बनाएँ। सफलता और प्रगति आपके कदम चूमे!"
             )
         )
     ),
@@ -182,14 +238,19 @@ enum class FestivalType(
         key = "republic_day",
         displayName = "Republic Day",
         defaultTitle = "Happy Republic Day{name}!",
+        countryCodes = listOf("IN"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy Republic Day{name}!",
-                messageTemplate = "Celebrating the values, progress, and unity of our nation. Wishing you pride, inspiration, and excellence in your learning!"
+                messageTemplate = "Celebrating the values, progress, and unity of our nation. Wishing you pride, inspiration, and excellence in your learning!",
+                hiTitleTemplate = "गणतंत्र दिवस की हार्दिक शुभकामनाएँ{name}!",
+                hiMessageTemplate = "राष्ट्र के गौरव, एकता और प्रगति के इस पावन पर्व पर ज्ञान और निष्ठा के साथ अपने लक्ष्यों की ओर अग्रसर रहें!"
             ),
             FestivalGreeting(
                 titleTemplate = "Happy Republic Day{name}!",
-                messageTemplate = "Knowledge and dedication shape a better tomorrow. Keep learning and striving for excellence!"
+                messageTemplate = "Knowledge and dedication shape a better tomorrow. Keep learning and striving for excellence!",
+                hiTitleTemplate = "गणतंत्र दिवस की बधाई{name}!",
+                hiMessageTemplate = "सच्ची लगन और ज्ञान ही राष्ट्र निर्माण की शक्ति है। निरंतर अध्ययन करें और उत्कृष्टता हासिल करें!"
             )
         )
     ),
@@ -198,17 +259,28 @@ enum class FestivalType(
         key = "independence_day",
         displayName = "Independence Day",
         defaultTitle = "Happy Independence Day{name}!",
+        countryCodes = listOf("IN"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy Independence Day{name}!",
-                messageTemplate = "Celebrating the spirit of freedom, vision, and growth. Wishing you great inspiration and success on your path ahead!"
+                messageTemplate = "Celebrating the spirit of freedom, vision, and growth. Wishing you great inspiration and success on your path ahead!",
+                hiTitleTemplate = "स्वतंत्रता दिवस की हार्दिक शुभकामनाएँ{name}!",
+                hiMessageTemplate = "स्वाधीनता, एकता और प्रगति के इस पावन पर्व पर अपने लक्ष्यों को हासिल करने का नया संकल्प लें!"
             ),
             FestivalGreeting(
                 titleTemplate = "Happy Independence Day{name}!",
-                messageTemplate = "Knowledge brings true freedom and strength. Keep learning, growing, and reaching for your goals!"
+                messageTemplate = "Knowledge brings true freedom and strength. Keep learning, growing, and reaching for your goals!",
+                hiTitleTemplate = "स्वतंत्रता दिवस की बधाई{name}!",
+                hiMessageTemplate = "ज्ञान और मेहनत ही हमें सच्ची आत्मनिर्भरता और शक्ति देते हैं। अपने सपनों की ऊँचाइयों को छुएँ!"
             )
         )
     );
+
+    fun isApplicableForCountry(countryIso: String?): Boolean {
+        if (countryCodes.contains("ALL")) return true
+        if (countryIso.isNullOrBlank()) return true
+        return countryCodes.any { it.equals(countryIso.trim(), ignoreCase = true) }
+    }
 
     /**
      * Retrieves a greeting template strictly belonging to this festival.
@@ -407,6 +479,12 @@ object FestivalManager {
         val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val festival = forceFestival ?: getFestivalForDate(todayStr) ?: return false
 
+        // Filter festival by detected or user-selected country
+        val userCountry = CountryDetector.detectCountryIso(context)
+        if (!isTest && !festival.isApplicableForCountry(userCountry)) {
+            return false
+        }
+
         // Prevent duplicate notifications for the same festival on the same day unless it's an explicit test
         val festivalEventKey = "${festival.key}_$todayStr"
         if (!isTest) {
@@ -420,7 +498,8 @@ object FestivalManager {
         val year = Calendar.getInstance().get(Calendar.YEAR)
         val greetingTemplate = festival.getGreeting(variationIndex = forceVariation, year = year)
         val firstName = getUserFirstName(context)
-        val (title, message) = greetingTemplate.format(firstName)
+        val userLanguage = CountryDetector.detectLanguageCode()
+        val (title, message) = greetingTemplate.format(firstName, userLanguage)
 
         postNotification(context, festival, title, message, isTest)
 

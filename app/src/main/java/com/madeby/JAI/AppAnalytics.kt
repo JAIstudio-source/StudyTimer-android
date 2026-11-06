@@ -141,6 +141,20 @@ object AppAnalytics {
         }
     }
 
+    fun onRegionUpdated(context: Context) {
+        scope.launch {
+            val region = CountryDetector.getRegionInfo(context)
+            trackEvent(context, "region_updated", mapOf(
+                "country_code" to region.countryIso,
+                "country_name" to region.countryName,
+                "language" to region.languageCode,
+                "is_manual_override" to CountryDetector.isUserOverrideActive(context)
+            ))
+            syncUserCohort(context, force = true)
+            flushEvents(context, force = true)
+        }
+    }
+
     fun trackSessionStart(context: Context, mode: String) {
         scope.launch {
             trackEvent(context, "timer_started", mapOf("timer_mode" to mode))
@@ -217,6 +231,7 @@ object AppAnalytics {
             val currentUserEmail = if (isCurrentlyLoggedIn) AuthManager.getUserEmail(context) else null
             val now = System.currentTimeMillis()
             val eventId = "${anonId}_${eventName}_${now}_${UUID.randomUUID().toString().substring(0, 6)}"
+            val regionInfo = CountryDetector.getRegionInfo(context)
 
             val eventJson = JSONObject().apply {
                 put("event_id", eventId)
@@ -226,6 +241,10 @@ object AppAnalytics {
                 put("user_name", if (!currentUserName.isNullOrBlank()) currentUserName else JSONObject.NULL)
                 put("user_email", if (!currentUserEmail.isNullOrBlank()) currentUserEmail else JSONObject.NULL)
                 put("is_authenticated", isCurrentlyLoggedIn)
+                put("country_code", regionInfo.countryIso)
+                put("country_name", regionInfo.countryName)
+                put("language", regionInfo.languageCode)
+                put("locale", regionInfo.localeTag)
                 put("event_name", eventName)
                 put("app_version", BuildConfig.VERSION_NAME)
                 put("version_code", BuildConfig.VERSION_CODE)
@@ -359,6 +378,7 @@ object AppAnalytics {
                 val totalStudySecs = prefs.getLong(KEY_TOTAL_STUDY_SECS, 0L)
                 val totalSessions = prefs.getLong(KEY_TOTAL_SESSIONS, 0L)
                 val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                val regionInfo = CountryDetector.getRegionInfo(context)
 
                 val payload = JSONObject().apply {
                     put("anonymous_id", anonId)
@@ -367,6 +387,10 @@ object AppAnalytics {
                     put("user_name", if (!currentUserName.isNullOrBlank()) currentUserName else JSONObject.NULL)
                     put("user_email", if (!currentUserEmail.isNullOrBlank()) currentUserEmail else JSONObject.NULL)
                     put("is_authenticated", isCurrentlyLoggedIn)
+                    put("country_code", regionInfo.countryIso)
+                    put("country_name", regionInfo.countryName)
+                    put("language", regionInfo.languageCode)
+                    put("locale", regionInfo.localeTag)
                     put("first_seen", firstSeen)
                     put("last_active_at", now)
                     put("last_active_date", todayStr)

@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS public.app_analytics_events (
     version_code INT,
     android_sdk INT,
     device_model TEXT,
+    country_code TEXT,
+    country_name TEXT,
+    language TEXT,
+    locale TEXT,
     timestamp BIGINT NOT NULL,
     properties JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -29,6 +33,10 @@ ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS user_name TEXT;
 ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS user_email TEXT;
 ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'android';
 ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS device_model TEXT;
+ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS country_code TEXT;
+ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS country_name TEXT;
+ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS language TEXT;
+ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS locale TEXT;
 ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS app_version TEXT;
 ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS version_code INT;
 ALTER TABLE public.app_analytics_events ADD COLUMN IF NOT EXISTS android_sdk INT;
@@ -37,6 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_analytics_event_id ON public.app_analytics_events
 CREATE INDEX IF NOT EXISTS idx_analytics_anon_id ON public.app_analytics_events(anonymous_id);
 CREATE INDEX IF NOT EXISTS idx_analytics_hardware_id ON public.app_analytics_events(device_hardware_id);
 CREATE INDEX IF NOT EXISTS idx_analytics_user_id ON public.app_analytics_events(user_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_country ON public.app_analytics_events(country_code);
 CREATE INDEX IF NOT EXISTS idx_analytics_event_name ON public.app_analytics_events(event_name);
 CREATE INDEX IF NOT EXISTS idx_analytics_timestamp ON public.app_analytics_events(timestamp);
 
@@ -56,6 +65,10 @@ CREATE TABLE IF NOT EXISTS public.app_user_cohorts (
     version_code INT,
     android_sdk INT,
     device_model TEXT,
+    country_code TEXT,
+    country_name TEXT,
+    language TEXT,
+    locale TEXT,
     total_study_secs BIGINT DEFAULT 0,
     total_sessions BIGINT DEFAULT 0,
     updated_at BIGINT DEFAULT 0
@@ -66,12 +79,17 @@ ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS user_name TEXT;
 ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS user_email TEXT;
 ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS platform TEXT DEFAULT 'android';
 ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS device_model TEXT;
+ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS country_code TEXT;
+ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS country_name TEXT;
+ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS language TEXT;
+ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS locale TEXT;
 ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS app_version TEXT;
 ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS version_code INT;
 ALTER TABLE public.app_user_cohorts ADD COLUMN IF NOT EXISTS android_sdk INT;
 
 CREATE INDEX IF NOT EXISTS idx_cohorts_user_id ON public.app_user_cohorts(user_id);
 CREATE INDEX IF NOT EXISTS idx_cohorts_hardware_id ON public.app_user_cohorts(device_hardware_id);
+CREATE INDEX IF NOT EXISTS idx_cohorts_country ON public.app_user_cohorts(country_code);
 CREATE INDEX IF NOT EXISTS idx_cohorts_last_date ON public.app_user_cohorts(last_active_date);
 
 -- 3. Crash & Exception Reports Table
