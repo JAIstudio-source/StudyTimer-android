@@ -957,7 +957,7 @@ class MainActivity : AppCompatActivity() {
                 needsHeal = true
             }
         }
-        if (needsHeal) healEditor.commit()
+        if (needsHeal) healEditor.apply()
 
         PlannerStateManager.addListener(plannerGoalListener)
 

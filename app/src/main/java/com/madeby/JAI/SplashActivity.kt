@@ -12,6 +12,7 @@ import androidx.appcompat.app.AppCompatActivity
 class SplashActivity : AppCompatActivity() {
 
     private lateinit var videoView: VideoView
+    private var hasNavigated = false
 
     override fun attachBaseContext(newBase: Context) {
         val config = Configuration(newBase.resources.configuration)
@@ -31,6 +32,14 @@ class SplashActivity : AppCompatActivity() {
 
         // Verify installation / app update integrity and migrate if needed
         BackupManager(this).verifyAppVersionAndMigrate()
+
+        // Pre-warm SharedPreferences asynchronously while splash video is playing
+        Thread {
+            try {
+                getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).all
+                getSharedPreferences("StudyTimerUserData", Context.MODE_PRIVATE).all
+            } catch (_: Exception) {}
+        }.start()
 
         setContentView(R.layout.activity_splash)
 
@@ -71,6 +80,8 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun navigateToNextScreen() {
+        if (hasNavigated) return
+        hasNavigated = true
         val shouldGoToMain = AuthManager.isLoggedIn(this) || AuthManager.hasCompletedOnboarding(this)
         val nextIntent = if (shouldGoToMain) {
             Intent(this, MainActivity::class.java).apply {
