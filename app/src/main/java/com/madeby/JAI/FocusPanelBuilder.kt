@@ -51,6 +51,15 @@ class FocusPanelBuilder(private val host: MainActivity) {
      */
     private fun buildPortraitLayout(sharedPrefs: SharedPreferences) {
         with(host) {
+            landscapeHeaderView = null
+            landscapeDockView = null
+            landscapeSubjectPillView = null
+            landscapeGoalProgressBar = null
+            landscapeTodayFocusText = null
+            landscapeGoalPercentText = null
+            panelContainer.setOnClickListener(null)
+            if (!isPortraitFullscreenActive) rootLayout.setOnClickListener(null)
+
             val isPomoWhite = isPomodoroPureWhiteActive()
             val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
             val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(this)
@@ -690,15 +699,15 @@ class FocusPanelBuilder(private val host: MainActivity) {
             panelContainer.orientation = LinearLayout.VERTICAL
             panelContainer.setPadding(0, 0, 0, 0)
 
-            // 1. TOP FLOATING HUD BAR (44dp)
+            // 1. TOP FLOATING HUD BAR (38dp)
             val topHeader = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(44)
+                    dp(38)
                 ).apply {
-                    setMargins(dp(18), dp(4), dp(18), dp(2))
+                    setMargins(dp(16), dp(4), dp(16), dp(2))
                 }
             }
             landscapeHeaderView = topHeader
@@ -895,7 +904,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     0,
                     1f
                 ).apply {
-                    setMargins(dp(18), dp(2), dp(18), dp(10))
+                    setMargins(dp(16), dp(2), dp(16), dp(6))
                 }
             }
 
@@ -915,7 +924,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
                     gravity = Gravity.CENTER_HORIZONTAL
-                    setMargins(0, dp(2), 0, dp(4))
+                    setMargins(0, 0, 0, dp(4))
                 }
                 background = GradientDrawable().apply {
                     cornerRadius = dp(16).toFloat()
@@ -973,7 +982,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
 
             timerRing = TimerRingView(this).apply {
                 visibility = if (isPomodoro) View.VISIBLE else View.GONE
-                layoutParams = FrameLayout.LayoutParams(dp(220), dp(220), Gravity.CENTER)
+                layoutParams = FrameLayout.LayoutParams(dp(196), dp(196), Gravity.CENTER)
             }
 
             val fontId = FontStyleManager.getSelectedFontId(this)
@@ -987,11 +996,11 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = if (isPomodoro) 46f else 72f
+                textSize = if (isPomodoro) 42f else 60f
                 typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, 5)
+                setPadding(0, 0, 0, dp(2))
                 if (themeCoordinator.isGlassStyle() && !pureWhiteTimerEnabled() && !isPomoWhite) {
                     setShadowLayer(16f, 0f, 0f, tintedColor(themeCoordinator.primaryColor, 90))
                 }
@@ -1002,11 +1011,11 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = 17f
+                textSize = 15f
                 typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, dp(6))
+                setPadding(0, 0, 0, dp(4))
                 visibility = View.GONE
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
             }
@@ -1043,13 +1052,13 @@ class FocusPanelBuilder(private val host: MainActivity) {
             val quoteView = TextView(this).apply {
                 val quote = DailyQuotes.getTodayQuote()
                 text = quote
-                textSize = 10.5f
+                textSize = 10f
                 typeface = themeCoordinator.getAppTypeface(isBold = false)
                 setTextColor(subTextColor)
                 setSingleLine(true)
                 ellipsize = android.text.TextUtils.TruncateAt.END
                 gravity = Gravity.CENTER_HORIZONTAL
-                maxWidth = dp(360)
+                maxWidth = dp(330)
             }
             clockColumn.addView(quoteView)
 
@@ -1061,7 +1070,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     setColor(if (isBrightSurface) 0x20000000.toInt() else 0x20FFFFFF.toInt())
                 }
                 layoutParams = LinearLayout.LayoutParams(dp(1), LinearLayout.LayoutParams.MATCH_PARENT).apply {
-                    setMargins(dp(12), dp(12), dp(12), dp(12))
+                    setMargins(dp(10), dp(10), dp(10), dp(10))
                 }
             }
             mainWorkspace.addView(vDivider)
@@ -1071,7 +1080,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_VERTICAL
                 background = cardBg
-                setPadding(dp(16), dp(12), dp(16), dp(12))
+                setPadding(dp(14), dp(10), dp(14), dp(10))
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 0.95f)
             }
             landscapeDockView = rightDockCard
@@ -1084,7 +1093,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
             val statsTitle = TextView(this).apply {
                 text = "TODAY'S FOCUS"
-                textSize = 10f
+                textSize = 9.5f
                 letterSpacing = 0.08f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(subTextColor)
@@ -1092,7 +1101,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
             landscapeTodayFocusText = TextView(this).apply {
                 text = "0m"
-                textSize = 13.5f
+                textSize = 13f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.primaryColor)
             }
@@ -1109,7 +1118,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     dp(6)
                 ).apply {
-                    setMargins(0, dp(6), 0, dp(4))
+                    setMargins(0, dp(4), 0, dp(3))
                 }
             }
             landscapeGoalProgressBar = goalBar
@@ -1120,12 +1129,12 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(10))
+                    setMargins(0, 0, 0, dp(6))
                 }
             }
             landscapeGoalPercentText = TextView(this).apply {
                 text = "Goal Target"
-                textSize = 10.5f
+                textSize = 10f
                 typeface = themeCoordinator.getAppTypeface(isBold = false)
                 setTextColor(subTextColor)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -1133,7 +1142,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             val streak = sharedPrefs.safeInt("current_streak", 1)
             val streakBadge = TextView(this).apply {
                 text = "🔥 ${streak}d"
-                textSize = 10.5f
+                textSize = 10f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(if (isBrightSurface) 0xFFD97706.toInt() else 0xFFFBBF24.toInt())
             }
@@ -1147,7 +1156,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     setColor(if (isBrightSurface) 0x15000000.toInt() else 0x15FFFFFF.toInt())
                 }
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
-                    setMargins(0, 0, 0, dp(10))
+                    setMargins(0, 0, 0, dp(6))
                 }
             }
             rightDockCard.addView(cardDivider)
@@ -1155,12 +1164,12 @@ class FocusPanelBuilder(private val host: MainActivity) {
             // Controls Title
             val actionTitle = TextView(this).apply {
                 text = "CONTROLS"
-                textSize = 9.5f
+                textSize = 9f
                 letterSpacing = 0.08f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(subTextColor)
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(6))
+                    setMargins(0, 0, 0, dp(4))
                 }
             }
             rightDockCard.addView(actionTitle)
@@ -1176,19 +1185,19 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             val isIdle = (currentTimerState == TimerState.IDLE)
-            val btnHeight = dp(44)
+            val btnHeight = dp(40)
 
             pauseBtn = Button(this).apply {
-                textSize = 13.5f
+                textSize = 13f
                 letterSpacing = 0.02f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setPadding(dp(8), dp(4), dp(8), dp(4))
                 minimumHeight = btnHeight
                 isSoundEffectsEnabled = false
                 layoutParams = if (isIdle) {
-                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
+                    LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
                 } else {
-                    LinearLayout.LayoutParams(0, btnHeight, 1f).apply { setMargins(0, 0, dp(4), 0) }
+                    LinearLayout.LayoutParams(0, btnHeight, 1f).apply { setMargins(0, 0, dp(3), 0) }
                 }
                 setOnClickListener {
                     if (currentTimerState == TimerState.IDLE || currentTimerState == TimerState.PAUSED || currentTimerState == TimerState.BREAK) {
@@ -1202,7 +1211,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
 
             mainBtn = Button(this).apply {
                 text = "Break"
-                textSize = 13f
+                textSize = 12.5f
                 letterSpacing = 0.02f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setPadding(dp(8), dp(4), dp(8), dp(4))
@@ -1210,7 +1219,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 isSoundEffectsEnabled = false
                 visibility = if (isIdle) View.GONE else View.VISIBLE
                 layoutParams = LinearLayout.LayoutParams(0, btnHeight, 1f).apply {
-                    setMargins(dp(2), 0, dp(2), 0)
+                    setMargins(dp(3), 0, dp(3), 0)
                 }
                 setOnClickListener {
                     if (currentTimerState == TimerState.STUDYING) {
@@ -1228,7 +1237,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "Finish"
                 ringColor = themeCoordinator.primaryColor
                 setTextColor(themeCoordinator.textColor)
-                textSize = 13f
+                textSize = 12.5f
                 letterSpacing = 0.02f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 isSoundEffectsEnabled = false
@@ -1237,7 +1246,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 minimumHeight = btnHeight
                 visibility = if (isIdle) View.GONE else View.VISIBLE
                 layoutParams = LinearLayout.LayoutParams(0, btnHeight, 1.15f).apply {
-                    setMargins(dp(4), 0, 0, 0)
+                    setMargins(dp(3), 0, 0, 0)
                 }
             }
             attachHoldToEndListener(stopBtn)
@@ -1250,12 +1259,12 @@ class FocusPanelBuilder(private val host: MainActivity) {
             // Zen Hint
             val zenHint = TextView(this).apply {
                 text = "Tip: Tap timer for Zen StandBy mode"
-                textSize = 9.5f
+                textSize = 9f
                 typeface = themeCoordinator.getAppTypeface(isBold = false)
                 setTextColor(subTextColor)
                 gravity = Gravity.CENTER_HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, dp(8), 0, 0)
+                    setMargins(0, dp(6), 0, 0)
                 }
             }
             rightDockCard.addView(zenHint)

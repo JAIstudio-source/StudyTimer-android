@@ -517,7 +517,7 @@ class MainActivity : AppCompatActivity() {
     internal val statsEngine by lazy { StatsEngine(this) }
     internal val dateKeyFmt by lazy { SimpleDateFormat("yyyy-MM-dd", Locale.US) }
 
-    private lateinit var rootLayout: FrameLayout
+    internal lateinit var rootLayout: FrameLayout
     internal lateinit var panelContainer: LinearLayout
 
     internal lateinit var statusBadge: TextView
@@ -564,6 +564,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private var lastConfigOrientation = Configuration.ORIENTATION_UNDEFINED
+    private var lastStatusBarInset = 0
+    private var lastNavBottomInset = 0
+    private var lastNavRightInset = 0
+    private var lastNavLeftInset = 0
+    private var lastIsThreeButtonNav = false
     private var lastFullscreenToggleTime = 0L
     private var lastActionTriggerTime = 0L
     private var isZenModeActive = false
@@ -1006,8 +1011,10 @@ class MainActivity : AppCompatActivity() {
         panelHost.addView(panelContainer)
         rootLayout.addView(panelHost)
 
+        val isInitialLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         studyBottomNavBar = StudyBottomNavBar(this).apply {
             applyTheme(themeCoordinator)
+            visibility = if (isInitialLandscape) View.GONE else View.VISIBLE
             onTabSelectedListener = { targetPanel ->
                 navigateToPanel(targetPanel)
             }
@@ -1030,30 +1037,13 @@ class MainActivity : AppCompatActivity() {
             val navBottom = navInsets.bottom
             val tappableBottom = tappableInsets.bottom
 
-            // Conditional Bottom Navigation & Gesture Bar Padding:
-            // 3-button navigation bars have active tappable buttons and substantial height (> 28dp)
-            val isThreeButtonNav = (tappableBottom > 0 && navBottom > dp(28)) || navBottom > dp(36)
+            lastStatusBarInset = statusBarInset
+            lastNavBottomInset = navBottom
+            lastNavRightInset = navInsets.right
+            lastNavLeftInset = navInsets.left
+            lastIsThreeButtonNav = (tappableBottom > 0 && navBottom > dp(28)) || navBottom > dp(36)
 
-            val bottomNavMargin = if (isThreeButtonNav) {
-                navBottom + dp(10)
-            } else {
-                // No bottom bar or standard gesture navigation: display cleanly without extra bottom padding
-                dp(16)
-            }
-
-            (studyBottomNavBar.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
-                if (lp.bottomMargin != bottomNavMargin) {
-                    lp.bottomMargin = bottomNavMargin
-                    studyBottomNavBar.layoutParams = lp
-                }
-            }
-
-            val panelBottomPadding = if (isThreeButtonNav) {
-                navBottom + dp(76)
-            } else {
-                dp(16)
-            }
-            panelHost.setPadding(dp(16), statusBarInset + dp(4), dp(16), panelBottomPadding)
+            applyLayoutInsetsForOrientation(resources.configuration.orientation)
             insets
         }
         lastConfigOrientation = resources.configuration.orientation
@@ -1157,6 +1147,47 @@ class MainActivity : AppCompatActivity() {
 
 
 
+    internal fun applyLayoutInsetsForOrientation(orientation: Int = resources.configuration.orientation) {
+        if (!::panelHost.isInitialized) return
+        val isLandscape = orientation == Configuration.ORIENTATION_LANDSCAPE
+        if (isLandscape) {
+            if (::studyBottomNavBar.isInitialized) {
+                studyBottomNavBar.animate().cancel()
+                studyBottomNavBar.visibility = View.GONE
+            }
+            // In landscape, remove top and bottom padding entirely.
+            // Only protect against side navigation bars/cutouts if present.
+            val sidePaddingLeft = if (lastNavLeftInset > 0) lastNavLeftInset else 0
+            val sidePaddingRight = if (lastNavRightInset > 0) lastNavRightInset else 0
+            panelHost.setPadding(sidePaddingLeft, 0, sidePaddingRight, 0)
+        } else {
+            val bottomNavMargin = if (lastIsThreeButtonNav) {
+                lastNavBottomInset + dp(10)
+            } else {
+                dp(16)
+            }
+            if (::studyBottomNavBar.isInitialized) {
+                (studyBottomNavBar.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
+                    if (lp.bottomMargin != bottomNavMargin) {
+                        lp.bottomMargin = bottomNavMargin
+                        studyBottomNavBar.layoutParams = lp
+                    }
+                }
+                studyBottomNavBar.animate().cancel()
+                studyBottomNavBar.translationY = 0f
+                studyBottomNavBar.alpha = 1f
+                val shouldHide = (currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.HEATMAP || isPortraitFullscreenActive)
+                studyBottomNavBar.visibility = if (shouldHide) View.GONE else View.VISIBLE
+            }
+            val panelBottomPadding = if (lastIsThreeButtonNav) {
+                lastNavBottomInset + dp(76)
+            } else {
+                dp(16)
+            }
+            panelHost.setPadding(dp(16), lastStatusBarInset + dp(4), dp(16), panelBottomPadding)
+        }
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         newConfig.fontScale = newConfig.fontScale.coerceIn(0.85f, 1.05f)
         super.onConfigurationChanged(newConfig)
@@ -1166,6 +1197,9 @@ class MainActivity : AppCompatActivity() {
         val sharedPrefs = appPrefs
         val isLandscapeEnabled = sharedPrefs.getBoolean("is_landscape_mode_enabled", sharedPrefs.getBoolean("true_fullscreen_landscape", true))
         val isLandscape = (newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE) && isLandscapeEnabled
+
+        applyLayoutInsetsForOrientation(newConfig.orientation)
+
         if (orientationChanged) {
             isPortraitFullscreenActive = false
             if (isLandscape && currentPanel == AppPanel.FOCUS) {
@@ -3116,8 +3150,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (::studyBottomNavBar.isInitialized) {
-            studyBottomNavBar.applyTheme(themeCoordinator)
-            studyBottomNavBar.setStudyingDim(currentTimerState == TimerState.STUDYING)
+            if (isLandscapeOrientation) {
+                studyBottomNavBar.animate().cancel()
+                studyBottomNavBar.visibility = View.GONE
+            } else {
+                studyBottomNavBar.applyTheme(themeCoordinator)
+                studyBottomNavBar.setStudyingDim(currentTimerState == TimerState.STUDYING)
+                val shouldHide = (currentPanel == AppPanel.SETTINGS || currentPanel == AppPanel.HEATMAP || isPortraitFullscreenActive)
+                studyBottomNavBar.visibility = if (shouldHide) View.GONE else View.VISIBLE
+            }
         }
 
         // Mode switch pill is only visible when no timer is running
@@ -3864,6 +3905,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (isLandscapeEnabled) {
+            if (::studyBottomNavBar.isInitialized) {
+                studyBottomNavBar.animate().cancel()
+                studyBottomNavBar.visibility = View.GONE
+            }
             isZenModeActive = false
             if (::navHeader.isInitialized) navHeader.visibility = View.GONE
             if (::controlActionContainer.isInitialized) {
@@ -4031,6 +4076,11 @@ class MainActivity : AppCompatActivity() {
             // Re-arm auto-fullscreen if currently studying/breaking
             if (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK) {
                 scheduleAutoFullscreen(7000L)
+            }
+        } else {
+            if (::studyBottomNavBar.isInitialized) {
+                studyBottomNavBar.animate().cancel()
+                studyBottomNavBar.visibility = View.GONE
             }
         }
     }
