@@ -64,11 +64,11 @@ object WallpaperManager {
 
     fun getWallpaperType(context: Context): String {
         val type = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_WALLPAPER_TYPE, TYPE_LIVE_AURORA) ?: TYPE_LIVE_AURORA
+            .getString(KEY_WALLPAPER_TYPE, TYPE_PRESET) ?: TYPE_PRESET
         // Graceful migration: remove deprecated unappealing Amber theme
         if (type == TYPE_LIVE_AMBER_GLOW) {
-            setWallpaperType(context, TYPE_LIVE_AURORA)
-            return TYPE_LIVE_AURORA
+            setWallpaperType(context, TYPE_PRESET)
+            return TYPE_PRESET
         }
         return type
     }
@@ -91,10 +91,10 @@ object WallpaperManager {
 
     fun getActivePresetId(context: Context): String {
         val id = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_PRESET_ID, "cozy_cat") ?: "cozy_cat"
+            .getString(KEY_PRESET_ID, "stationery_nordic_mint") ?: "stationery_nordic_mint"
         if (id == "studying_desk") {
-            setActivePreset(context, "cozy_cat")
-            return "cozy_cat"
+            setActivePreset(context, "stationery_nordic_mint")
+            return "stationery_nordic_mint"
         }
         return id
     }
@@ -109,7 +109,7 @@ object WallpaperManager {
 
     fun getWallpaperDimAlpha(context: Context): Float {
         return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .safeFloat(KEY_DIM_ALPHA, 0.42f)
+            .safeFloat(KEY_DIM_ALPHA, 0.0f)
     }
 
     fun setWallpaperDimAlpha(context: Context, alpha: Float, isUserExplicit: Boolean = true) {
@@ -491,7 +491,7 @@ object WallpaperManager {
     fun isBackgroundUnderTimerBright(context: Context): Boolean {
         val type = getWallpaperType(context)
         if (type == TYPE_NONE) {
-            val theme = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("activeBgMode", "OLED")
+            val theme = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString("activeBgMode", "LIGHT")
             return theme == "LIGHT"
         }
 

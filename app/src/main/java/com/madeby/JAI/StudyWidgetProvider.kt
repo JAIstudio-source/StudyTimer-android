@@ -41,7 +41,7 @@ class StudyWidgetProvider : AppWidgetProvider() {
             val state = runCatching { TimerState.valueOf(prefs.safeString("timerState", "IDLE") ?: "IDLE") }.getOrDefault(TimerState.IDLE)
             val subject = SubjectTagManager.getSelectedSubject(context)
 
-            val light = prefs.safeString("activeBgMode", "OLED") == "LIGHT"
+            val light = prefs.safeString("activeBgMode", "LIGHT") == "LIGHT"
             val primary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && prefs.safeBoolean("dynamic_color", false)) {
                 context.getColor(android.R.color.system_accent1_500)
             } else {

@@ -79,7 +79,7 @@ class TasksWidgetProvider : AppWidgetProvider() {
             appWidgetIds: IntArray
         ) {
             val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-            val light = prefs.safeString("activeBgMode", "OLED") == "LIGHT"
+            val light = prefs.safeString("activeBgMode", "LIGHT") == "LIGHT"
             val primary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && prefs.safeBoolean("dynamic_color", false)) {
                 context.getColor(android.R.color.system_accent1_500)
             } else {

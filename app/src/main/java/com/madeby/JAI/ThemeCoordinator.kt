@@ -7,14 +7,14 @@ import android.os.Build
 
 class ThemeCoordinator(private val context: Context) {
 
-    var activeBgMode = "OLED"
+    var activeBgMode = "LIGHT"
     var uiStyle = "GLASS"
-    var bgColor = 0xFF000000.toInt()
-    var boxColor = 0xFF12131A.toInt()
-    var textColor = 0xFFFFFFFF.toInt()
-    var primaryColor = Color.parseColor("#A78BFA")
-    var secondaryColor = Color.parseColor("#38BDF8")
-    var accentColor = Color.HSVToColor(floatArrayOf(36f, 0.80f, 0.95f))
+    var bgColor = 0xFFF8FAFC.toInt()
+    var boxColor = 0xFFFFFFFF.toInt()
+    var textColor = 0xFF0F172A.toInt()
+    var primaryColor = Color.parseColor("#4F46E5")
+    var secondaryColor = Color.parseColor("#0284C7")
+    var accentColor = Color.parseColor("#4F46E5")
 
     companion object {
         fun getContrastColor(bgColor: Int): Int {
@@ -60,21 +60,21 @@ class ThemeCoordinator(private val context: Context) {
 
         if (!sharedPrefs.contains("activeBgMode")) {
             sharedPrefs.edit()
-                .putString("activeBgMode", "OLED")
+                .putString("activeBgMode", "LIGHT")
                 .putString("ui_style", "GLASS")
-                .putInt("customHue", 255)
-                .putInt("customPrimary", Color.parseColor("#A78BFA"))
+                .putInt("customHue", 243)
+                .putInt("customPrimary", Color.parseColor("#4F46E5"))
                 .putInt("customSecondaryHue", 199)
-                .putInt("customSecondary", Color.parseColor("#38BDF8"))
+                .putInt("customSecondary", Color.parseColor("#0284C7"))
                 .apply()
         }
 
-        var storedMode = sharedPrefs.getString("activeBgMode", "OLED") ?: "OLED"
+        var storedMode = sharedPrefs.getString("activeBgMode", "LIGHT") ?: "LIGHT"
         if (storedMode == "ECLIPSE") {
-            storedMode = "OLED"
-            sharedPrefs.edit().putString("activeBgMode", "OLED").apply()
+            storedMode = "LIGHT"
+            sharedPrefs.edit().putString("activeBgMode", "LIGHT").apply()
         } else if (storedMode != "LIGHT" && storedMode != "OLED") {
-            storedMode = "OLED"
+            storedMode = "LIGHT"
         }
         activeBgMode = storedMode
 
