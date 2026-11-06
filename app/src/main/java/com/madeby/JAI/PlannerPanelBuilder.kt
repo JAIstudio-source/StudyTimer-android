@@ -1129,73 +1129,90 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val checkSymbol: String,
                 val progressText: String,
                 val chipColor: Int,
-                val isDeficit: Boolean
+                val isDeficit: Boolean,
+                val isGreyMark: Boolean
             )
 
             val infoMap = mutableMapOf<String, GoalDisplayInfo>()
             val greenColor = 0xFF22C55E.toInt()
+            val greyColor = if (themeCoordinator.isDarkMode()) 0xFF94A3B8.toInt() else 0xFF64748B.toInt()
+            val greyBgColor = if (themeCoordinator.isDarkMode()) 0xFF475569.toInt() else 0xFF64748B.toInt()
 
-            for (goal in activeGoalsList) {
+            fun computeGoalDisplayInfo(goal: SessionGoal): GoalDisplayInfo {
                 val targetMins = goal.targetMinutes
                 val prog = progressMap[goal.id]
                 val actualMins = prog?.actualMinutes ?: 0
                 val isScheduledToday = isGoalScheduledToday(goal)
 
                 if (!isScheduledToday) {
-                    infoMap[goal.id] = GoalDisplayInfo(
+                    return GoalDisplayInfo(
                         isChecked = false,
                         checkSymbol = "—",
                         progressText = if (targetMins > 0) "${targetMins}m" else "",
                         chipColor = tintedColor(themeCoordinator.textColor, 70),
-                        isDeficit = false
+                        isDeficit = false,
+                        isGreyMark = false
                     )
-                } else if (targetMins > 0) {
+                }
+
+                if (targetMins > 0) {
                     val isDone = actualMins >= targetMins
+                    val remainingMins = (targetMins - actualMins).coerceAtLeast(0)
+                    val remText = if (actualMins > 0) "${actualMins}/${targetMins}m · ${remainingMins}m left" else "${remainingMins}m left"
+
                     if (isDone) {
-                        infoMap[goal.id] = GoalDisplayInfo(
+                        return GoalDisplayInfo(
                             isChecked = true,
                             checkSymbol = "✓",
                             progressText = "${actualMins}/${targetMins}m",
                             chipColor = greenColor,
-                            isDeficit = false
+                            isDeficit = false,
+                            isGreyMark = false
                         )
                     } else if (goal.completed) {
-                        val earlyColor = if (themeCoordinator.isDarkMode()) 0xFF38BDF8.toInt() else 0xFF0284C7.toInt()
-                        infoMap[goal.id] = GoalDisplayInfo(
+                        return GoalDisplayInfo(
                             isChecked = true,
                             checkSymbol = "✓",
-                            progressText = "${actualMins}/${targetMins}m",
-                            chipColor = earlyColor,
-                            isDeficit = false
+                            progressText = remText,
+                            chipColor = greyColor,
+                            isDeficit = false,
+                            isGreyMark = true
                         )
                     } else {
-                        infoMap[goal.id] = GoalDisplayInfo(
+                        return GoalDisplayInfo(
                             isChecked = false,
                             checkSymbol = "",
-                            progressText = "${actualMins}/${targetMins}m",
+                            progressText = remText,
                             chipColor = plannerPrimary,
-                            isDeficit = false
+                            isDeficit = false,
+                            isGreyMark = false
                         )
                     }
                 } else {
                     if (goal.completed) {
-                        infoMap[goal.id] = GoalDisplayInfo(
+                        return GoalDisplayInfo(
                             isChecked = true,
                             checkSymbol = "✓",
                             progressText = if (actualMins > 0) "${actualMins}m" else "Done",
                             chipColor = greenColor,
-                            isDeficit = false
+                            isDeficit = false,
+                            isGreyMark = false
                         )
                     } else {
-                        infoMap[goal.id] = GoalDisplayInfo(
+                        return GoalDisplayInfo(
                             isChecked = false,
                             checkSymbol = "",
-                            progressText = if (actualMins > 0) "${actualMins}m" else "Mark Done",
+                            progressText = if (actualMins > 0) "${actualMins}m" else "",
                             chipColor = plannerPrimary,
-                            isDeficit = false
+                            isDeficit = false,
+                            isGreyMark = false
                         )
                     }
                 }
+            }
+
+            for (goal in activeGoalsList) {
+                infoMap[goal.id] = computeGoalDisplayInfo(goal)
             }
 
             fun updateFilterCounts() {
@@ -1235,11 +1252,68 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     }
                     PlannerHistoryManager.snapshotToday(host, activeGoalsList)
                     host.updateStatsLiveViews()
+
+                    val newInfo = computeGoalDisplayInfo(updatedGoal)
+                    infoMap[updatedGoal.id] = newInfo
+
+                    // Immediately update checkbox state without lag
+                    parent.findViewWithTag<TextView>("goal_check_${updatedGoal.id}")?.apply {
+                        text = if (isGoalScheduledToday(updatedGoal)) newInfo.checkSymbol else "—"
+                        val checkColor = when {
+                            !newInfo.isChecked -> Color.TRANSPARENT
+                            newInfo.isGreyMark -> greyBgColor
+                            else -> greenColor
+                        }
+                        val strokeColor = when {
+                            !newInfo.isChecked -> plannerPrimary
+                            newInfo.isGreyMark -> greyBgColor
+                            else -> greenColor
+                        }
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(checkColor)
+                            setStroke(dp(1.8f), strokeColor)
+                        }
+                    }
+
+                    // Immediately update title strikethrough & styling
+                    parent.findViewWithTag<TextView>("goal_title_${updatedGoal.id}")?.apply {
+                        setTextColor(if (newInfo.isChecked) tintedColor(themeCoordinator.textColor, 120) else themeCoordinator.textColor)
+                        paintFlags = if (newInfo.isChecked) {
+                            paintFlags or android.graphics.Paint.STRIKE_THRU_TEXT_FLAG
+                        } else {
+                            paintFlags and android.graphics.Paint.STRIKE_THRU_TEXT_FLAG.inv()
+                        }
+                    }
+
+                    // Immediately update note alpha
+                    parent.findViewWithTag<TextView>("goal_note_${updatedGoal.id}")?.alpha = if (newInfo.isChecked) 0.35f else 0.65f
+
+                    // Immediately update progress & remaining time chip
+                    parent.findViewWithTag<TextView>("goal_chip_${updatedGoal.id}")?.apply {
+                        text = newInfo.progressText
+                        setTextColor(newInfo.chipColor)
+                        val shouldShow = newInfo.isChecked || (updatedGoal.targetMinutes > 0 || (progressMap[updatedGoal.id]?.actualMinutes ?: 0) > 0)
+                        visibility = if (shouldShow) View.VISIBLE else View.GONE
+                    }
+
+                    // Immediately update goal mini progress bar
+                    parent.findViewWithTag<ProgressBar>("goal_minibar_${updatedGoal.id}")?.apply {
+                        val barColor = when {
+                            newInfo.isChecked && !newInfo.isGreyMark -> greenColor
+                            newInfo.isChecked && newInfo.isGreyMark -> greyColor
+                            else -> plannerPrimary
+                        }
+                        progressTintList = ColorStateList.valueOf(barColor)
+                    }
+
+                    // Immediately update play button visibility
+                    parent.findViewWithTag<View>("goal_action_${updatedGoal.id}")?.visibility = if (!newInfo.isChecked) View.VISIBLE else View.GONE
+
+                    updateFilterCounts()
+
                     if (currentPlannerFilter != PlannerFilter.ALL) {
                         reloadPlanner()
-                    } else {
-                        updateFilterCounts()
-                        parent.findViewWithTag<TextView>("goal_note_${goalToToggle.id}")?.alpha = if (updatedGoal.completed) 0.35f else 0.65f
                     }
                 }
             }
@@ -1301,14 +1375,24 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 }
                 val checkBtn = TextView(host).apply {
                     tag = "goal_check_${goal.id}"
-                    setTag(R.id.tag_goal_check_state, "${isChecked}_${info.chipColor}")
+                    setTag(R.id.tag_goal_check_state, "${isChecked}_${info.isGreyMark}_${info.chipColor}")
                     text = if (isDayOff) "—" else info.checkSymbol
                     textSize = 12f
                     gravity = Gravity.CENTER
                     typeface = host.themeCoordinator.getAppTypeface(isBold = true)
                     setTextColor(if (isDayOff) tintedColor(themeCoordinator.textColor, 80) else Color.WHITE)
-                    val checkColor = if (isDayOff) Color.TRANSPARENT else if (isChecked) info.chipColor else Color.TRANSPARENT
-                    val strokeColor = if (isDayOff) tintedColor(themeCoordinator.textColor, 70) else if (isChecked) info.chipColor else plannerPrimary
+                    val checkColor = when {
+                        isDayOff -> Color.TRANSPARENT
+                        !isChecked -> Color.TRANSPARENT
+                        info.isGreyMark -> greyBgColor
+                        else -> greenColor
+                    }
+                    val strokeColor = when {
+                        isDayOff -> tintedColor(themeCoordinator.textColor, 70)
+                        !isChecked -> plannerPrimary
+                        info.isGreyMark -> greyBgColor
+                        else -> greenColor
+                    }
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.OVAL
                         setColor(checkColor)
@@ -1362,11 +1446,16 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
                 if (targetMins > 0) {
                     val pct = ((actualMins * 100) / targetMins).coerceIn(0, 100)
+                    val barColor = when {
+                        info.isChecked && !info.isGreyMark -> greenColor
+                        info.isChecked && info.isGreyMark -> greyColor
+                        else -> plannerPrimary
+                    }
                     val miniBar = ProgressBar(host, null, android.R.attr.progressBarStyleHorizontal).apply {
                         tag = "goal_minibar_${goal.id}"
                         max = 100
                         progress = pct
-                        progressTintList = ColorStateList.valueOf(info.chipColor)
+                        progressTintList = ColorStateList.valueOf(barColor)
                         progressBackgroundTintList = ColorStateList.valueOf(if (themeCoordinator.isDarkMode()) 0x22FFFFFF else 0x1A000000)
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(2.5f)).apply {
                             setMargins(0, dp(4), 0, dp(3))
@@ -2179,10 +2268,16 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                                 shape = GradientDrawable.OVAL
                                     when (status) {
                                         GoalHistoryStatus.ACHIEVED -> {
-                                            setColor(if (isDark) 0xFF22C55E.toInt() else 0xFF10B981.toInt())
+                                            val snap = snapshotsMap[dateKey]
+                                            val isGreyAchieved = snap != null && snap.targetMinutes > 0 && snap.actualMinutes < snap.targetMinutes
+                                            if (isGreyAchieved) {
+                                                setColor(if (isDark) 0xFF475569.toInt() else 0xFF64748B.toInt())
+                                            } else {
+                                                setColor(if (isDark) 0xFF22C55E.toInt() else 0xFF10B981.toInt())
+                                            }
                                         }
                                         GoalHistoryStatus.DEFICIT -> {
-                                            setColor(if (isDark) 0xFFEF4444.toInt() else 0xFFDC2626.toInt())
+                                            setColor(if (isDark) 0xFF475569.toInt() else 0xFF64748B.toInt())
                                         }
                                         GoalHistoryStatus.NOT_COMPLETED -> {
                                             setColor(if (isDark) 0x33EF4444.toInt() else 0x22EF4444.toInt())
@@ -2205,8 +2300,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                             addView(circle)
                             addView(TextView(host).apply {
                                 text = when (status) {
-                                    GoalHistoryStatus.ACHIEVED -> "\u2713"
-                                    GoalHistoryStatus.DEFICIT, GoalHistoryStatus.NOT_COMPLETED -> "\u2715"
+                                    GoalHistoryStatus.ACHIEVED, GoalHistoryStatus.DEFICIT -> "\u2713"
+                                    GoalHistoryStatus.NOT_COMPLETED -> "\u2715"
                                     GoalHistoryStatus.NOT_SCHEDULED -> "—"
                                     else -> dayCounter.toString()
                                 }
@@ -2229,8 +2324,16 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                                 lastSelectedDateKey = dateKey
                                 val snapshot = snapshotsMap[dateKey]
                                 val statusLabel = when (status) {
-                                    GoalHistoryStatus.ACHIEVED -> "Goal Achieved (${snapshot?.targetMinutes ?: goal.targetMinutes}m target)"
-                                    GoalHistoryStatus.DEFICIT -> "Incomplete (${snapshot?.actualMinutes ?: 0}/${snapshot?.targetMinutes ?: goal.targetMinutes}m)"
+                                    GoalHistoryStatus.ACHIEVED -> {
+                                        val isGreyAchieved = snapshot != null && snapshot.targetMinutes > 0 && snapshot.actualMinutes < snapshot.targetMinutes
+                                        if (isGreyAchieved) {
+                                            val rem = (snapshot?.targetMinutes ?: goal.targetMinutes) - (snapshot?.actualMinutes ?: 0)
+                                            "Marked Complete (${snapshot?.actualMinutes ?: 0}/${snapshot?.targetMinutes ?: goal.targetMinutes}m · ${rem}m left)"
+                                        } else {
+                                            "Goal Achieved (${snapshot?.targetMinutes ?: goal.targetMinutes}m target)"
+                                        }
+                                    }
+                                    GoalHistoryStatus.DEFICIT -> "Marked Complete (${snapshot?.actualMinutes ?: 0}/${snapshot?.targetMinutes ?: goal.targetMinutes}m)"
                                     GoalHistoryStatus.NOT_COMPLETED -> "Missed Goal (0/${snapshot?.targetMinutes ?: goal.targetMinutes}m completed)"
                                     GoalHistoryStatus.NOT_SCHEDULED -> "Not Scheduled for this day"
                                     null -> if (isToday) "Today (In Progress)" else "Outside Active Tracking"
