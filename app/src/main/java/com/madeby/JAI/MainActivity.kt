@@ -2548,6 +2548,8 @@ class MainActivity : AppCompatActivity() {
                 (statsContainer.findViewWithTag<TextView>("filter_tab_DONE"))?.text = "Done ($completedCount)"
 
                 val greenColor = 0xFF22C55E.toInt()
+                val greyColor = if (themeCoordinator.isDarkMode()) 0xFF94A3B8.toInt() else 0xFF64748B.toInt()
+                val greyBgColor = if (themeCoordinator.isDarkMode()) 0xFF475569.toInt() else 0xFF64748B.toInt()
                 val redColor = 0xFFEF4444.toInt()
 
                 for (goal in goalsList) {
@@ -2583,9 +2585,27 @@ class MainActivity : AppCompatActivity() {
                         }
                     } else if (targetMins > 0) {
                         val isDone = actualMins >= targetMins
+                        val remainingMins = (targetMins - actualMins).coerceAtLeast(0)
+                        val remText = if (actualMins > 0) "${actualMins}/${targetMins}m · ${remainingMins}m left" else "${remainingMins}m left"
                         val isChecked = isDone || goal.completed
-                        val progressText = "${actualMins}/${targetMins}m"
-                        val chipColor = if (isChecked) greenColor else plannerPrimary
+                        val isGreyMark = goal.completed && !isDone
+                        val progressText = if (isDone) "${actualMins}/${targetMins}m" else remText
+
+                        val chipColor = when {
+                            isDone -> greenColor
+                            goal.completed -> greyColor
+                            else -> plannerPrimary
+                        }
+                        val checkBadgeColor = when {
+                            isDone -> greenColor
+                            goal.completed -> greyBgColor
+                            else -> Color.TRANSPARENT
+                        }
+                        val strokeColor = when {
+                            isDone -> greenColor
+                            goal.completed -> greyBgColor
+                            else -> plannerPrimary
+                        }
 
                         (statsContainer.findViewWithTag<TextView>("goal_chip_${goal.id}"))?.let { chip ->
                             val shouldShow = if (isChecked) true else (targetMins > 0 || actualMins > 0)
@@ -2598,13 +2618,12 @@ class MainActivity : AppCompatActivity() {
                         (statsContainer.findViewWithTag<TextView>("goal_check_${goal.id}"))?.let { checkBtn ->
                             val symbol = if (isChecked) "✓" else ""
                             checkBtn.text = symbol
-                            checkBtn.textSize = 13f
-                            val checkColor = if (isChecked) chipColor else Color.TRANSPARENT
-                            val strokeColor = if (isChecked) chipColor else plannerPrimary
+                            checkBtn.textSize = 12f
+                            checkBtn.setTextColor(Color.WHITE)
                             checkBtn.background = GradientDrawable().apply {
                                 shape = GradientDrawable.OVAL
-                                setColor(checkColor)
-                                setStroke(dp(2), strokeColor)
+                                setColor(checkBadgeColor)
+                                setStroke(dp(1.8f), strokeColor)
                             }
                         }
 
@@ -2624,7 +2643,12 @@ class MainActivity : AppCompatActivity() {
                         (statsContainer.findViewWithTag<ProgressBar>("goal_minibar_${goal.id}"))?.let { bar ->
                             val pct = ((actualMins * 100) / targetMins).coerceIn(0, 100)
                             bar.progress = pct
-                            bar.progressTintList = android.content.res.ColorStateList.valueOf(chipColor)
+                            val barColor = when {
+                                isDone -> greenColor
+                                goal.completed -> greyColor
+                                else -> plannerPrimary
+                            }
+                            bar.progressTintList = android.content.res.ColorStateList.valueOf(barColor)
                         }
                     } else {
                         val isChecked = goal.completed
@@ -2640,13 +2664,14 @@ class MainActivity : AppCompatActivity() {
 
                         (statsContainer.findViewWithTag<TextView>("goal_check_${goal.id}"))?.let { checkBtn ->
                             checkBtn.text = if (isChecked) "✓" else ""
-                            checkBtn.textSize = 13f
+                            checkBtn.textSize = 12f
+                            checkBtn.setTextColor(Color.WHITE)
                             val checkColor = if (isChecked) chipColor else Color.TRANSPARENT
                             val strokeColor = if (isChecked) chipColor else plannerPrimary
                             checkBtn.background = GradientDrawable().apply {
                                 shape = GradientDrawable.OVAL
                                 setColor(checkColor)
-                                setStroke(dp(2), strokeColor)
+                                setStroke(dp(1.8f), strokeColor)
                             }
                         }
 
