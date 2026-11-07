@@ -3877,7 +3877,8 @@ layout.addView(reminderCard)
 
                 displayCard.addView(createDivider())
 
-                // App Language Row
+                // App Language Row: Disabled for current release (preserved in code for upcoming localization update - see LANGUAGE_PLAN.md)
+                /*
                 val currentLangName = CountryDetector.detectLanguageName(this)
                 val isLangCustom = CountryDetector.isUserLanguageOverrideActive(this)
                 val langBadge = TextView(this).apply {
@@ -3903,8 +3904,8 @@ layout.addView(reminderCard)
                     }
                 }
                 displayCard.addView(langRow)
-
                 displayCard.addView(createDivider())
+                */
 
                 // Country & Region Row
                 val currentCountryIso = CountryDetector.detectCountryIso(this)
@@ -4260,6 +4261,7 @@ layout.addView(reminderCard)
         }
     }
 
+    @Suppress("unused")
     private fun showLanguageSelectionDialog(onUpdated: () -> Unit) {
         with(host) {
             val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this, R.style.TransparentBottomSheetDialogTheme)
