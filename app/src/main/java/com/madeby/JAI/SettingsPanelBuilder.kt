@@ -70,7 +70,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
             val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
             val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(this)
-            val isBrightSurface = (isWallpaperActive && isBrightUnder) || !themeCoordinator.isDarkMode()
+            val isBrightSurface = if (isWallpaperActive) isBrightUnder else !themeCoordinator.isDarkMode()
 
             val settingsRootLayout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL

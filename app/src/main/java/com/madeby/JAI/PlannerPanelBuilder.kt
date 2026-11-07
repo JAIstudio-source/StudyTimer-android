@@ -944,7 +944,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         val isPomoWhite = host.isPomodoroPureWhiteActive()
         val isWallpaperActive = WallpaperManager.getWallpaperType(host) != "NONE"
         val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(host)
-        val isBrightSurface = isPomoWhite || (isWallpaperActive && isBrightUnderTimer) || !themeCoordinator.isDarkMode()
+        val isBrightSurface = if (isWallpaperActive) isBrightUnderTimer else (isPomoWhite || !themeCoordinator.isDarkMode())
 
         val filterRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL

@@ -802,7 +802,23 @@ class MainActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
         val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(this)
-        val isBrightSurface = isPomodoroPureWhiteActive() || (isWallpaperActive && isBrightUnderTimer) || !themeCoordinator.isDarkMode()
+        val isBrightSurface = if (isWallpaperActive) isBrightUnderTimer else (isPomodoroPureWhiteActive() || !themeCoordinator.isDarkMode())
+
+        val isLandscape = isLandscapeMode()
+        if (isLandscape) {
+            val fill = if (isBrightSurface) 0x1A000000.toInt() else 0x22FFFFFF.toInt()
+            val stroke = if (isBrightSurface) 0x20000000.toInt() else 0x33FFFFFF.toInt()
+            val ripple = if (isBrightSurface) 0x1A0F172A.toInt() else 0x33FFFFFF.toInt()
+            return android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(ripple),
+                GradientDrawable().apply {
+                    cornerRadius = 22f * density
+                    setColor(fill)
+                    setStroke((1.5f * density).toInt(), stroke)
+                },
+                null
+            )
+        }
 
         if (themeCoordinator.isBubbleStyle()) {
             val fill = if (isBrightSurface) 0xF2FFFFFF.toInt() else 0x1AFFFFFF.toInt()
@@ -875,6 +891,9 @@ class MainActivity : AppCompatActivity() {
 
     internal fun pureWhiteTimerEnabled(): Boolean {
         val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
+        val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(this)
+        if (isWallpaperActive) return !isBrightUnderTimer
         return prefs.getBoolean("pureWhiteTimer", true) && themeCoordinator.activeBgMode != "LIGHT"
     }
 
@@ -2442,8 +2461,8 @@ class MainActivity : AppCompatActivity() {
                     if (lastIsBreakingState != isBreaking) {
                         lastIsBreakingState = isBreaking
                         val isCountdown = (timerMode == "COUNTDOWN")
-                        val activeTextSize = if (isCountdown) 46f else 72f
-                        val subTextSize = if (isCountdown) 15f else 17f
+                        val activeTextSize = if (isCountdown) 70f else 105f
+                        val subTextSize = if (isCountdown) 20f else 24f
                         if (isBreaking) {
                             breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
                             breakTimerDisplay.textSize = activeTextSize
@@ -3218,7 +3237,7 @@ class MainActivity : AppCompatActivity() {
 
         val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
         val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(this)
-        val isBrightSurface = isPomoWhite || (isWallpaperActive && isBrightUnderTimer) || !themeCoordinator.isDarkMode()
+        val isBrightSurface = if (isWallpaperActive) isBrightUnderTimer else (isPomoWhite || !themeCoordinator.isDarkMode())
 
         val timerColor = if (isBrightSurface) {
             0xFF0F172A.toInt() // High-contrast obsidian slate for bright backgrounds
@@ -3229,6 +3248,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         val dynamicBtnTextColor = if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
+
+        val landscapePrimaryBtnTextColor = if (isBrightSurface) 0xFFFFFFFF.toInt() else 0xFF0F172A.toInt()
+        val getLandscapePrimaryBtnDrawable = {
+            val fill = if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
+            val ripple = if (isBrightSurface) 0x33FFFFFF.toInt() else 0x33000000.toInt()
+            val shape = GradientDrawable().apply {
+                cornerRadius = dp(22).toFloat()
+                setColor(fill)
+            }
+            android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(ripple),
+                shape,
+                null
+            )
+        }
 
         val mainBtnTextColor = if (isPomoWhite) {
             0xFFFFFFFF.toInt()
@@ -3258,13 +3292,17 @@ class MainActivity : AppCompatActivity() {
                 if (timerMode == "COUNTDOWN") {
                     pauseBtn.visibility = View.VISIBLE
                     pauseBtn.text = "Start"
-                    pauseBtn.setTextColor(mainBtnTextColor)
-                    if (isPomoWhite) {
+                    if (isLandscapeOrientation) {
+                        pauseBtn.setTextColor(landscapePrimaryBtnTextColor)
+                        pauseBtn.background = getLandscapePrimaryBtnDrawable()
+                    } else if (isPomoWhite) {
+                        pauseBtn.setTextColor(0xFFFFFFFF.toInt())
                         pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
                             cornerRadius = dp(20).toFloat()
                             setColor(0xFF000000.toInt())
                         }
                     } else {
+                        pauseBtn.setTextColor(mainBtnTextColor)
                         pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
                     }
                     pauseBtn.setOnClickListener { handleStateToggle() }
@@ -3286,8 +3324,13 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     pauseBtn.visibility = View.VISIBLE
                     pauseBtn.text = "Start"
-                    pauseBtn.setTextColor(mainBtnTextColor)
-                    pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
+                    if (isLandscapeOrientation) {
+                        pauseBtn.setTextColor(landscapePrimaryBtnTextColor)
+                        pauseBtn.background = getLandscapePrimaryBtnDrawable()
+                    } else {
+                        pauseBtn.setTextColor(mainBtnTextColor)
+                        pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
+                    }
                     pauseBtn.setOnClickListener { handleStateToggle() }
                     mainBtn.visibility = View.GONE
                     stopBtn.visibility = View.GONE 
@@ -3326,7 +3369,10 @@ class MainActivity : AppCompatActivity() {
                 pauseBtn.visibility = pauseButtonVisibility()
                 pauseBtn.text = "Pause"
                 pauseBtn.setOnClickListener { handlePause() }
-                if (isPomoWhite) {
+                if (isLandscapeOrientation) {
+                    pauseBtn.setTextColor(landscapePrimaryBtnTextColor)
+                    pauseBtn.background = getLandscapePrimaryBtnDrawable()
+                } else if (isPomoWhite) {
                     pauseBtn.setTextColor(0xFFFFFFFF.toInt())
                     pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
                         cornerRadius = dp(20).toFloat()
@@ -3363,7 +3409,7 @@ class MainActivity : AppCompatActivity() {
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
-                    stopBtn.ringColor = if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.primaryColor
+                    stopBtn.ringColor = if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
                     stopBtn.setTextColor(dynamicBtnTextColor)
                     stopBtn.background = outlinedButtonBackground()
                 }
@@ -3406,13 +3452,17 @@ class MainActivity : AppCompatActivity() {
                 // Slot 0 (Left): Primary CTA - RESUME STUDY
                 pauseBtn.visibility = View.VISIBLE
                 pauseBtn.text = "Resume"
-                pauseBtn.setTextColor(mainBtnTextColor)
-                if (isPomoWhite) {
+                if (isLandscapeOrientation) {
+                    pauseBtn.setTextColor(landscapePrimaryBtnTextColor)
+                    pauseBtn.background = getLandscapePrimaryBtnDrawable()
+                } else if (isPomoWhite) {
+                    pauseBtn.setTextColor(mainBtnTextColor)
                     pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
                         cornerRadius = dp(20).toFloat()
                         setColor(0xFF000000.toInt())
                     }
                 } else {
+                    pauseBtn.setTextColor(mainBtnTextColor)
                     pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
                 }
                 pauseBtn.setOnClickListener { handleStateToggle() }
@@ -3443,7 +3493,7 @@ class MainActivity : AppCompatActivity() {
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
-                    stopBtn.ringColor = if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.primaryColor
+                    stopBtn.ringColor = if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
                     stopBtn.setTextColor(dynamicBtnTextColor)
                     stopBtn.background = outlinedButtonBackground()
                 }
@@ -3471,13 +3521,17 @@ class MainActivity : AppCompatActivity() {
                 // Slot 0 (Left): Primary CTA - RESUME
                 pauseBtn.visibility = View.VISIBLE
                 pauseBtn.text = "Resume"
-                pauseBtn.setTextColor(mainBtnTextColor)
-                if (isPomoWhite) {
+                if (isLandscapeOrientation) {
+                    pauseBtn.setTextColor(landscapePrimaryBtnTextColor)
+                    pauseBtn.background = getLandscapePrimaryBtnDrawable()
+                } else if (isPomoWhite) {
+                    pauseBtn.setTextColor(mainBtnTextColor)
                     pauseBtn.background = android.graphics.drawable.GradientDrawable().apply {
                         cornerRadius = dp(20).toFloat()
                         setColor(0xFF000000.toInt())
                     }
                 } else {
+                    pauseBtn.setTextColor(mainBtnTextColor)
                     pauseBtn.background = rippleBackground(themeCoordinator.primaryColor)
                 }
                 pauseBtn.setOnClickListener { handleStateToggle() }
@@ -3508,7 +3562,7 @@ class MainActivity : AppCompatActivity() {
                         setColor(0xFFF1F5F9.toInt())
                     }
                 } else {
-                    stopBtn.ringColor = if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.primaryColor
+                    stopBtn.ringColor = if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
                     stopBtn.setTextColor(dynamicBtnTextColor)
                     stopBtn.background = outlinedButtonBackground()
                 }
@@ -3539,13 +3593,14 @@ class MainActivity : AppCompatActivity() {
         controlActionContainer.gravity = Gravity.CENTER
 
         val isIdle = (currentTimerState == TimerState.IDLE)
-        val btnHeight = dp(44)
+        val btnHeight = dp(46)
+        val btnWidth = dp(132)
 
         if (isIdle) {
             if (::pauseBtn.isInitialized && pauseBtn.visibility == View.VISIBLE) {
                 pauseBtn.layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    dp(48)
+                    btnWidth,
+                    btnHeight
                 ).apply {
                     setMargins(0, dp(4), 0, dp(4))
                 }
@@ -3558,18 +3613,18 @@ class MainActivity : AppCompatActivity() {
             val showStop = ::stopBtn.isInitialized && stopBtn.visibility == View.VISIBLE
 
             if (::pauseBtn.isInitialized && pauseBtn.visibility == View.VISIBLE) {
-                pauseBtn.layoutParams = LinearLayout.LayoutParams(0, btnHeight, 1f).apply {
-                    setMargins(0, 0, if (showBreak || showStop) dp(4) else 0, 0)
+                pauseBtn.layoutParams = LinearLayout.LayoutParams(btnWidth, btnHeight).apply {
+                    setMargins(0, 0, if (showBreak || showStop) dp(10) else 0, 0)
                 }
             }
             if (::mainBtn.isInitialized && mainBtn.visibility == View.VISIBLE) {
-                mainBtn.layoutParams = LinearLayout.LayoutParams(0, btnHeight, 1f).apply {
-                    setMargins(dp(2), 0, if (showStop) dp(2) else 0, 0)
+                mainBtn.layoutParams = LinearLayout.LayoutParams(btnWidth, btnHeight).apply {
+                    setMargins(0, 0, if (showStop) dp(10) else 0, 0)
                 }
             }
             if (::stopBtn.isInitialized && stopBtn.visibility == View.VISIBLE) {
-                stopBtn.layoutParams = LinearLayout.LayoutParams(0, btnHeight, 1.15f).apply {
-                    setMargins(dp(4), 0, 0, 0)
+                stopBtn.layoutParams = LinearLayout.LayoutParams(btnWidth, btnHeight).apply {
+                    setMargins(0, 0, 0, 0)
                 }
             }
         }

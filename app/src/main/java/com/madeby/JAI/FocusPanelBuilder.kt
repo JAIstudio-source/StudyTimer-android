@@ -59,7 +59,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             val isPomoWhite = isPomodoroPureWhiteActive()
             val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
             val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(this)
-            val isBrightSurface = isPomoWhite || (isWallpaperActive && isBrightUnderTimer) || !themeCoordinator.isDarkMode()
+            val isBrightSurface = if (isWallpaperActive) isBrightUnderTimer else (isPomoWhite || !themeCoordinator.isDarkMode())
 
             // 1. Universal Top Header (Profile + Streak on left, Sound button + Settings gear on right)
             val isAmbientEnabled = StudyAudioManager.isAmbientEnabled(this)
@@ -673,7 +673,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
 
             val isWallpaperActive = WallpaperManager.getWallpaperType(this) != "NONE"
             val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(this)
-            val isBrightSurface = isPomoWhite || (isWallpaperActive && isBrightUnderTimer) || !themeCoordinator.isDarkMode()
+            val isBrightSurface = if (isWallpaperActive) isBrightUnderTimer else (isPomoWhite || !themeCoordinator.isDarkMode())
 
             val textColor = if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
             val subTextColor = if (isBrightSurface) 0xFF64748B.toInt() else 0x99FFFFFF.toInt()
@@ -846,7 +846,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
 
             timerRing = TimerRingView(this).apply {
                 visibility = if (isPomodoro) View.VISIBLE else View.GONE
-                layoutParams = FrameLayout.LayoutParams(dp(210), dp(210), Gravity.CENTER)
+                layoutParams = FrameLayout.LayoutParams(dp(260), dp(260), Gravity.CENTER)
             }
 
             val fontId = FontStyleManager.getSelectedFontId(this)
@@ -860,7 +860,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = if (isPomodoro) 48f else 72f
+                textSize = if (isPomodoro) 70f else 105f
                 typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
@@ -875,14 +875,14 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = 16f
+                textSize = 22f
                 typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
                 setPadding(0, 0, 0, dp(4))
                 visibility = View.GONE
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER).apply {
-                    topMargin = dp(46)
+                    topMargin = dp(60)
                 }
             }
 
@@ -1005,8 +1005,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
 
             stopBtn = HoldRingButton(this).apply {
                 text = "Finish"
-                ringColor = themeCoordinator.primaryColor
-                setTextColor(themeCoordinator.textColor)
+                ringColor = if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
+                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt())
                 textSize = 13f
                 letterSpacing = 0.02f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)

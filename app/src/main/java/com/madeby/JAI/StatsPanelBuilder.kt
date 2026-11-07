@@ -542,7 +542,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         // 2. Insights Subtab Segment Control (Overview vs Timeline & History)
         val isWallpaperActive = WallpaperManager.getWallpaperType(host) != "NONE"
         val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(host)
-        val isBrightSurface = (isWallpaperActive && isBrightUnder) || !themeCoordinator.isDarkMode()
+        val isBrightSurface = if (isWallpaperActive) isBrightUnder else !themeCoordinator.isDarkMode()
 
         val tabSegment = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
