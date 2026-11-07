@@ -435,12 +435,17 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             statusBadge = TextView(this).apply {
-                textSize = 14f
-                letterSpacing = 0.04f
-                setPadding(dp(18), dp(6), dp(18), dp(6))
+                textSize = 13.5f
+                letterSpacing = 0.03f
+                setPadding(dp(16), dp(6), dp(16), dp(6))
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 gravity = Gravity.CENTER
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 18f)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(20).toFloat()
+                    setColor(if (isBrightSurface) 0x140F172A.toInt() else 0x1FFFFFFF.toInt())
+                    setStroke(dp(1), if (isBrightSurface) 0x260F172A.toInt() else 0x33FFFFFF.toInt())
+                }
+                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt())
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             }
 

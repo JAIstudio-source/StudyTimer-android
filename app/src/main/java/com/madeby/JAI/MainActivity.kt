@@ -898,10 +898,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun isPomodoroPureWhiteActive(): Boolean {
-        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
-        val isEnabled = prefs.getBoolean("pomodoro_pure_white_theme", true)
-        val hasWallpaper = WallpaperManager.getWallpaperType(this) != "NONE"
-        return isEnabled && timerMode == "COUNTDOWN" && !hasWallpaper
+        return false
     }
 
     override fun attachBaseContext(newBase: Context) {
@@ -1187,11 +1184,16 @@ class MainActivity : AppCompatActivity() {
                 studyBottomNavBar.animate().cancel()
                 studyBottomNavBar.visibility = View.GONE
             }
-            // In landscape, remove top and bottom padding entirely.
-            // Only protect against side navigation bars/cutouts if present.
-            val sidePaddingLeft = if (lastNavLeftInset > 0) lastNavLeftInset else 0
-            val sidePaddingRight = if (lastNavRightInset > 0) lastNavRightInset else 0
-            panelHost.setPadding(sidePaddingLeft, 0, sidePaddingRight, 0)
+            if (currentPanel == AppPanel.HEATMAP) {
+                val safeSideLeft = maxOf(dp(24), lastNavLeftInset)
+                val safeSideRight = maxOf(dp(24), lastNavRightInset)
+                val safeTop = maxOf(dp(12), lastStatusBarInset)
+                panelHost.setPadding(safeSideLeft, safeTop, safeSideRight, dp(12))
+            } else {
+                val sidePaddingLeft = if (lastNavLeftInset > 0) lastNavLeftInset else 0
+                val sidePaddingRight = if (lastNavRightInset > 0) lastNavRightInset else 0
+                panelHost.setPadding(sidePaddingLeft, 0, sidePaddingRight, 0)
+            }
         } else {
             val bottomNavMargin = if (lastIsThreeButtonNav) {
                 lastNavBottomInset + dp(10)
@@ -1216,7 +1218,12 @@ class MainActivity : AppCompatActivity() {
             } else {
                 dp(16)
             }
-            panelHost.setPadding(dp(16), lastStatusBarInset + dp(4), dp(16), panelBottomPadding)
+            if (currentPanel == AppPanel.HEATMAP) {
+                val safeSide = dp(20)
+                panelHost.setPadding(safeSide, lastStatusBarInset + dp(8), safeSide, lastNavBottomInset + dp(16))
+            } else {
+                panelHost.setPadding(dp(16), lastStatusBarInset + dp(4), dp(16), panelBottomPadding)
+            }
         }
     }
 
@@ -1598,6 +1605,7 @@ class MainActivity : AppCompatActivity() {
         val isSamePanel = targetPanel == currentPanel
         val prevPanel = currentPanel
         currentPanel = targetPanel
+        applyLayoutInsetsForOrientation()
 
         if (isSamePanel || panelContainer.childCount == 0) {
             buildCurrentPanel()
@@ -3274,19 +3282,28 @@ class MainActivity : AppCompatActivity() {
             studyTimerDisplay.setShadowLayer(0f, 0f, 0f, 0)
         }
 
+        val applyStatusBadgePill: (String, Int?, Int?) -> Unit = { textValue, customTextColor, customBorderColor ->
+            statusBadge.text = textValue
+            if (isBrightSurface) {
+                statusBadge.setTextColor(customTextColor ?: 0xFF0F172A.toInt())
+                statusBadge.background = GradientDrawable().apply {
+                    cornerRadius = dp(20).toFloat()
+                    setColor(0x140F172A.toInt())
+                    setStroke(dp(1), customBorderColor ?: 0x260F172A.toInt())
+                }
+            } else {
+                statusBadge.setTextColor(customTextColor ?: 0xFFFFFFFF.toInt())
+                statusBadge.background = GradientDrawable().apply {
+                    cornerRadius = dp(20).toFloat()
+                    setColor(0x1FFFFFFF.toInt())
+                    setStroke(dp(1), customBorderColor ?: 0x33FFFFFF.toInt())
+                }
+            }
+        }
+
         when (currentTimerState) {
             TimerState.IDLE -> {
-                statusBadge.text = getString(R.string.ready_to_track)
-                if (isPomoWhite) {
-                    statusBadge.setTextColor(0xFF0F172A.toInt())
-                    statusBadge.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
-                        setColor(0xFFF1F5F9.toInt())
-                    }
-                } else {
-                    statusBadge.setTextColor(if (themeCoordinator.isBubbleStyle()) 0xFFFFFFFF.toInt() else themeCoordinator.primaryColor)
-                    statusBadge.background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 30f)
-                }
+                applyStatusBadgePill(getString(R.string.ready_to_track), null, null)
                 studyTimerDisplay.setTextColor(timerColor)
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.GONE
                 if (timerMode == "COUNTDOWN") {
@@ -3338,24 +3355,16 @@ class MainActivity : AppCompatActivity() {
             }
             TimerState.STUDYING -> {
                 val isOvertime = timerMode == "COUNTDOWN" && focusRemainingSecs < 0L
-                statusBadge.text = when {
+                val stateTitle = when {
                     timerMode == "LECTURE" -> "LECTURE IN PROGRESS"
                     isOvertime -> "OVERTIME"
                     else -> getString(R.string.learning_time)
                 }
-                if (isPomoWhite) {
-                    statusBadge.setTextColor(0xFF0F172A.toInt())
-                    statusBadge.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
-                        setColor(0xFFF1F5F9.toInt())
-                    }
-                } else if (isOvertime) {
+                if (isOvertime) {
                     val amber = Color.parseColor("#F59E0B")
-                    statusBadge.setTextColor(amber)
-                    statusBadge.background = themeCoordinator.createGlassChip(amber, 30f)
+                    applyStatusBadgePill(stateTitle, amber, Color.argb(130, Color.red(amber), Color.green(amber), Color.blue(amber)))
                 } else {
-                    statusBadge.setTextColor(if (themeCoordinator.isBubbleStyle()) 0xFFFFFFFF.toInt() else themeCoordinator.primaryColor)
-                    statusBadge.background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 30f)
+                    applyStatusBadgePill(stateTitle, null, null)
                 }
                 studyTimerDisplay.setTextColor(timerColor)
                 if (isPomoWhite) {
@@ -3415,9 +3424,8 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             TimerState.LECTURE_ENDED -> {
-                statusBadge.text = "LECTURE ENDED"
-                statusBadge.setTextColor(if (themeCoordinator.isBubbleStyle()) 0xFFFFFFFF.toInt() else themeCoordinator.secondaryColor)
-                statusBadge.background = themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 30f)
+                val secColor = themeCoordinator.secondaryColor
+                applyStatusBadgePill("LECTURE ENDED", secColor, Color.argb(120, Color.red(secColor), Color.green(secColor), Color.blue(secColor)))
                 studyTimerDisplay.setTextColor(timerColor)
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.GONE
                 pauseBtn.visibility = View.VISIBLE
@@ -3432,18 +3440,14 @@ class MainActivity : AppCompatActivity() {
                 checkAndShowLecturePrompt()
             }
             TimerState.BREAK -> {
-                statusBadge.text = getString(R.string.break_in_progress)
+                val sky = Color.parseColor("#38BDF8")
+                val skyText = if (isBrightSurface) 0xFF0284C7.toInt() else sky
+                val skyBorder = if (isBrightSurface) 0x660284C7.toInt() else Color.argb(120, Color.red(sky), Color.green(sky), Color.blue(sky))
+                applyStatusBadgePill(getString(R.string.break_in_progress), skyText, skyBorder)
                 if (isPomoWhite) {
-                    statusBadge.setTextColor(0xFF0F172A.toInt())
-                    statusBadge.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
-                        setColor(0xFFF1F5F9.toInt())
-                    }
                     studyTimerDisplay.setTextColor(0xFF64748B.toInt())
                     breakTimerDisplay.setTextColor(0xFF000000.toInt())
                 } else {
-                    statusBadge.setTextColor(if (themeCoordinator.isBubbleStyle()) 0xFFFFFFFF.toInt() else themeCoordinator.secondaryColor)
-                    statusBadge.background = themeCoordinator.createGlassChip(themeCoordinator.secondaryColor, 30f)
                     studyTimerDisplay.setTextColor(if (pureWhiteTimerEnabled()) 0xFFFFFFFF.toInt() else themeCoordinator.textColor)
                     breakTimerDisplay.setTextColor(themeCoordinator.secondaryColor)
                 }
@@ -3499,17 +3503,10 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             TimerState.PAUSED -> {
-                statusBadge.text = getString(R.string.paused)
-                if (isPomoWhite) {
-                    statusBadge.setTextColor(0xFF0F172A.toInt())
-                    statusBadge.background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(20).toFloat()
-                        setColor(0xFFF1F5F9.toInt())
-                    }
-                } else {
-                    statusBadge.setTextColor(if (themeCoordinator.isBubbleStyle()) 0xFFFFFFFF.toInt() else themeCoordinator.primaryColor)
-                    statusBadge.background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 30f)
-                }
+                val pauseAmber = Color.parseColor("#FBBF24")
+                val pauseText = if (isBrightSurface) 0xFFD97706.toInt() else pauseAmber
+                val pauseBorder = if (isBrightSurface) 0x66D97706.toInt() else Color.argb(120, Color.red(pauseAmber), Color.green(pauseAmber), Color.blue(pauseAmber))
+                applyStatusBadgePill(getString(R.string.paused), pauseText, pauseBorder)
                 studyTimerDisplay.setTextColor(timerColor)
                 if (isPomoWhite) {
                     breakTimerDisplay.setTextColor(0xFF64748B.toInt())

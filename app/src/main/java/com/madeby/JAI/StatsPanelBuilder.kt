@@ -177,12 +177,15 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val root = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
         }
 
         val headerRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(8), 0, dp(10)) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                setMargins(dp(4), dp(6), dp(4), dp(10))
+            }
         }
         val headerCol = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
@@ -205,11 +208,11 @@ class StatsPanelBuilder(private val host: MainActivity) {
         headerRow.addView(headerCol)
         headerRow.addView(TextView(host).apply {
             text = host.getString(R.string.btn_done)
-            setTextColor(themeCoordinator.primaryColor)
+            setTextColor(0xFFFFFFFF.toInt())
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(12), dp(8), dp(12), dp(8))
-            background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 110), 30f)
+            setPadding(dp(18), dp(8), dp(18), dp(8))
+            background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 30f)
             setOnClickListener { navigateToPanel(AppPanel.STATS) }
         })
         root.addView(headerRow)
@@ -230,10 +233,67 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val subjectScroll = HorizontalScrollView(host).apply {
             isHorizontalScrollBarEnabled = false
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(0, 0, 0, dp(10))
+                setMargins(dp(4), 0, dp(4), dp(10))
             }
         }
         val subjectRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
+
+        val heatmapCard = LinearLayout(host).apply {
+            orientation = LinearLayout.VERTICAL
+            background = themeCoordinator.createCardBackground()
+            setPadding(dp(16), dp(14), dp(16), dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
+        }
+
+        val legendContainer = LinearLayout(host).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(10), 0, 0)
+        }
+
+        fun updateLegendColors(activeColor: Int) {
+            legendContainer.removeAllViews()
+            legendContainer.addView(TextView(host).apply {
+                text = host.getString(R.string.legend_less)
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.6f
+                textSize = 10f
+            })
+            val isDark = themeCoordinator.isDarkMode()
+            legendContainer.addView(View(host).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(12), dp(12)).apply { setMargins(dp(5), 0, dp(5), 0) }
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(3).toFloat()
+                    if (isDark) {
+                        setColor(0xFF1E2638.toInt())
+                        setStroke(dp(1), 0xFF2D374D.toInt())
+                    } else {
+                        setColor(0xFFE2E8F0.toInt())
+                        setStroke(dp(1), 0xFFCBD5E1.toInt())
+                    }
+                }
+            })
+            val r = Color.red(activeColor)
+            val g = Color.green(activeColor)
+            val b = Color.blue(activeColor)
+            val alphas = if (isDark) intArrayOf(95, 150, 205, 255) else intArrayOf(110, 160, 210, 255)
+            for (a in alphas) {
+                legendContainer.addView(View(host).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(12), dp(12)).apply { setMargins(dp(4), 0, dp(4), 0) }
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(3).toFloat()
+                        setColor(Color.argb(a, r, g, b))
+                        setStroke(dp(1), Color.argb(70, r, g, b))
+                    }
+                })
+            }
+            legendContainer.addView(TextView(host).apply {
+                text = host.getString(R.string.legend_more)
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.6f
+                textSize = 10f
+            })
+        }
 
         fun refreshHeatmapFilterChips() {
             subjectRow.removeAllViews()
@@ -252,6 +312,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     activeHeatmapSubjectId = null
                     refreshHeatmapFilterChips()
                     heatmapView.setData(heatmapData, themeCoordinator.primaryColor, themeCoordinator.textColor, { resolveGoalFor(it) })
+                    updateLegendColors(themeCoordinator.primaryColor)
                 }
             }
             subjectRow.addView(allChip)
@@ -274,6 +335,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         refreshHeatmapFilterChips()
                         val filteredData = SubjectTagManager.getSubjectHeatmapData(host, sub.id)
                         heatmapView.setData(filteredData, subCol, themeCoordinator.textColor, { resolveSubjectGoalFor(sub.id, it) })
+                        updateLegendColors(subCol)
                     }
                 }
                 subjectRow.addView(chip)
@@ -292,7 +354,11 @@ class StatsPanelBuilder(private val host: MainActivity) {
         }
         heatmapScroll.addView(heatmapView)
         heatmapScroll.post { heatmapScroll.scrollTo(heatmapView.getTodayScrollX(heatmapScroll.width), 0) }
-        root.addView(heatmapScroll)
+
+        heatmapCard.addView(heatmapScroll)
+        updateLegendColors(themeCoordinator.primaryColor)
+        heatmapCard.addView(legendContainer)
+        root.addView(heatmapCard)
 
         panelContainer.addView(root)
     }

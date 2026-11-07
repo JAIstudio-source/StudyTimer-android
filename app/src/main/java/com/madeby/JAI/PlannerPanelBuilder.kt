@@ -4306,7 +4306,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             "Timer Modes & Focus Flow",
             listOf(
                 "Subject-Wise Timer" to "Tag each session with subjects, custom color badges & icons to track detailed subject breakdowns.",
-                "Pomodoro & White Mode" to "Focus intervals with automatic short/long breaks. Includes an optional Minimal White Background & Black Timer theme.",
+                "Pomodoro & Interval Mode" to "Focus intervals with automatic short/long breaks and dynamic contrast timer display.",
                 "Custom Countdown" to "Set targeted hours and minutes for timed study sprints, practice tests, and revision blocks.",
                 "Stopwatch Mode" to "Open-ended count-up timer with precision lap recordings for flexible study.",
                 "Finish Session" to "Long-press safety control: hold to complete and save your session."

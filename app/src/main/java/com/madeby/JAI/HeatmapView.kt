@@ -88,10 +88,10 @@ class HeatmapView @JvmOverloads constructor(
         this.goalFor = goalFor
 
         val isLightMode = isTextDark(text)
-        emptyColor = if (isLightMode) 0xFFF1F5F9.toInt() else Color.argb(25, 255, 255, 255)
-        futureColor = if (isLightMode) 0xFFF8FAFC.toInt() else Color.argb(10, 255, 255, 255)
-        headerTextColor = if (isLightMode) Color.argb(180, Color.red(text), Color.green(text), Color.blue(text)) else Color.argb(220, 255, 255, 255)
-        rowTextColor = if (isLightMode) Color.argb(160, Color.red(text), Color.green(text), Color.blue(text)) else Color.argb(200, 255, 255, 255)
+        emptyColor = if (isLightMode) 0xFFE2E8F0.toInt() else 0xFF1E2638.toInt()
+        futureColor = if (isLightMode) 0xFFF1F5F9.toInt() else 0xFF141924.toInt()
+        headerTextColor = if (isLightMode) Color.argb(190, Color.red(text), Color.green(text), Color.blue(text)) else Color.argb(220, 255, 255, 255)
+        rowTextColor = if (isLightMode) Color.argb(170, Color.red(text), Color.green(text), Color.blue(text)) else Color.argb(200, 255, 255, 255)
 
         cells.clear()
         cells.putAll(data)
@@ -234,17 +234,17 @@ class HeatmapView @JvmOverloads constructor(
         val isLight = isTextDark(textColor)
         val alpha = if (isLight) {
             when (level) {
-                1 -> 75
-                2 -> 135
-                3 -> 195
+                1 -> 110
+                2 -> 160
+                3 -> 210
                 else -> 255
             }
         } else {
             when (level) {
-                1 -> 35
-                2 -> 75
-                3 -> 135
-                else -> 200
+                1 -> 95
+                2 -> 150
+                3 -> 205
+                else -> 255
             }
         }
         return Color.argb(alpha, Color.red(primary), Color.green(primary), Color.blue(primary))
@@ -284,16 +284,18 @@ class HeatmapView @JvmOverloads constructor(
                 if (future) {
                     paint.color = futureColor
                     canvas.drawRoundRect(cellRect, cellRadius, cellRadius, paint)
-                    strokeCellPaint.color = if (isLight) 0xFFE2E8F0.toInt() else Color.argb(18, 255, 255, 255)
+                    strokeCellPaint.color = if (isLight) 0xFFE2E8F0.toInt() else 0xFF232B3C.toInt()
                     canvas.drawRoundRect(cellRect, cellRadius, cellRadius, strokeCellPaint)
                 } else if (lvl <= 0) {
                     paint.color = emptyColor
                     canvas.drawRoundRect(cellRect, cellRadius, cellRadius, paint)
-                    strokeCellPaint.color = if (isLight) 0xFFCBD5E1.toInt() else Color.argb(20, 255, 255, 255)
+                    strokeCellPaint.color = if (isLight) 0xFFCBD5E1.toInt() else 0xFF2D374D.toInt()
                     canvas.drawRoundRect(cellRect, cellRadius, cellRadius, strokeCellPaint)
                 } else {
                     paint.color = levelColor(lvl)
                     canvas.drawRoundRect(cellRect, cellRadius, cellRadius, paint)
+                    strokeCellPaint.color = Color.argb(70, Color.red(primary), Color.green(primary), Color.blue(primary))
+                    canvas.drawRoundRect(cellRect, cellRadius, cellRadius, strokeCellPaint)
                 }
             }
         }

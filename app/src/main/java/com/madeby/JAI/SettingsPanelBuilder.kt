@@ -3852,28 +3852,7 @@ layout.addView(reminderCard)
                 }
                 displayCard.addView(fontRow)
 
-                displayCard.addView(createDivider())
-
-                // Minimal White Focus Clock Row
-                val isPureWhitePomo = sharedPrefs.getBoolean("pomodoro_pure_white_theme", true)
-                val pureWhitePomoSwitch = SwitchMaterial(this).apply {
-                    isChecked = isPureWhitePomo
-                    setOnCheckedChangeListener { _, isChecked ->
-                        sharedPrefs.edit().putBoolean("pomodoro_pure_white_theme", isChecked).apply()
-                        tabPageCache.clear()
-                        if (currentPanel == AppPanel.FOCUS) {
-                            updateVisualStyles()
-                        }
-                    }
-                }
-                displayCard.addView(
-                    createSettingsRow(
-                        "",
-                        "Minimal White Focus Clock",
-                        "Distraction-free pure white timer ring during focus sessions",
-                        pureWhitePomoSwitch
-                    )
-                )
+                // Minimal White Focus Clock row retired in favor of automatic dynamic wallpaper/theme theming
 
                 displayCard.addView(createDivider())
 
