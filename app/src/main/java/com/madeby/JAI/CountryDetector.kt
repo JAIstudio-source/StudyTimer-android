@@ -98,31 +98,84 @@ object CountryDetector {
         return "en"
     }
 
+    data class SupportedLanguage(
+        val code: String,
+        val nativeName: String,
+        val englishName: String
+    ) {
+        val displayName: String
+            get() = if (nativeName.equals(englishName, ignoreCase = true)) englishName else "$nativeName ($englishName)"
+    }
+
+    val SUPPORTED_LANGUAGES = listOf(
+        SupportedLanguage("en", "English", "English"),
+        SupportedLanguage("hi", "हिन्दी", "Hindi"),
+        SupportedLanguage("es", "Español", "Spanish"),
+        SupportedLanguage("fr", "Français", "French"),
+        SupportedLanguage("de", "Deutsch", "German"),
+        SupportedLanguage("ar", "العربية", "Arabic"),
+        SupportedLanguage("bn", "বাংলা", "Bengali"),
+        SupportedLanguage("mr", "मराठी", "Marathi"),
+        SupportedLanguage("te", "తెలుగు", "Telugu"),
+        SupportedLanguage("ta", "தமிழ்", "Tamil"),
+        SupportedLanguage("gu", "ગુજરાતી", "Gujarati"),
+        SupportedLanguage("kn", "ಕನ್ನಡ", "Kannada"),
+        SupportedLanguage("ml", "മലയാളം", "Malayalam"),
+        SupportedLanguage("pa", "ਪੰਜਾਬੀ", "Punjabi"),
+        SupportedLanguage("ur", "اردو", "Urdu"),
+        SupportedLanguage("pt", "Português", "Portuguese"),
+        SupportedLanguage("ru", "Русский", "Russian"),
+        SupportedLanguage("ja", "日本語", "Japanese"),
+        SupportedLanguage("ko", "한국어", "Korean"),
+        SupportedLanguage("zh", "中文", "Chinese"),
+        SupportedLanguage("id", "Bahasa Indonesia", "Indonesian"),
+        SupportedLanguage("it", "Italiano", "Italian"),
+        SupportedLanguage("nl", "Nederlands", "Dutch"),
+        SupportedLanguage("pl", "Polski", "Polish"),
+        SupportedLanguage("tr", "Türkçe", "Turkish"),
+        SupportedLanguage("vi", "Tiếng Việt", "Vietnamese"),
+        SupportedLanguage("th", "ไทย", "Thai"),
+        SupportedLanguage("fa", "فارسی", "Persian"),
+        SupportedLanguage("uk", "Українська", "Ukrainian")
+    )
+
     /**
-     * Detects human-readable language name (e.g. "English", "Hindi").
+     * Detects human-readable language name (e.g. "English", "हिन्दी (Hindi)").
      */
     fun detectLanguageName(context: Context? = null): String {
         val code = detectLanguageCode(context)
-        return when (code) {
-            "hi" -> "Hindi"
-            "en" -> "English"
-            else -> {
-                try {
-                    val loc = Locale(code)
-                    val name = loc.getDisplayLanguage(Locale.US).trim()
-                    if (name.isNotBlank()) name else "English"
-                } catch (_: Exception) {
-                    "English"
-                }
+        val matched = SUPPORTED_LANGUAGES.find { it.code.equals(code, ignoreCase = true) }
+        if (matched != null) return matched.displayName
+        return try {
+            val loc = Locale(code)
+            val native = loc.getDisplayLanguage(loc).trim().replaceFirstChar { it.uppercase() }
+            val en = loc.getDisplayLanguage(Locale.US).trim()
+            if (native.isNotBlank() && !native.equals(en, ignoreCase = true)) {
+                "$native ($en)"
+            } else if (en.isNotBlank()) {
+                en
+            } else {
+                "English"
             }
+        } catch (_: Exception) {
+            "English"
         }
     }
 
     fun getSystemLanguageName(): String {
         return try {
             val loc = getPrimaryLocale()
-            val name = loc.getDisplayLanguage(Locale.US).trim()
-            if (name.isNotBlank()) name else "English"
+            val matched = SUPPORTED_LANGUAGES.find { it.code.equals(loc.language, ignoreCase = true) }
+            if (matched != null) return matched.displayName
+            val native = loc.getDisplayLanguage(loc).trim().replaceFirstChar { it.uppercase() }
+            val en = loc.getDisplayLanguage(Locale.US).trim()
+            if (native.isNotBlank() && !native.equals(en, ignoreCase = true)) {
+                "$native ($en)"
+            } else if (en.isNotBlank()) {
+                en
+            } else {
+                "English"
+            }
         } catch (_: Exception) {
             "English"
         }
