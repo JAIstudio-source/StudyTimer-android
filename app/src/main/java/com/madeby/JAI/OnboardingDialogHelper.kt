@@ -5,11 +5,16 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.RippleDrawable
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.Window
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -21,9 +26,8 @@ import androidx.core.view.WindowInsetsCompat
 /**
  * Premium Full-Screen FTUX Onboarding Wizard.
  * 
- * Replaces intrusive floating modals with a continuous, beautifully crafted
- * 3-step setup screen that matches StudyTimer's brand aura, clean typography,
- * high-contrast selection tiles, and zero cheesy emoji slop.
+ * Redesigned for pure contrast, minimal questions (Name -> Focus Area -> Daily Target & Timer),
+ * guaranteed 100% text readability on dark glass canvas, and zero visual slop.
  */
 object OnboardingDialogHelper {
 
@@ -40,19 +44,29 @@ object OnboardingDialogHelper {
         val window = dialog.window
         window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         window?.setBackgroundDrawableResource(R.drawable.bg_login_gradient)
+        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
         val theme = activity.themeCoordinator
         val primary = theme.primaryColor
-        val textColor = theme.textColor
 
         fun dp(v: Int): Int = activity.dp(v)
 
+        // Colors locked to high-contrast dark aesthetic
+        val textPrimary = 0xFFFFFFFF.toInt()
+        val textSecondary = 0xFF94A3B8.toInt()
+        val textMuted = 0xFF64748B.toInt()
+        val tileBgNormal = 0x14FFFFFF.toInt()
+        val tileBorderNormal = 0x22FFFFFF.toInt()
+        val tileBgSelected = Color.argb(45, Color.red(primary), Color.green(primary), Color.blue(primary))
+        val tileBorderSelected = primary
+
         var currentStep = 1
+        var enteredName = ""
         var selectedFocus = "Competitive Exams"
         var selectedDailyHours = 4
         var selectedTimerMode = "COUNTDOWN"
 
-        // Root container matching LoginActivity full-bleed style
+        // Root container matching login full-bleed style
         val rootLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = ViewGroup.LayoutParams(
@@ -66,7 +80,7 @@ object OnboardingDialogHelper {
         val topBar = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(24), dp(20), dp(24), dp(12))
+            setPadding(dp(24), dp(20), dp(24), dp(10))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -90,26 +104,26 @@ object OnboardingDialogHelper {
             text = "StudyTimer"
             textSize = 15f
             typeface = theme.getAppTypeface(isBold = true)
-            setTextColor(Color.WHITE)
+            setTextColor(textPrimary)
             letterSpacing = -0.01f
         }
         brandRow.addView(miniLogo)
         brandRow.addView(brandName)
 
         val stepCounter = TextView(activity).apply {
-            textSize = 12.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextColor(tintedColor(textColor, 140))
-            letterSpacing = 0.05f
+            textSize = 12f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(textSecondary)
+            letterSpacing = 0.08f
         }
 
         topBar.addView(brandRow)
         topBar.addView(stepCounter)
 
-        // Progress line track
+        // Progress line track (3 smooth pills)
         val progressTrack = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(24), 0, dp(24), dp(16))
+            setPadding(dp(24), dp(4), dp(24), dp(16))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -121,10 +135,10 @@ object OnboardingDialogHelper {
             val pill = View(activity).apply {
                 background = GradientDrawable().apply {
                     cornerRadius = dp(3).toFloat()
-                    setColor(if (i == 1) primary else Color.argb(35, 255, 255, 255))
+                    setColor(if (i == 1) primary else 0x28FFFFFF.toInt())
                 }
                 layoutParams = LinearLayout.LayoutParams(0, dp(4), 1f).apply {
-                    setMargins(if (i > 1) dp(6) else 0, 0, 0, 0)
+                    setMargins(if (i > 1) dp(8) else 0, 0, 0, 0)
                 }
             }
             stepPills.add(pill)
@@ -136,7 +150,7 @@ object OnboardingDialogHelper {
             stepPills.forEachIndexed { index, pill ->
                 val stepNum = index + 1
                 (pill.background as? GradientDrawable)?.setColor(
-                    if (stepNum <= currentStep) primary else Color.argb(35, 255, 255, 255)
+                    if (stepNum <= currentStep) primary else 0x28FFFFFF.toInt()
                 )
             }
         }
@@ -178,10 +192,14 @@ object OnboardingDialogHelper {
         val secondaryBtn = Button(activity).apply {
             text = "Skip"
             isAllCaps = false
-            textSize = 14f
+            textSize = 14.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextColor(tintedColor(textColor, 150))
-            background = null
+            setTextColor(textSecondary)
+            background = RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x22FFFFFF.toInt()),
+                null,
+                null
+            )
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 dp(52)
@@ -189,12 +207,16 @@ object OnboardingDialogHelper {
                 setMargins(0, 0, dp(14), 0)
             }
             setOnClickListener {
+                val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                imm?.hideSoftInputFromWindow(windowToken, 0)
+
                 if (currentStep > 1) {
                     currentStep--
                     renderCurrentStepFn?.invoke()
                 } else {
-                    prefs.edit().putBoolean("has_completed_onboarding_v2", true).apply()
-                    dialog.dismiss()
+                    // Skip to step 2 keeping default name
+                    currentStep = 2
+                    renderCurrentStepFn?.invoke()
                 }
             }
         }
@@ -204,7 +226,7 @@ object OnboardingDialogHelper {
             isAllCaps = false
             textSize = 15f
             typeface = theme.getAppTypeface(isBold = true)
-            setTextColor(Color.WHITE)
+            setTextColor(0xFFFFFFFF.toInt())
             background = GradientDrawable().apply {
                 cornerRadius = dp(16).toFloat()
                 setColor(primary)
@@ -216,46 +238,63 @@ object OnboardingDialogHelper {
         bottomBar.addView(primaryBtn)
 
         fun createCardTile(
+            emojiIcon: String,
             titleText: String,
             captionText: String,
             isSelected: Boolean,
             onClick: () -> Unit
         ): LinearLayout {
             return LinearLayout(activity).apply {
-                orientation = LinearLayout.VERTICAL
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 isClickable = true
                 isFocusable = true
-                setPadding(dp(18), dp(16), dp(18), dp(16))
-                
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+
                 background = GradientDrawable().apply {
                     cornerRadius = dp(16).toFloat()
-                    if (isSelected) {
-                        setColor(Color.argb(40, Color.red(primary), Color.green(primary), Color.blue(primary)))
-                        setStroke(dp(1.8f.toInt()), primary)
-                    } else {
-                        setColor(Color.argb(20, 255, 255, 255))
-                        setStroke(dp(1), Color.argb(25, 255, 255, 255))
-                    }
+                    setColor(if (isSelected) tileBgSelected else tileBgNormal)
+                    setStroke(if (isSelected) dp(2) else dp(1), if (isSelected) tileBorderSelected else tileBorderNormal)
                 }
 
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    setMargins(0, 0, 0, dp(12))
+                    setMargins(0, 0, 0, dp(10))
                 }
 
-                val row = LinearLayout(activity).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    gravity = Gravity.CENTER_VERTICAL
+                val iconTv = TextView(activity).apply {
+                    text = emojiIcon
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                        setMargins(0, 0, dp(12), 0)
+                    }
+                }
+
+                val textCol = LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
 
                 val titleTv = TextView(activity).apply {
                     text = titleText
-                    textSize = 15.5f
+                    textSize = 15f
                     typeface = theme.getAppTypeface(isBold = isSelected)
-                    setTextColor(if (isSelected) Color.WHITE else textColor)
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    setTextColor(textPrimary)
+                }
+                textCol.addView(titleTv)
+
+                if (captionText.isNotBlank()) {
+                    val capTv = TextView(activity).apply {
+                        text = captionText
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                        setTextColor(if (isSelected) 0xFFCBD5E1.toInt() else textSecondary)
+                        setPadding(0, dp(2), 0, 0)
+                    }
+                    textCol.addView(capTv)
                 }
 
                 val indicator = View(activity).apply {
@@ -265,26 +304,17 @@ object OnboardingDialogHelper {
                             setColor(primary)
                         } else {
                             setColor(Color.TRANSPARENT)
-                            setStroke(dp(1), Color.argb(60, 255, 255, 255))
+                            setStroke(dp(1), 0x55FFFFFF.toInt())
                         }
                     }
-                    layoutParams = LinearLayout.LayoutParams(dp(18), dp(18))
-                }
-
-                row.addView(titleTv)
-                row.addView(indicator)
-                addView(row)
-
-                if (captionText.isNotBlank()) {
-                    val capTv = TextView(activity).apply {
-                        text = captionText
-                        textSize = 12.5f
-                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-                        setTextColor(if (isSelected) tintedColor(textColor, 200) else tintedColor(textColor, 130))
-                        setPadding(0, dp(4), 0, 0)
+                    layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply {
+                        setMargins(dp(10), 0, 0, 0)
                     }
-                    addView(capTv)
                 }
+
+                addView(iconTv)
+                addView(textCol)
+                addView(indicator)
 
                 setOnClickListener { onClick() }
             }
@@ -298,65 +328,188 @@ object OnboardingDialogHelper {
 
             when (currentStep) {
                 1 -> {
-                    // Header
+                    // STEP 1: WELCOME & NAME
                     val header = TextView(activity).apply {
-                        text = "What is your main focus area?"
-                        textSize = 24f
+                        text = "Welcome to StudyTimer"
+                        textSize = 26f
                         typeface = theme.getAppTypeface(isBold = true)
-                        setTextColor(Color.WHITE)
+                        setTextColor(textPrimary)
                         letterSpacing = -0.02f
                     }
                     val subtitle = TextView(activity).apply {
-                        text = "Choose your current learning priority. StudyTimer will tailor your initial sessions around this goal."
-                        textSize = 13.5f
+                        text = "Your quiet space for deep work, habit consistency, and uninterrupted exam mastery."
+                        textSize = 14f
                         typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-                        setTextColor(tintedColor(textColor, 170))
+                        setTextColor(textSecondary)
                         setLineSpacing(dp(3).toFloat(), 1.0f)
-                        setPadding(0, dp(8), 0, dp(24))
+                        setPadding(0, dp(8), 0, dp(28))
                     }
                     contentContainer.addView(header)
                     contentContainer.addView(subtitle)
 
-                    val focusCategories = listOf(
-                        "Competitive Exams" to "UPSC, GATE, GRE, USMLE, Bar & entrance tests",
-                        "College / University" to "Degree coursework, finals, thesis & research",
-                        "School & Academics" to "High school classes, daily homework & revision",
-                        "Programming & Tech" to "Coding practice, personal projects & software skills",
-                        "Self-Improvement" to "Reading, languages, writing & deep personal habits"
-                    )
-
-                    for ((category, desc) in focusCategories) {
-                        val isSelected = (category == selectedFocus)
-                        val tile = createCardTile(category, desc, isSelected) {
-                            selectedFocus = category
-                            renderStep()
+                    // Hero Badge card
+                    val heroBadge = LinearLayout(activity).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(16).toFloat()
+                            setColor(0x18FFFFFF.toInt())
+                            setStroke(dp(1), 0x22FFFFFF.toInt())
                         }
-                        contentContainer.addView(tile)
+                        setPadding(dp(16), dp(14), dp(16), dp(14))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, 0, 0, dp(26))
+                        }
                     }
+                    val sparkIcon = TextView(activity).apply {
+                        text = "⚡"
+                        textSize = 22f
+                        setPadding(0, 0, dp(12), 0)
+                    }
+                    val heroText = TextView(activity).apply {
+                        text = "100% Offline & Private. No annoying popups, tracking ads, or forced accounts."
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                        setTextColor(0xFFE2E8F0.toInt())
+                        setLineSpacing(dp(2).toFloat(), 1.0f)
+                    }
+                    heroBadge.addView(sparkIcon)
+                    heroBadge.addView(heroText)
+                    contentContainer.addView(heroBadge)
 
-                    primaryBtn.text = "Continue"
+                    // Name Input Section
+                    val nameSectionHeader = TextView(activity).apply {
+                        text = "WHAT SHOULD WE CALL YOU?"
+                        textSize = 11.5f
+                        letterSpacing = 0.08f
+                        typeface = theme.getAppTypeface(isBold = true)
+                        setTextColor(primary)
+                        setPadding(0, 0, 0, dp(10))
+                    }
+                    contentContainer.addView(nameSectionHeader)
+
+                    val nameInputBox = EditText(activity).apply {
+                        tag = "name_input"
+                        setText(enteredName)
+                        hint = "Enter your first name or nickname"
+                        setHintTextColor(textMuted)
+                        setTextColor(textPrimary)
+                        textSize = 15.5f
+                        typeface = theme.getAppTypeface(isBold = false)
+                        setSingleLine(true)
+                        maxLines = 1
+                        imeOptions = EditorInfo.IME_ACTION_DONE
+                        setPadding(dp(16), dp(14), dp(16), dp(14))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(14).toFloat()
+                            setColor(0x14FFFFFF.toInt())
+                            setStroke(dp(1), 0x33FFFFFF.toInt())
+                        }
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            dp(52)
+                        )
+                        addTextChangedListener(object : android.text.TextWatcher {
+                            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                            override fun afterTextChanged(s: android.text.Editable?) {
+                                enteredName = s?.toString()?.trim() ?: ""
+                            }
+                        })
+                        setOnFocusChangeListener { _, hasFocus ->
+                            (background as? GradientDrawable)?.apply {
+                                setStroke(if (hasFocus) dp(2) else dp(1), if (hasFocus) primary else 0x33FFFFFF.toInt())
+                                setColor(if (hasFocus) 0x22FFFFFF.toInt() else 0x14FFFFFF.toInt())
+                            }
+                        }
+                        setOnEditorActionListener { _, actionId, _ ->
+                            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                                enteredName = text.toString().trim()
+                                val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                                imm?.hideSoftInputFromWindow(windowToken, 0)
+                                clearFocus()
+                                true
+                            } else false
+                        }
+                    }
+                    contentContainer.addView(nameInputBox)
+
+                    val nameHint = TextView(activity).apply {
+                        text = "Used to personalize your daily greetings, session summaries, and stats."
+                        textSize = 12f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                        setTextColor(textMuted)
+                        setPadding(dp(2), dp(8), 0, 0)
+                    }
+                    contentContainer.addView(nameHint)
+
+                    primaryBtn.text = "Continue →"
                 }
                 2 -> {
+                    // STEP 2: FOCUS AREA
                     val header = TextView(activity).apply {
-                        text = "Target & Timer Mode"
-                        textSize = 24f
+                        text = "What is your main focus?"
+                        textSize = 25f
                         typeface = theme.getAppTypeface(isBold = true)
-                        setTextColor(Color.WHITE)
+                        setTextColor(textPrimary)
                         letterSpacing = -0.02f
                     }
                     val subtitle = TextView(activity).apply {
-                        text = "Set a realistic daily goal and choose how you like your focus intervals timed."
-                        textSize = 13.5f
+                        text = "Choose your current learning priority. You can adjust this anytime."
+                        textSize = 14f
                         typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-                        setTextColor(tintedColor(textColor, 170))
+                        setTextColor(textSecondary)
                         setLineSpacing(dp(3).toFloat(), 1.0f)
                         setPadding(0, dp(8), 0, dp(20))
                     }
                     contentContainer.addView(header)
                     contentContainer.addView(subtitle)
 
+                    val focusCategories = listOf(
+                        Triple("🎯", "Competitive Exams", "UPSC, JEE, NEET, GATE, GRE, USMLE & entrance tests"),
+                        Triple("🎓", "College & University", "Degree coursework, semester finals, lab & thesis"),
+                        Triple("💻", "Programming & Tech", "Coding practice, personal projects & software skills"),
+                        Triple("📖", "School & Academics", "High school classes, daily homework & revision"),
+                        Triple("⚡", "Personal Mastery", "Deep reading, languages, writing & skill building")
+                    )
+
+                    for ((emoji, category, desc) in focusCategories) {
+                        val isSelected = (category == selectedFocus)
+                        val tile = createCardTile(emoji, category, desc, isSelected) {
+                            selectedFocus = category
+                            renderStep()
+                        }
+                        contentContainer.addView(tile)
+                    }
+
+                    primaryBtn.text = "Continue →"
+                }
+                3 -> {
+                    // STEP 3: COMMITMENT & TIMER STYLE
+                    val header = TextView(activity).apply {
+                        text = "Target & Focus Style"
+                        textSize = 25f
+                        typeface = theme.getAppTypeface(isBold = true)
+                        setTextColor(textPrimary)
+                        letterSpacing = -0.02f
+                    }
+                    val subtitle = TextView(activity).apply {
+                        text = "Set your baseline daily target and choose your preferred study timer flow."
+                        textSize = 14f
+                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+                        setTextColor(textSecondary)
+                        setLineSpacing(dp(3).toFloat(), 1.0f)
+                        setPadding(0, dp(8), 0, dp(20))
+                    }
+                    contentContainer.addView(header)
+                    contentContainer.addView(subtitle)
+
+                    // Daily Target Selector
                     val goalSectionHeader = TextView(activity).apply {
-                        text = "DAILY STUDY GOAL"
+                        text = "DAILY STUDY TARGET"
                         textSize = 11.5f
                         letterSpacing = 0.08f
                         typeface = theme.getAppTypeface(isBold = true)
@@ -365,7 +518,6 @@ object OnboardingDialogHelper {
                     }
                     contentContainer.addView(goalSectionHeader)
 
-                    // Target hours selector pills
                     val targetHoursRow = LinearLayout(activity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         layoutParams = LinearLayout.LayoutParams(
@@ -377,10 +529,11 @@ object OnboardingDialogHelper {
                     }
 
                     val targets = listOf(
-                        2 to "2 hrs",
-                        4 to "4 hrs",
-                        6 to "6 hrs",
-                        8 to "8 hrs"
+                        1 to "1h",
+                        2 to "2h",
+                        4 to "4h",
+                        6 to "6h",
+                        8 to "8h"
                     )
 
                     for ((hrs, label) in targets) {
@@ -388,19 +541,19 @@ object OnboardingDialogHelper {
                         val chip = Button(activity).apply {
                             text = label
                             isAllCaps = false
-                            textSize = 13.5f
+                            textSize = 14f
                             typeface = theme.getAppTypeface(isBold = isSelected)
-                            setTextColor(if (isSelected) Color.WHITE else textColor)
+                            setTextColor(if (isSelected) 0xFFFFFFFF.toInt() else textSecondary)
                             background = GradientDrawable().apply {
                                 cornerRadius = dp(14).toFloat()
                                 if (isSelected) {
                                     setColor(primary)
                                 } else {
-                                    setColor(Color.argb(20, 255, 255, 255))
-                                    setStroke(dp(1), Color.argb(25, 255, 255, 255))
+                                    setColor(0x14FFFFFF.toInt())
+                                    setStroke(dp(1), 0x24FFFFFF.toInt())
                                 }
                             }
-                            layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply {
+                            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                                 setMargins(dp(3), 0, dp(3), 0)
                             }
                             setOnClickListener {
@@ -412,8 +565,9 @@ object OnboardingDialogHelper {
                     }
                     contentContainer.addView(targetHoursRow)
 
+                    // Timer Mode Selector
                     val timerSectionHeader = TextView(activity).apply {
-                        text = "TIMER METHOD"
+                        text = "DEFAULT TIMER MODE"
                         textSize = 11.5f
                         letterSpacing = 0.08f
                         typeface = theme.getAppTypeface(isBold = true)
@@ -425,148 +579,64 @@ object OnboardingDialogHelper {
                     val timerModes = listOf(
                         Triple(
                             "COUNTDOWN",
-                            "Pomodoro Technique",
-                            "25 minutes deep focus with 5 minutes resting intervals"
+                            "⏱️",
+                            Pair("Pomodoro Technique (25/5)", "Structured focus intervals with automatic short & long resting breaks")
                         ),
                         Triple(
                             "SUBJECT",
-                            "Stopwatch (Count-Up)",
-                            "Continuous uninterrupted flow timer for flexible deep work"
+                            "⏳",
+                            Pair("Stopwatch (Count-Up)", "Continuous flow timer for open-ended deep sessions without rigid alarms")
                         )
                     )
 
-                    for ((modeKey, title, desc) in timerModes) {
+                    for ((modeKey, emoji, pair) in timerModes) {
+                        val (title, desc) = pair
                         val isSelected = (modeKey == selectedTimerMode)
-                        val tile = createCardTile(title, desc, isSelected) {
+                        val tile = createCardTile(emoji, title, desc, isSelected) {
                             selectedTimerMode = modeKey
                             renderStep()
                         }
                         contentContainer.addView(tile)
                     }
 
-                    primaryBtn.text = "Continue"
-                }
-                3 -> {
-                    val header = TextView(activity).apply {
-                        text = "You're Ready to Focus"
-                        textSize = 24f
-                        typeface = theme.getAppTypeface(isBold = true)
-                        setTextColor(Color.WHITE)
-                        letterSpacing = -0.02f
-                    }
-                    val subtitle = TextView(activity).apply {
-                        text = "Your personalized workspace is configured and ready. You can modify these settings anytime in Preferences."
-                        textSize = 13.5f
-                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-                        setTextColor(tintedColor(textColor, 170))
-                        setLineSpacing(dp(3).toFloat(), 1.0f)
-                        setPadding(0, dp(8), 0, dp(24))
-                    }
-                    contentContainer.addView(header)
-                    contentContainer.addView(subtitle)
-
-                    // Minimalist Overview Bento Card
-                    val summaryBox = LinearLayout(activity).apply {
-                        orientation = LinearLayout.VERTICAL
-                        background = GradientDrawable().apply {
-                            cornerRadius = dp(20).toFloat()
-                            setColor(Color.argb(25, 255, 255, 255))
-                            setStroke(dp(1), Color.argb(35, 255, 255, 255))
-                        }
-                        setPadding(dp(22), dp(20), dp(22), dp(20))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            setMargins(0, 0, 0, dp(20))
-                        }
-                    }
-
-                    fun addSummaryRow(label: String, value: String, isLast: Boolean = false) {
-                        val row = LinearLayout(activity).apply {
-                            orientation = LinearLayout.HORIZONTAL
-                            gravity = Gravity.CENTER_VERTICAL
-                            setPadding(0, dp(6), 0, dp(6))
-                        }
-                        val lbl = TextView(activity).apply {
-                            text = label
-                            textSize = 14f
-                            setTextColor(tintedColor(textColor, 140))
-                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                        }
-                        val v = TextView(activity).apply {
-                            text = value
-                            textSize = 14.5f
-                            typeface = theme.getAppTypeface(isBold = true)
-                            setTextColor(Color.WHITE)
-                        }
-                        row.addView(lbl)
-                        row.addView(v)
-                        summaryBox.addView(row)
-
-                        if (!isLast) {
-                            val divider = View(activity).apply {
-                                background = GradientDrawable().apply {
-                                    setColor(Color.argb(18, 255, 255, 255))
-                                }
-                                layoutParams = LinearLayout.LayoutParams(
-                                    LinearLayout.LayoutParams.MATCH_PARENT,
-                                    dp(1)
-                                ).apply {
-                                    setMargins(0, dp(4), 0, dp(4))
-                                }
-                            }
-                            summaryBox.addView(divider)
-                        }
-                    }
-
-                    addSummaryRow("Focus Area", selectedFocus)
-                    addSummaryRow("Daily Study Target", "$selectedDailyHours Hours")
-                    val modeDisplay = if (selectedTimerMode == "COUNTDOWN") "Pomodoro (25/5)" else "Stopwatch (Continuous)"
-                    addSummaryRow("Timer Style", modeDisplay, isLast = true)
-
-                    contentContainer.addView(summaryBox)
-
-                    // Value proposition tip card
-                    val tipBox = LinearLayout(activity).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        gravity = Gravity.CENTER_VERTICAL
-                        background = GradientDrawable().apply {
-                            cornerRadius = dp(14).toFloat()
-                            setColor(Color.argb(30, Color.red(primary), Color.green(primary), Color.blue(primary)))
-                            setStroke(dp(1), Color.argb(60, Color.red(primary), Color.green(primary), Color.blue(primary)))
-                        }
-                        setPadding(dp(16), dp(12), dp(16), dp(12))
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        )
-                    }
-
-                    val tipText = TextView(activity).apply {
-                        text = "Tip: Your stats, streaks, and progress are stored privately on your device. Tap Start on the timer to log your first session."
-                        textSize = 12.5f
-                        typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-                        setTextColor(tintedColor(textColor, 210))
-                        setLineSpacing(dp(2).toFloat(), 1.0f)
-                    }
-                    tipBox.addView(tipText)
-                    contentContainer.addView(tipBox)
-
-                    primaryBtn.text = "Get Started"
+                    primaryBtn.text = "Get Started 🚀"
                 }
             }
         }
         renderCurrentStepFn = { renderStep() }
 
         primaryBtn.setOnClickListener {
-            if (currentStep < 3) {
+            val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+            imm?.hideSoftInputFromWindow(rootLayout.windowToken, 0)
+
+            if (currentStep == 1) {
+                val typed = contentContainer.findViewWithTag<EditText>("name_input")?.text?.toString()?.trim()
+                if (!typed.isNullOrBlank()) {
+                    enteredName = typed
+                }
+                currentStep++
+                renderStep()
+            } else if (currentStep == 2) {
                 currentStep++
                 renderStep()
             } else {
+                // Finalize Onboarding
                 val goalSecs = (selectedDailyHours * 3600L).coerceAtLeast(1800L)
                 GoalHistoryManager.setDailyGoal(activity, goalSecs)
+
+                val validName = if (enteredName.isNotBlank()) enteredName.trim() else "Student"
+                val currentProfile = ProfileManager.getProfile(activity)
+                val newProfile = currentProfile.copy(
+                    displayName = validName,
+                    lastApprovedDisplayName = validName,
+                    targetExam = selectedFocus,
+                    dailyGoalMinutes = selectedDailyHours * 60,
+                    updatedAt = System.currentTimeMillis()
+                )
+                ProfileManager.saveProfile(activity, newProfile)
+
                 prefs.edit()
+                    .putString("custom_display_name", validName)
                     .putString("user_target_focus", selectedFocus)
                     .putString("target_exam", selectedFocus)
                     .putString("timer_mode", selectedTimerMode)
@@ -575,7 +645,8 @@ object OnboardingDialogHelper {
 
                 dialog.dismiss()
                 activity.buildCurrentPanel()
-                AppToast.show(activity, "Welcome to StudyTimer! Tap Start to begin your first session.")
+                val welcomeMsg = if (enteredName.isNotBlank()) "Welcome, ${enteredName.trim()}! Tap Start to begin your first session." else "Welcome to StudyTimer! Tap Start to begin."
+                AppToast.show(activity, welcomeMsg)
             }
         }
 
@@ -588,22 +659,13 @@ object OnboardingDialogHelper {
         ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { _, insets ->
             val statusBars = insets.getInsets(WindowInsetsCompat.Type.statusBars())
             val navBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-            topBar.setPadding(dp(24), statusBars.top + dp(14), dp(24), dp(12))
-            bottomBar.setPadding(dp(24), dp(12), dp(24), navBars.bottom + dp(18))
+            topBar.setPadding(dp(24), statusBars.top + dp(14), dp(24), dp(10))
+            bottomBar.setPadding(dp(24), dp(10), dp(24), navBars.bottom + dp(16))
             insets
         }
 
         dialog.setContentView(rootLayout)
         renderStep()
         dialog.show()
-    }
-
-    private fun tintedColor(color: Int, alpha: Int): Int {
-        return Color.argb(
-            alpha.coerceIn(0, 255),
-            Color.red(color),
-            Color.green(color),
-            Color.blue(color)
-        )
     }
 }

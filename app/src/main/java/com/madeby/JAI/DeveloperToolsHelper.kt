@@ -1541,6 +1541,12 @@ object DeveloperToolsHelper {
 
         // 8. Updates, Widgets & Scorecard Lab
         addSection("UPDATES, WIDGETS & SCORECARD LAB", "🚀") {
+            addView(devButton("🚀 Launch Welcome Onboarding Wizard", "Previews the redesigned 3-step setup (Name, Focus Area, Goal & Timer)", Color.parseColor("#38BDF8")) {
+                dialog.dismiss()
+                activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putBoolean("has_completed_onboarding_v2", false).apply()
+                OnboardingDialogHelper.showOnboardingIfNeeded(activity)
+            })
+
             addView(devButton("Simulate 'Update Available' Dialog", "Previews the in-app update prompt with release notes and download CTA", Color.parseColor("#38BDF8")) {
                 dialog.dismiss()
                 val mockUpdate = UpdateInfo(
