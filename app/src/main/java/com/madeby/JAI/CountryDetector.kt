@@ -29,6 +29,7 @@ object CountryDetector {
     const val KEY_DETECTED_COUNTRY_ISO = "detected_country_iso"
     const val KEY_USER_OVERRIDE_COUNTRY_ISO = "user_override_country_iso"
     const val KEY_DETECTED_LANGUAGE_CODE = "detected_language_code"
+    const val KEY_USER_OVERRIDE_LANGUAGE_CODE = "user_override_language_code"
 
     private val TIMEZONE_COUNTRY_HINTS = mapOf(
         "Asia/Kolkata" to "IN",
@@ -76,33 +77,69 @@ object CountryDetector {
 
     /**
      * Detects language code (e.g. "en", "hi", "es").
+     * Checks user manual override first, then falls back safely to device system Locale.
      * Guaranteed never to fail, never return blank or "und", always fallback safely to "en".
      */
-    fun detectLanguageCode(): String {
-        return try {
-            val locale = getPrimaryLocale()
-            val rawLang = locale.language?.lowercase(Locale.US)?.trim()
-            if (!rawLang.isNullOrBlank() && rawLang != "und" && rawLang.length >= 2) {
-                rawLang
-            } else {
-                "en"
+    fun detectLanguageCode(context: Context? = null): String {
+        try {
+            if (context != null) {
+                val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val override = prefs.getString(KEY_USER_OVERRIDE_LANGUAGE_CODE, null)?.trim()?.lowercase(Locale.US)
+                if (!override.isNullOrBlank() && override != "auto" && override.length >= 2) {
+                    return override
+                }
             }
-        } catch (_: Exception) {
-            "en"
-        }
+            val locale = getPrimaryLocale()
+            val rawLang = locale.language.lowercase(Locale.US).trim()
+            if (rawLang.isNotBlank() && rawLang != "und" && rawLang.length >= 2) {
+                return rawLang
+            }
+        } catch (_: Exception) {}
+        return "en"
     }
 
     /**
      * Detects human-readable language name (e.g. "English", "Hindi").
      */
-    fun detectLanguageName(): String {
+    fun detectLanguageName(context: Context? = null): String {
+        val code = detectLanguageCode(context)
+        return when (code) {
+            "hi" -> "Hindi"
+            "en" -> "English"
+            else -> {
+                try {
+                    val loc = Locale(code)
+                    val name = loc.getDisplayLanguage(Locale.US).trim()
+                    if (name.isNotBlank()) name else "English"
+                } catch (_: Exception) {
+                    "English"
+                }
+            }
+        }
+    }
+
+    fun getSystemLanguageName(): String {
         return try {
-            val locale = getPrimaryLocale()
-            val name = locale.getDisplayLanguage(Locale.US).trim()
+            val loc = getPrimaryLocale()
+            val name = loc.getDisplayLanguage(Locale.US).trim()
             if (name.isNotBlank()) name else "English"
         } catch (_: Exception) {
             "English"
         }
+    }
+
+    fun setUserLanguageOverride(context: Context, langCode: String?) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (langCode.isNullOrBlank() || langCode.equals("AUTO", ignoreCase = true)) {
+            prefs.edit().remove(KEY_USER_OVERRIDE_LANGUAGE_CODE).apply()
+        } else {
+            prefs.edit().putString(KEY_USER_OVERRIDE_LANGUAGE_CODE, langCode.lowercase(Locale.US).trim()).apply()
+        }
+    }
+
+    fun isUserLanguageOverrideActive(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return !prefs.getString(KEY_USER_OVERRIDE_LANGUAGE_CODE, null).isNullOrBlank()
     }
 
     /**
@@ -202,8 +239,8 @@ object CountryDetector {
     fun getRegionInfo(context: Context): UserRegionInfo {
         val iso = detectCountryIso(context)
         val countryName = getCountryName(iso)
-        val langCode = detectLanguageCode()
-        val langName = detectLanguageName()
+        val langCode = detectLanguageCode(context)
+        val langName = detectLanguageName(context)
         val localeTag = "$langCode-$iso"
 
         return UserRegionInfo(

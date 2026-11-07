@@ -188,22 +188,26 @@ class FestivalManagerTest {
         assertTrue("New Year must apply to null/empty", FestivalType.NEW_YEAR.isApplicableForCountry(null))
         assertTrue("Christmas must apply to UK", FestivalType.CHRISTMAS.isApplicableForCountry("GB"))
 
-        // India-specific holidays
+        // India-specific holidays (Diwali, Holi, Eid, Dussehra, Republic Day, Independence Day)
         assertTrue("Republic Day applies to IN", FestivalType.REPUBLIC_DAY.isApplicableForCountry("IN"))
         assertFalse("Republic Day does not apply to US", FestivalType.REPUBLIC_DAY.isApplicableForCountry("US"))
         assertTrue("Independence Day applies to IN", FestivalType.INDEPENDENCE_DAY.isApplicableForCountry("IN"))
         assertFalse("Independence Day does not apply to GB", FestivalType.INDEPENDENCE_DAY.isApplicableForCountry("GB"))
 
-        // Diwali
+        // Diwali is India only
         assertTrue("Diwali applies to India", FestivalType.DIWALI.isApplicableForCountry("IN"))
-        assertTrue("Diwali applies to Nepal", FestivalType.DIWALI.isApplicableForCountry("NP"))
-        assertTrue("Diwali applies to Singapore", FestivalType.DIWALI.isApplicableForCountry("SG"))
+        assertFalse("Diwali does not apply to Nepal", FestivalType.DIWALI.isApplicableForCountry("NP"))
+        assertFalse("Diwali does not apply to Singapore", FestivalType.DIWALI.isApplicableForCountry("SG"))
         assertFalse("Diwali does not apply to Germany", FestivalType.DIWALI.isApplicableForCountry("DE"))
 
-        // Eid
+        // Holi is India only
+        assertTrue("Holi applies to India", FestivalType.HOLI.isApplicableForCountry("IN"))
+        assertFalse("Holi does not apply to US", FestivalType.HOLI.isApplicableForCountry("US"))
+
+        // Eid is India only
         assertTrue("Eid applies to India", FestivalType.EID_UL_FITR.isApplicableForCountry("IN"))
-        assertTrue("Eid applies to UAE", FestivalType.EID_UL_FITR.isApplicableForCountry("AE"))
-        assertTrue("Eid applies to Saudi Arabia", FestivalType.EID_UL_FITR.isApplicableForCountry("SA"))
+        assertFalse("Eid does not apply to UAE", FestivalType.EID_UL_FITR.isApplicableForCountry("AE"))
+        assertFalse("Eid does not apply to Saudi Arabia", FestivalType.EID_UL_FITR.isApplicableForCountry("SA"))
         assertFalse("Eid does not apply to Japan", FestivalType.EID_UL_FITR.isApplicableForCountry("JP"))
     }
 

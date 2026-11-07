@@ -1372,6 +1372,71 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     editBioFieldRef = editBioField
                     editContent.addView(editBioField)
 
+                    // Field 4: Country & Region
+                    val countryLabel = TextView(this).apply {
+                        text = "Country & Region"
+                        setTextColor(themeCoordinator.textColor)
+                        alpha = 0.75f
+                        textSize = 12f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        setPadding(dp(2), 0, 0, dp(6))
+                    }
+                    editContent.addView(countryLabel)
+
+                    val profileRegion = CountryDetector.getRegionInfo(this)
+                    val profileOverride = sharedPrefs.getString(CountryDetector.KEY_USER_OVERRIDE_COUNTRY_ISO, null)
+                    val countryDisplay = if (profileOverride.equals("ALL", ignoreCase = true)) {
+                        "Worldwide (All Celebrations)"
+                    } else if (CountryDetector.isUserOverrideActive(this)) {
+                        profileRegion.countryName
+                    } else {
+                        "${profileRegion.countryName} (Default)"
+                    }
+
+                    val countryFieldRow = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                        setPadding(dp(14), dp(11), dp(14), dp(11))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 0, 0, dp(18))
+                        }
+                        isClickable = true
+                        isFocusable = true
+                        val outVal = android.util.TypedValue()
+                        theme.resolveAttribute(android.R.attr.selectableItemBackground, outVal, true)
+                        foreground = getDrawable(outVal.resourceId)
+                        setOnClickListener {
+                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            showCountryPickerDialog {
+                                AppAnalytics.onRegionUpdated(this@with)
+                                host.tabPageCache.remove(host.settingsTabKey(AppSettingsTab.PROFILE))
+                                navigateToPanel(AppPanel.SETTINGS)
+                            }
+                        }
+                    }
+
+                    val countryTextCol = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    }
+                    countryTextCol.addView(TextView(this).apply {
+                        text = countryDisplay
+                        setTextColor(themeCoordinator.textColor)
+                        textSize = 14f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                    })
+                    countryFieldRow.addView(countryTextCol)
+
+                    val changeCountryBtn = TextView(this).apply {
+                        text = "Change ›"
+                        setTextColor(themeCoordinator.primaryColor)
+                        textSize = 12.5f
+                        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    }
+                    countryFieldRow.addView(changeCountryBtn)
+                    editContent.addView(countryFieldRow)
+
                     // Action Button Row (Cancel / Discard & Save Changes)
                     val btnActionRow = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
@@ -2802,38 +2867,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         } else {
                             FestivalScheduler.cancel(context)
                         }
-                        host.navigateToPanel(AppPanel.SETTINGS)
                     }
                 }
                 reminderCard.addView(createSettingsRow("", "Festival Greetings", "Warm wishes & motivation on major festivals", festivalSwitch))
-
-                if (festivalGreetingsEnabled) {
-                    val regionInfo = CountryDetector.getRegionInfo(this)
-                    val isManual = CountryDetector.isUserOverrideActive(this)
-                    val overrideIso = sharedPrefs.getString(CountryDetector.KEY_USER_OVERRIDE_COUNTRY_ISO, null)
-                    val regionBadge = if (overrideIso.equals("ALL", ignoreCase = true)) {
-                        "Worldwide (All)"
-                    } else if (isManual) {
-                        "${regionInfo.countryName} (Manual)"
-                    } else {
-                        "${regionInfo.countryName} (Auto)"
-                    }
-                    val regionRow = createSettingsRow(
-                        "",
-                        "Festival Region",
-                        "Country: $regionBadge • Language: ${regionInfo.languageName}",
-                        createActionChip("Change")
-                    )
-                    regionRow.setOnClickListener {
-                        HapticFeedbackHelper.performMicroHaptic(host)
-                        showRegionPickerDialog {
-                            AppAnalytics.onRegionUpdated(this)
-                            host.navigateToPanel(AppPanel.SETTINGS)
-                        }
-                    }
-                    reminderCard.addView(createDivider())
-                    reminderCard.addView(regionRow)
-                }
 layout.addView(reminderCard)
             }
 
@@ -3839,6 +3875,73 @@ layout.addView(reminderCard)
                     )
                 )
 
+                displayCard.addView(createDivider())
+
+                // App Language Row
+                val currentLangName = CountryDetector.detectLanguageName(this)
+                val isLangCustom = CountryDetector.isUserLanguageOverrideActive(this)
+                val langBadge = TextView(this).apply {
+                    text = "$currentLangName ›"
+                    textSize = 12.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.primaryColor)
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 12f)
+                    setPadding(dp(11), dp(5), dp(11), dp(5))
+                }
+                val langRow = createSettingsRow(
+                    "",
+                    "App Language",
+                    if (isLangCustom) "$currentLangName (Custom)" else "$currentLangName (Default)",
+                    langBadge
+                )
+                langRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
+                    showLanguageSelectionDialog {
+                        AppAnalytics.onRegionUpdated(this)
+                        tabPageCache.clear()
+                        navigateToPanel(AppPanel.SETTINGS)
+                    }
+                }
+                displayCard.addView(langRow)
+
+                displayCard.addView(createDivider())
+
+                // Country & Region Row
+                val currentCountryIso = CountryDetector.detectCountryIso(this)
+                val currentCountryName = CountryDetector.getCountryName(currentCountryIso)
+                val isCountryCustom = CountryDetector.isUserOverrideActive(this)
+                val themeCountryOverride = sharedPrefs.getString(CountryDetector.KEY_USER_OVERRIDE_COUNTRY_ISO, null)
+                val countryDisplay = if (themeCountryOverride.equals("ALL", ignoreCase = true)) {
+                    "Worldwide (All)"
+                } else if (isCountryCustom) {
+                    currentCountryName
+                } else {
+                    "$currentCountryName (Default)"
+                }
+                val countryBadge = TextView(this).apply {
+                    text = "$countryDisplay ›"
+                    textSize = 12.5f
+                    typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    setTextColor(themeCoordinator.primaryColor)
+                    background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 12f)
+                    setPadding(dp(11), dp(5), dp(11), dp(5))
+                }
+                val countryRow = createSettingsRow(
+                    "",
+                    "Country & Region",
+                    if (themeCountryOverride.equals("ALL", ignoreCase = true)) "All celebration greetings" else "Personalizes festival greetings",
+                    countryBadge
+                )
+                countryRow.setOnClickListener {
+                    HapticFeedbackHelper.performMicroHaptic(host, it)
+                    showCountryPickerDialog {
+                        AppAnalytics.onRegionUpdated(this)
+                        tabPageCache.clear()
+                        navigateToPanel(AppPanel.SETTINGS)
+                    }
+                }
+                displayCard.addView(countryRow)
+
                 layout.addView(displayCard)
             }
 
@@ -4007,7 +4110,7 @@ layout.addView(reminderCard)
         }
     }
 
-    private fun showRegionPickerDialog(onUpdated: () -> Unit) {
+    private fun showCountryPickerDialog(onUpdated: () -> Unit) {
         with(host) {
             val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this, R.style.TransparentBottomSheetDialogTheme)
             val dialogLayout = LinearLayout(this).apply {
@@ -4023,7 +4126,7 @@ layout.addView(reminderCard)
                 setPadding(0, 0, 0, dp(12))
             }
             val titleText = TextView(this).apply {
-                text = "Festival Region & Country"
+                text = "Select Country"
                 textSize = 17f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 setTextColor(themeCoordinator.textColor)
@@ -4043,7 +4146,7 @@ layout.addView(reminderCard)
             dialogLayout.addView(headerRow)
 
             val descText = TextView(this).apply {
-                text = "Select your region to personalize festival greetings and holiday notifications. 100% permissionless & private."
+                text = "Personalize your festival greetings and holiday notifications."
                 textSize = 12f
                 setTextColor(themeCoordinator.textColor)
                 alpha = 0.65f
@@ -4066,25 +4169,20 @@ layout.addView(reminderCard)
             val currentOverride = prefs.getString(CountryDetector.KEY_USER_OVERRIDE_COUNTRY_ISO, null)
             val detectedIso = CountryDetector.detectCountryIso(this)
 
-            data class RegionOption(val iso: String?, val label: String, val subtitle: String)
+            data class CountryOption(val iso: String?, val label: String, val subtitle: String)
 
             val options = listOf(
-                RegionOption(null, "Automatic (Recommended)", "Detected: ${CountryDetector.getCountryName(detectedIso)} via SIM / Network"),
-                RegionOption("IN", "India", "Diwali, Holi, Dussehra, Eid, Republic & Independence Day"),
-                RegionOption("US", "United States", "New Year's Day, Christmas & International Holidays"),
-                RegionOption("GB", "United Kingdom", "New Year's Day, Christmas & International Holidays"),
-                RegionOption("CA", "Canada", "New Year's Day, Christmas & International Holidays"),
-                RegionOption("AU", "Australia", "New Year's Day, Christmas & International Holidays"),
-                RegionOption("AE", "United Arab Emirates", "Eid-ul-Fitr, Eid-ul-Adha, New Year"),
-                RegionOption("SA", "Saudi Arabia", "Eid-ul-Fitr, Eid-ul-Adha, New Year"),
-                RegionOption("PK", "Pakistan", "Eid-ul-Fitr, Eid-ul-Adha, New Year"),
-                RegionOption("BD", "Bangladesh", "Eid-ul-Fitr, Eid-ul-Adha, New Year"),
-                RegionOption("ID", "Indonesia", "Eid-ul-Fitr, Eid-ul-Adha, New Year"),
-                RegionOption("MY", "Malaysia", "Diwali, Eid-ul-Fitr, Eid-ul-Adha, New Year"),
-                RegionOption("SG", "Singapore", "Diwali, Eid, Christmas, New Year"),
-                RegionOption("NP", "Nepal", "Diwali / Tihar, Holi, Dussehra / Dashain"),
-                RegionOption("DE", "Germany", "New Year's Day, Christmas & International Holidays"),
-                RegionOption("GLOBAL", "Worldwide / All Festivals", "Receive all celebration greetings regardless of region")
+                CountryOption(null, "Automatic (Recommended)", "Default (${CountryDetector.getCountryName(detectedIso)})"),
+                CountryOption("IN", "India", "Holi, Diwali, Eid, Republic & Independence Day"),
+                CountryOption("US", "United States", "Christmas, New Year's Day & Global Holidays"),
+                CountryOption("GB", "United Kingdom", "Christmas, New Year's Day & Global Holidays"),
+                CountryOption("CA", "Canada", "Christmas, New Year's Day & Global Holidays"),
+                CountryOption("AU", "Australia", "Christmas, New Year's Day & Global Holidays"),
+                CountryOption("DE", "Germany", "Christmas, New Year's Day & Global Holidays"),
+                CountryOption("AE", "United Arab Emirates", "Christmas, New Year's Day & Global Holidays"),
+                CountryOption("SA", "Saudi Arabia", "Christmas, New Year's Day & Global Holidays"),
+                CountryOption("SG", "Singapore", "Christmas, New Year's Day & Global Holidays"),
+                CountryOption("GLOBAL", "Worldwide / Other", "Receive all celebration greetings")
             )
 
             for (opt in options) {
@@ -4151,6 +4249,130 @@ layout.addView(reminderCard)
 
             scroll.addView(listLayout)
             dialogLayout.addView(scroll)
+            dialog.setContentView(dialogLayout)
+            dialog.show()
+        }
+    }
+
+    private fun showLanguageSelectionDialog(onUpdated: () -> Unit) {
+        with(host) {
+            val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this, R.style.TransparentBottomSheetDialogTheme)
+            val dialogLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = themeCoordinator.createDialogBackground(28f)
+                setPadding(dp(20), dp(18), dp(20), dp(24))
+            }
+
+            // Header Row
+            val headerRow = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 0, 0, dp(12))
+            }
+            val titleText = TextView(this).apply {
+                text = "App Language"
+                textSize = 17f
+                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                setTextColor(themeCoordinator.textColor)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val closeBtn = TextView(this).apply {
+                text = "✕"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.6f
+                setPadding(dp(8), dp(4), dp(8), dp(4))
+                setOnClickListener { dialog.dismiss() }
+            }
+            headerRow.addView(titleText)
+            headerRow.addView(closeBtn)
+            dialogLayout.addView(headerRow)
+
+            val descText = TextView(this).apply {
+                text = "Choose your preferred language for greetings and notifications."
+                textSize = 12f
+                setTextColor(themeCoordinator.textColor)
+                alpha = 0.65f
+                setPadding(0, 0, 0, dp(12))
+            }
+            dialogLayout.addView(descText)
+
+            val listLayout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+            }
+
+            val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+            val currentOverride = prefs.getString(CountryDetector.KEY_USER_OVERRIDE_LANGUAGE_CODE, null)
+
+            data class LangOption(val code: String?, val label: String, val subtitle: String)
+
+            val options = listOf(
+                LangOption(null, "Automatic (Recommended)", "System default (${CountryDetector.getSystemLanguageName()})"),
+                LangOption("en", "English", "English greetings & notifications"),
+                LangOption("hi", "हिंदी (Hindi)", "त्यौहारों की शुभकामनाएँ और संदेश हिंदी में")
+            )
+
+            for (opt in options) {
+                val isSelected = if (opt.code == null) {
+                    currentOverride.isNullOrBlank()
+                } else {
+                    currentOverride.equals(opt.code, ignoreCase = true)
+                }
+
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(14), dp(12), dp(14), dp(12))
+                    val outVal = android.util.TypedValue()
+                    theme.resolveAttribute(android.R.attr.selectableItemBackground, outVal, true)
+                    setBackgroundResource(outVal.resourceId)
+                    isClickable = true
+                    setOnClickListener {
+                        HapticFeedbackHelper.performMicroHaptic(host)
+                        CountryDetector.setUserLanguageOverride(this@with, opt.code)
+                        dialog.dismiss()
+                        onUpdated()
+                    }
+                }
+
+                val textCol = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+
+                val nameView = TextView(this).apply {
+                    text = opt.label
+                    textSize = 14f
+                    typeface = Typeface.create("sans-serif-medium", if (isSelected) Typeface.BOLD else Typeface.NORMAL)
+                    setTextColor(if (isSelected) themeCoordinator.primaryColor else themeCoordinator.textColor)
+                }
+                val subView = TextView(this).apply {
+                    text = opt.subtitle
+                    textSize = 11f
+                    setTextColor(themeCoordinator.textColor)
+                    alpha = 0.6f
+                    setPadding(0, dp(2), 0, 0)
+                }
+                textCol.addView(nameView)
+                textCol.addView(subView)
+                row.addView(textCol)
+
+                if (isSelected) {
+                    val checkView = TextView(this).apply {
+                        text = "✓"
+                        textSize = 16f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(themeCoordinator.primaryColor)
+                        setPadding(dp(8), 0, dp(4), 0)
+                    }
+                    row.addView(checkView)
+                }
+
+                listLayout.addView(row)
+            }
+
+            dialogLayout.addView(listLayout)
             dialog.setContentView(dialogLayout)
             dialog.show()
         }

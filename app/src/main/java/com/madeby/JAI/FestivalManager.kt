@@ -49,7 +49,7 @@ enum class FestivalType(
         key = "diwali",
         displayName = "Diwali",
         defaultTitle = "Happy Diwali{name}!",
-        countryCodes = listOf("IN", "NP", "MU", "FJ", "GY", "SR", "TT", "SG", "MY"),
+        countryCodes = listOf("IN"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy Diwali{name}!",
@@ -76,7 +76,7 @@ enum class FestivalType(
         key = "holi",
         displayName = "Holi",
         defaultTitle = "Happy Holi{name}!",
-        countryCodes = listOf("IN", "NP"),
+        countryCodes = listOf("IN"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy Holi{name}!",
@@ -103,7 +103,7 @@ enum class FestivalType(
         key = "eid_ul_fitr",
         displayName = "Eid-ul-Fitr",
         defaultTitle = "Eid Mubarak{name}!",
-        countryCodes = listOf("IN", "PK", "BD", "AE", "SA", "ID", "MY", "EG", "TR", "KW", "QA", "OM", "BH", "JO"),
+        countryCodes = listOf("IN"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Eid Mubarak{name}!",
@@ -130,7 +130,7 @@ enum class FestivalType(
         key = "eid_ul_adha",
         displayName = "Eid-ul-Adha",
         defaultTitle = "Eid-ul-Adha Mubarak{name}!",
-        countryCodes = listOf("IN", "PK", "BD", "AE", "SA", "ID", "MY", "EG", "TR", "KW", "QA", "OM", "BH", "JO"),
+        countryCodes = listOf("IN"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Eid-ul-Adha Mubarak{name}!",
@@ -184,7 +184,7 @@ enum class FestivalType(
         key = "dussehra",
         displayName = "Dussehra",
         defaultTitle = "Happy Dussehra{name}!",
-        countryCodes = listOf("IN", "NP"),
+        countryCodes = listOf("IN"),
         greetings = listOf(
             FestivalGreeting(
                 titleTemplate = "Happy Dussehra{name}!",
@@ -278,7 +278,7 @@ enum class FestivalType(
 
     fun isApplicableForCountry(countryIso: String?): Boolean {
         if (countryCodes.contains("ALL")) return true
-        if (countryIso.isNullOrBlank()) return true
+        if (countryIso.isNullOrBlank() || countryIso.equals("ALL", ignoreCase = true) || countryIso.equals("GLOBAL", ignoreCase = true)) return true
         return countryCodes.any { it.equals(countryIso.trim(), ignoreCase = true) }
     }
 
@@ -498,7 +498,7 @@ object FestivalManager {
         val year = Calendar.getInstance().get(Calendar.YEAR)
         val greetingTemplate = festival.getGreeting(variationIndex = forceVariation, year = year)
         val firstName = getUserFirstName(context)
-        val userLanguage = CountryDetector.detectLanguageCode()
+        val userLanguage = CountryDetector.detectLanguageCode(context)
         val (title, message) = greetingTemplate.format(firstName, userLanguage)
 
         postNotification(context, festival, title, message, isTest)
