@@ -233,14 +233,14 @@ class AccountDialogHelper(private val activity: MainActivity) {
         content.addView(confirmInput)
 
         val webInfoText = TextView(activity).apply {
-            text = "Web Deletion Portal: https://get-studytimer.vercel.app/delete-account.html"
+            text = "Web Deletion Portal: https://studytimer.site/delete-account.html"
             setTextColor(themeCoordinator.primaryColor)
             alpha = 0.8f
             textSize = 11.5f
             setPadding(0, dp(10), 0, dp(14))
             setOnClickListener {
                 try {
-                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://get-studytimer.vercel.app/delete-account.html")))
+                    activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://studytimer.site/delete-account.html")))
                 } catch (_: Exception) {}
             }
         }

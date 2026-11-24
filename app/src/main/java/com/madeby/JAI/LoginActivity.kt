@@ -484,7 +484,7 @@ class LoginActivity : AppCompatActivity() {
             val termsEnd = termsStart + termsText.length
             spannable.setSpan(object : ClickableSpan() {
                 override fun onClick(widget: View) {
-                    openWebUrl("https://get-studytimer.vercel.app/terms.html")
+                    openWebUrl("https://studytimer.site/terms.html")
                 }
                 override fun updateDrawState(ds: TextPaint) {
                     super.updateDrawState(ds)
@@ -500,7 +500,7 @@ class LoginActivity : AppCompatActivity() {
             val privacyEnd = privacyStart + privacyText.length
             spannable.setSpan(object : ClickableSpan() {
                 override fun onClick(widget: View) {
-                    openWebUrl("https://get-studytimer.vercel.app/privacy.html")
+                    openWebUrl("https://studytimer.site/privacy.html")
                 }
                 override fun updateDrawState(ds: TextPaint) {
                     super.updateDrawState(ds)

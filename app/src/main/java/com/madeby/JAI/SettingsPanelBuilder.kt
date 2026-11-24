@@ -792,7 +792,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val privacyRow = createSettingsRow("", "Privacy Policy", "")
                 privacyRow.setOnClickListener {
                     try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://get-studytimer.vercel.app/privacy.html")))
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://studytimer.site/privacy.html")))
                     } catch (_: Exception) {
                         AppToast.show(this, "Opening privacy policy...")
                     }
@@ -803,7 +803,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val termsRow = createSettingsRow("", "Terms of Service", "")
                 termsRow.setOnClickListener {
                     try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://get-studytimer.vercel.app/terms.html")))
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://studytimer.site/terms.html")))
                     } catch (_: Exception) {
                         AppToast.show(this, "Opening terms of service...")
                     }
@@ -814,7 +814,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 val deleteWebRow = createSettingsRow("", "Delete Account Portal", "")
                 deleteWebRow.setOnClickListener {
                     try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://get-studytimer.vercel.app/delete-account.html")))
+                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://studytimer.site/delete-account.html")))
                     } catch (_: Exception) {
                         AppToast.show(this, "Opening account deletion portal...")
                     }

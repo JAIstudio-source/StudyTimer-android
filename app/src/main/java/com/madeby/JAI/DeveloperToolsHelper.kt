@@ -1552,7 +1552,7 @@ object DeveloperToolsHelper {
                 val mockUpdate = UpdateInfo(
                     versionCode = 999,
                     versionName = "3.0.0-PRO",
-                    url = "https://get-studytimer.vercel.app/?download=true",
+                    url = "https://studytimer.site/?download=true",
                     apkUrl = "https://raw.githubusercontent.com/JAIstudio-source/StudyTimer/main/StudyTimer-release.apk",
                     releaseNotes = "• Brand new Festival Notifications system with personalized wishes\n• Enhanced App Blocker Focus Shield with instant audio silencing\n• Expanded Exam Countdowns & Planner Timetable\n• Improved battery efficiency & seamless cloud sync"
                 )
@@ -1618,7 +1618,7 @@ object DeveloperToolsHelper {
                 val mockForceUpdate = UpdateInfo(
                     versionCode = 999,
                     versionName = "4.0.0-CRITICAL",
-                    url = "https://get-studytimer.vercel.app/?download=true",
+                    url = "https://studytimer.site/?download=true",
                     apkUrl = "https://raw.githubusercontent.com/JAIstudio-source/StudyTimer/main/StudyTimer-release.apk",
                     releaseNotes = "• Critical Security & Database Compatibility Update\n• Older versions are permanently deprecated\n• Update required to proceed",
                     minSupportedVersionCode = 999,
@@ -1635,7 +1635,7 @@ object DeveloperToolsHelper {
                     message = "We are currently running database index maintenance. Cloud sync will automatically resume in 20 minutes. All local sessions are completely safe.",
                     type = "warning",
                     canDismiss = true,
-                    actionUrl = "https://get-studytimer.vercel.app",
+                    actionUrl = "https://studytimer.site",
                     actionText = "System Status"
                 )
                 activity.systemDialogHelper.showBroadcastDialog(mockNotice)
@@ -4568,7 +4568,7 @@ object DeveloperToolsHelper {
             root.addView(dismissToggleRow)
 
             root.addView(createFieldLabel("ACTION LINK (OPTIONAL)"))
-            val urlInput = createInputField("https://get-studytimer.vercel.app")
+            val urlInput = createInputField("https://studytimer.site")
             root.addView(urlInput)
 
             root.addView(createFieldLabel("ACTION BUTTON TEXT (OPTIONAL)"))

@@ -338,7 +338,7 @@ class ProblemVerificationTest {
         val infoMinSupported = UpdateInfo(
             versionCode = 55,
             versionName = "3.5.0",
-            url = "https://get-studytimer.vercel.app",
+            url = "https://studytimer.site",
             apkUrl = null,
             releaseNotes = "Major overhaul",
             minSupportedVersionCode = 52,
@@ -355,7 +355,7 @@ class ProblemVerificationTest {
         val infoForceFlag = UpdateInfo(
             versionCode = 52,
             versionName = "3.4.0",
-            url = "https://get-studytimer.vercel.app",
+            url = "https://studytimer.site",
             apkUrl = null,
             releaseNotes = "Critical security fix",
             minSupportedVersionCode = 0,
@@ -370,7 +370,7 @@ class ProblemVerificationTest {
         val infoOptional = UpdateInfo(
             versionCode = 52,
             versionName = "3.4.0",
-            url = "https://get-studytimer.vercel.app",
+            url = "https://studytimer.site",
             apkUrl = null,
             releaseNotes = "Minor enhancements",
             minSupportedVersionCode = 45,
@@ -393,7 +393,7 @@ class ProblemVerificationTest {
             "message": "Cloud sync will be under maintenance on Sunday.",
             "type": "maintenance",
             "canDismiss": true,
-            "actionUrl": "https://get-studytimer.vercel.app",
+            "actionUrl": "https://studytimer.site",
             "actionText": "Status"
           }
         }
@@ -413,7 +413,7 @@ class ProblemVerificationTest {
         assertEquals("Cloud sync will be under maintenance on Sunday.", broadcast.message)
         assertEquals("maintenance", broadcast.type)
         assertTrue(broadcast.canDismiss)
-        assertEquals("https://get-studytimer.vercel.app", broadcast.actionUrl)
+        assertEquals("https://studytimer.site", broadcast.actionUrl)
         assertEquals("Status", broadcast.actionText)
     }
 
