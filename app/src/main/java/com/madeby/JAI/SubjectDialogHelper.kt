@@ -30,18 +30,21 @@ class SubjectDialogHelper(private val host: MainActivity) {
     private fun dp(v: Int): Int = host.dp(v)
     private fun tintedColor(color: Int, alpha: Int): Int = host.tintedColor(color, alpha)
 
-    fun showSubjectPickerDialog(allowActiveSwitch: Boolean = false) {
+    fun showSubjectPickerDialog(allowActiveSwitch: Boolean = false, autoStartOnSelect: Boolean = false) {
         val isBreak = host.currentTimerState == TimerState.BREAK
         if (!allowActiveSwitch && !isBreak && host.currentTimerState != TimerState.IDLE) {
             DeveloperToolsHelper.showThemedConfirmDialog(
                 activity = host,
                 themeCoordinator = themeCoordinator,
                 title = "⏱️ Active Session Running",
-                message = "Subject cannot be changed during an active study session.\n\nYou can change subjects during breaks, between Pomodoro rounds, or when the timer is idle.",
-                confirmText = "OK",
+                message = "Changing the subject while the timer is running can sometimes cause errors. It is recommended to change it while no session is active.\n\nTapping \"Change Anyway\" will reset your timer (saving your current session), open the subject menu, and automatically start the timer once you pick a subject.",
+                confirmText = "Change Anyway",
                 isDestructive = false,
                 onCancel = {}
-            ) {}
+            ) {
+                host.handleStopSession(silent = true)
+                showSubjectPickerDialog(allowActiveSwitch = true, autoStartOnSelect = true)
+            }
             return
         }
         try {
@@ -160,11 +163,17 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         if (subTopics.isNotEmpty()) {
                             showSubTopicPickerDialog(subj) {
                                 host.navigateToPanel(AppPanel.FOCUS)
+                                if (autoStartOnSelect && host.currentTimerState == TimerState.IDLE) {
+                                    host.handleStateToggle()
+                                }
                             }
                         } else {
                             SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
                             host.navigateToPanel(AppPanel.FOCUS)
                             AppToast.show(host, "Subject selected: ${subj.name}")
+                            if (autoStartOnSelect && host.currentTimerState == TimerState.IDLE) {
+                                host.handleStateToggle()
+                            }
                         }
                     }
                     setOnLongClickListener {

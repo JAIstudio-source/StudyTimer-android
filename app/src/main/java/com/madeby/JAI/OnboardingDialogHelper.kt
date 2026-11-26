@@ -76,6 +76,7 @@ object OnboardingDialogHelper {
         var currentStep = 1
         var enteredName = ""
         var selectedFocus = "Competitive Exams"
+        var expandedCategoryName: String? = "Competitive Exams"
         var selectedDailyHours = 4
         var selectedTimerMode = "COUNTDOWN"
 
@@ -419,30 +420,193 @@ object OnboardingDialogHelper {
                         letterSpacing = -0.02f
                     }
                     val subtitle = TextView(activity).apply {
-                        text = "Choose your primary study area."
+                        text = "Choose a category and pick your specific exam or track."
                         textSize = 15f
                         typeface = Typeface.create("sans-serif", Typeface.NORMAL)
                         setTextColor(textSecondary)
-                        setPadding(0, dp(6), 0, dp(24))
+                        setPadding(0, dp(6), 0, dp(20))
                     }
                     contentContainer.addView(header)
                     contentContainer.addView(subtitle)
 
-                    val focusCategories = listOf(
-                        Triple("🎯", "Competitive Exams", "UPSC, JEE, NEET, GATE, GRE, USMLE & entrance tests"),
-                        Triple("🎓", "College & University", "Degree coursework, semester finals, lab & thesis"),
-                        Triple("💻", "Programming & Tech", "Coding practice, personal projects & software skills"),
-                        Triple("📖", "School & Academics", "High school classes, daily homework & revision"),
-                        Triple("⚡", "Personal Mastery", "Deep reading, languages, writing & skill building")
-                    )
-
-                    for ((emoji, category, desc) in focusCategories) {
-                        val isSelected = (category == selectedFocus)
-                        val tile = createCardTile(emoji, category, desc, isSelected) {
-                            selectedFocus = category
-                            renderStep()
+                    for (cat in ExamCatalog.categories) {
+                        val isDirectSelected = cat.name.equals(selectedFocus, ignoreCase = true)
+                        val selectedSubInCat = cat.subGroups.flatMap { it.second }.firstOrNull {
+                            it.equals(selectedFocus, ignoreCase = true)
                         }
-                        contentContainer.addView(tile)
+                        val isSelected = isDirectSelected || selectedSubInCat != null
+                        val isExpanded = (expandedCategoryName == cat.name)
+
+                        // Single card container with inline dropdown submenu (no new card)
+                        val cardContainer = LinearLayout(activity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            setPadding(dp(16), dp(14), dp(16), dp(14))
+                            background = GradientDrawable().apply {
+                                cornerRadius = dp(16).toFloat()
+                                setColor(if (isSelected) tileBgSelected else tileBgNormal)
+                                setStroke(if (isSelected) dp(2) else dp(1), if (isSelected) tileBorderSelected else tileBorderNormal)
+                            }
+                            layoutParams = LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply {
+                                setMargins(0, 0, 0, dp(10))
+                            }
+                        }
+
+                        val topRow = LinearLayout(activity).apply {
+                            orientation = LinearLayout.HORIZONTAL
+                            gravity = Gravity.CENTER_VERTICAL
+                            isClickable = true
+                            isFocusable = true
+                            setOnClickListener {
+                                selectedFocus = selectedSubInCat ?: cat.name
+                                expandedCategoryName = if (expandedCategoryName == cat.name) null else cat.name
+                                renderStep()
+                            }
+                        }
+
+                        val iconTv = TextView(activity).apply {
+                            text = cat.emoji
+                            textSize = 20f
+                            gravity = Gravity.CENTER
+                            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                                setMargins(0, 0, dp(12), 0)
+                            }
+                        }
+
+                        val textCol = LinearLayout(activity).apply {
+                            orientation = LinearLayout.VERTICAL
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        }
+
+                        val titleTv = TextView(activity).apply {
+                            text = cat.name
+                            textSize = 15f
+                            typeface = theme.getAppTypeface(isBold = isSelected)
+                            setTextColor(textPrimary)
+                        }
+                        textCol.addView(titleTv)
+
+                        val capTv = TextView(activity).apply {
+                            text = if (selectedSubInCat != null) "Selected: $selectedSubInCat" else cat.description
+                            textSize = 12.5f
+                            typeface = Typeface.create("sans-serif", if (selectedSubInCat != null) Typeface.BOLD else Typeface.NORMAL)
+                            setTextColor(if (selectedSubInCat != null) primary else if (isSelected) textPrimary else textSecondary)
+                            setPadding(0, dp(2), 0, 0)
+                        }
+                        textCol.addView(capTv)
+
+                        val chevronTv = TextView(activity).apply {
+                            text = if (cat.subGroups.isNotEmpty()) (if (isExpanded) "▴" else "▾") else ""
+                            textSize = 14f
+                            setTextColor(if (isSelected) primary else textSecondary)
+                            setPadding(dp(8), 0, dp(4), 0)
+                        }
+
+                        val indicator = View(activity).apply {
+                            background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                if (isSelected) {
+                                    setColor(primary)
+                                } else {
+                                    setColor(Color.TRANSPARENT)
+                                    setStroke(dp(2), 0xFFCBD5E1.toInt())
+                                }
+                            }
+                            layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply {
+                                setMargins(dp(6), 0, 0, 0)
+                            }
+                        }
+
+                        topRow.addView(iconTv)
+                        topRow.addView(textCol)
+                        if (cat.subGroups.isNotEmpty()) topRow.addView(chevronTv)
+                        topRow.addView(indicator)
+                        cardContainer.addView(topRow)
+
+                        if (isExpanded && cat.subGroups.isNotEmpty()) {
+                            val divider = View(activity).apply {
+                                setBackgroundColor(0xFFE2E8F0.toInt())
+                                layoutParams = LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.MATCH_PARENT,
+                                    1
+                                ).apply {
+                                    setMargins(0, dp(12), 0, dp(10))
+                                }
+                            }
+                            cardContainer.addView(divider)
+
+                            val subMenuContainer = LinearLayout(activity).apply {
+                                orientation = LinearLayout.VERTICAL
+                                layoutParams = LinearLayout.LayoutParams(
+                                    LinearLayout.LayoutParams.MATCH_PARENT,
+                                    LinearLayout.LayoutParams.WRAP_CONTENT
+                                )
+                            }
+
+                            for ((groupTitle, exams) in cat.subGroups) {
+                                val groupHeader = TextView(activity).apply {
+                                    text = groupTitle.uppercase(java.util.Locale.US)
+                                    textSize = 10.5f
+                                    letterSpacing = 0.06f
+                                    typeface = theme.getAppTypeface(isBold = true)
+                                    setTextColor(textSecondary)
+                                    setPadding(0, dp(4), 0, dp(6))
+                                }
+                                subMenuContainer.addView(groupHeader)
+
+                                // Wrap chips into rows of 2 for clean dropdown layout inside the card
+                                var currentRow: LinearLayout? = null
+                                for (i in exams.indices) {
+                                    if (i % 2 == 0) {
+                                        currentRow = LinearLayout(activity).apply {
+                                            orientation = LinearLayout.HORIZONTAL
+                                            layoutParams = LinearLayout.LayoutParams(
+                                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                                LinearLayout.LayoutParams.WRAP_CONTENT
+                                            ).apply {
+                                                setMargins(0, 0, 0, dp(6))
+                                            }
+                                        }
+                                        subMenuContainer.addView(currentRow)
+                                    }
+                                    val examName = exams[i]
+                                    val isExamSel = examName.equals(selectedFocus, ignoreCase = true)
+                                    val chip = TextView(activity).apply {
+                                        text = examName
+                                        textSize = 12f
+                                        typeface = theme.getAppTypeface(isBold = isExamSel)
+                                        setTextColor(if (isExamSel) Color.WHITE else textPrimary)
+                                        gravity = Gravity.CENTER
+                                        maxLines = 2
+                                        ellipsize = android.text.TextUtils.TruncateAt.END
+                                        setPadding(dp(10), dp(8), dp(10), dp(8))
+                                        background = GradientDrawable().apply {
+                                            cornerRadius = dp(10).toFloat()
+                                            setColor(if (isExamSel) primary else Color.WHITE)
+                                            setStroke(dp(1), if (isExamSel) primary else 0xFFCBD5E1.toInt())
+                                        }
+                                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
+                                            if (i % 2 == 0) marginEnd = dp(6)
+                                        }
+                                        setOnClickListener {
+                                            selectedFocus = examName
+                                            renderStep()
+                                        }
+                                    }
+                                    currentRow?.addView(chip)
+                                    if (i == exams.lastIndex && exams.size % 2 == 1) {
+                                        currentRow?.addView(View(activity).apply {
+                                            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+                                        })
+                                    }
+                                }
+                            }
+                            cardContainer.addView(subMenuContainer)
+                        }
+
+                        contentContainer.addView(cardContainer)
                     }
 
                     primaryBtn.text = "Continue →"

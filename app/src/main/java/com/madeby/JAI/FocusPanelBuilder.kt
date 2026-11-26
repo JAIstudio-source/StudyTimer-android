@@ -850,7 +850,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             timerRing = TimerRingView(this).apply {
-                visibility = if (isPomodoro) View.VISIBLE else View.GONE
+                visibility = View.GONE
                 layoutParams = FrameLayout.LayoutParams(dp(260), dp(260), Gravity.CENTER)
             }
 
@@ -865,7 +865,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "00:00:00"
                 isSingleLine = true
                 maxLines = 1
-                textSize = if (isPomodoro) 70f else 105f
+                textSize = 105f
                 typeface = selectedTypeface
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER

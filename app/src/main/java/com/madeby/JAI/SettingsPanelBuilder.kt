@@ -1277,7 +1277,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     editNameFieldRef = editNameField
                     editContent.addView(editNameField)
 
-                    // Field 2: Focus Track
+                    // Field 2: Focus Track (Unified with Onboarding + Indian Exams Dropdown Submenu)
                     val examLabel = TextView(this).apply {
                         text = "Focus Track"
                         setTextColor(themeCoordinator.textColor)
@@ -1288,55 +1288,130 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                     editContent.addView(examLabel)
 
-                    val examTracks = listOf("JEE / NEET", "UPSC / Govt", "Board Exams", "College / Uni", "Self-Study", "Programming")
+                    var expandedProfileCat: String? = ExamCatalog.findCategoryForSelection(selectedExam)?.name
                     val chipsScroll = HorizontalScrollView(this).apply {
                         isHorizontalScrollBarEnabled = false
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                            setMargins(0, 0, 0, dp(14))
+                            setMargins(0, 0, 0, dp(8))
                         }
                     }
                     val chipsLayout = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL
                     }
+                    chipsScroll.addView(chipsLayout)
+                    editContent.addView(chipsScroll)
 
-                    val chipViews = mutableListOf<TextView>()
-                    for (track in examTracks) {
-                        val isSelected = track.equals(selectedExam, ignoreCase = true)
-                        val chip = TextView(this).apply {
-                            text = track
-                            textSize = 12f
-                            typeface = themeCoordinator.getAppTypeface(isBold = isSelected)
-                            setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
-                            background = if (isSelected) {
-                                themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
-                            } else {
-                                themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 10f)
+                    val subExamDropdownContainer = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        visibility = View.GONE
+                        background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 16), 12f)
+                        setPadding(dp(12), dp(10), dp(12), dp(8))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                            setMargins(0, 0, 0, dp(14))
+                        }
+                    }
+                    editContent.addView(subExamDropdownContainer)
+
+                    lateinit var refreshProfileExamUI: () -> Unit
+                    refreshProfileExamUI = {
+                        chipsLayout.removeAllViews()
+                        subExamDropdownContainer.removeAllViews()
+
+                        for (cat in ExamCatalog.categories) {
+                            val hasSubMatch = cat.subGroups.any { (_, items) -> items.any { it.equals(selectedExam, ignoreCase = true) } }
+                            val isSelected = cat.name.equals(selectedExam, ignoreCase = true) || hasSubMatch
+                            val isExpanded = (expandedProfileCat == cat.name)
+                            val chip = TextView(this).apply {
+                                text = if (cat.subGroups.isNotEmpty()) "${cat.name} ${if (isExpanded) "▴" else "▾"}" else cat.name
+                                textSize = 12f
+                                typeface = themeCoordinator.getAppTypeface(isBold = isSelected)
+                                setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                                background = if (isSelected) {
+                                    themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
+                                } else {
+                                    themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 10f)
+                                }
+                                setPadding(dp(12), dp(6), dp(12), dp(6))
+                                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                    setMargins(0, 0, dp(8), 0)
+                                }
+                                setOnClickListener {
+                                    it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                    if (!hasSubMatch) {
+                                        selectedExam = cat.name
+                                        ProfileManager.saveDraftForm(this@with, null, null, cat.name)
+                                    }
+                                    expandedProfileCat = if (expandedProfileCat == cat.name) null else cat.name
+                                    refreshProfileExamUI()
+                                }
                             }
-                            setPadding(dp(12), dp(6), dp(12), dp(6))
-                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                                setMargins(0, 0, dp(8), 0)
-                            }
-                            setOnClickListener {
-                                it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-                                selectedExam = track
-                                ProfileManager.saveDraftForm(this@with, null, null, track)
-                                for (c in chipViews) {
-                                    val sel = c.text == track
-                                    c.typeface = themeCoordinator.getAppTypeface(isBold = sel)
-                                    c.setTextColor(if (sel) Color.WHITE else themeCoordinator.textColor)
-                                    c.background = if (sel) {
-                                        themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
-                                    } else {
-                                        themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 10f)
+                            chipsLayout.addView(chip)
+                        }
+
+                        val activeCat = ExamCatalog.categories.firstOrNull { it.name == expandedProfileCat }
+                        if (activeCat != null && activeCat.subGroups.isNotEmpty()) {
+                            subExamDropdownContainer.visibility = View.VISIBLE
+                            for ((groupTitle, exams) in activeCat.subGroups) {
+                                val grpTv = TextView(this).apply {
+                                    text = groupTitle.uppercase(Locale.US)
+                                    textSize = 10f
+                                    letterSpacing = 0.06f
+                                    typeface = themeCoordinator.getAppTypeface(isBold = true)
+                                    setTextColor(tintedColor(themeCoordinator.textColor, 145))
+                                    setPadding(0, dp(4), 0, dp(5))
+                                }
+                                subExamDropdownContainer.addView(grpTv)
+
+                                var row: LinearLayout? = null
+                                for (i in exams.indices) {
+                                    if (i % 2 == 0) {
+                                        row = LinearLayout(this).apply {
+                                            orientation = LinearLayout.HORIZONTAL
+                                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                                                setMargins(0, 0, 0, dp(6))
+                                            }
+                                        }
+                                        subExamDropdownContainer.addView(row)
+                                    }
+                                    val examName = exams[i]
+                                    val isExamSel = examName.equals(selectedExam, ignoreCase = true)
+                                    val subChip = TextView(this).apply {
+                                        text = examName
+                                        textSize = 11.5f
+                                        typeface = themeCoordinator.getAppTypeface(isBold = isExamSel)
+                                        setTextColor(if (isExamSel) Color.WHITE else themeCoordinator.textColor)
+                                        gravity = Gravity.CENTER
+                                        maxLines = 2
+                                        ellipsize = android.text.TextUtils.TruncateAt.END
+                                        background = if (isExamSel) {
+                                            themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
+                                        } else {
+                                            themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 22), 10f)
+                                        }
+                                        setPadding(dp(8), dp(6), dp(8), dp(6))
+                                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
+                                            if (i % 2 == 0) marginEnd = dp(6)
+                                        }
+                                        setOnClickListener {
+                                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                            selectedExam = examName
+                                            ProfileManager.saveDraftForm(this@with, null, null, examName)
+                                            refreshProfileExamUI()
+                                        }
+                                    }
+                                    row?.addView(subChip)
+                                    if (i == exams.lastIndex && exams.size % 2 == 1) {
+                                        row?.addView(View(this).apply {
+                                            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+                                        })
                                     }
                                 }
                             }
+                        } else {
+                            subExamDropdownContainer.visibility = View.GONE
                         }
-                        chipViews.add(chip)
-                        chipsLayout.addView(chip)
                     }
-                    chipsScroll.addView(chipsLayout)
-                    editContent.addView(chipsScroll)
+                    refreshProfileExamUI()
 
                     // Field 3: Bio & Motto
                     val bioLabel = TextView(this).apply {

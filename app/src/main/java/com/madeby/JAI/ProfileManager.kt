@@ -27,6 +27,137 @@ data class UserProfile(
     val updatedAt: Long = System.currentTimeMillis()
 )
 
+data class ExamCategory(
+    val emoji: String,
+    val name: String,
+    val description: String,
+    val subGroups: List<Pair<String, List<String>>> = emptyList()
+)
+
+object ExamCatalog {
+    val categories: List<ExamCategory> = listOf(
+        ExamCategory(
+            emoji = "🎯",
+            name = "Competitive Exams",
+            description = "UPSC, JEE, NEET, GATE, SSC, Banking, CAT & more",
+            subGroups = listOf(
+                "Engineering & Science" to listOf(
+                    "JEE Main & Advanced",
+                    "GATE",
+                    "BITSAT",
+                    "VITEEE / SRMJEEE / MHT-CET",
+                    "KCET / WBJEE / COMEDK",
+                    "CSIR NET",
+                    "ISRO / BARC"
+                ),
+                "Medical & Healthcare" to listOf(
+                    "NEET UG",
+                    "NEET PG / INI-CET",
+                    "AIIMS Nursing / Paramedical",
+                    "FMGE"
+                ),
+                "Civil Services & Defence" to listOf(
+                    "UPSC CSE (IAS / IPS)",
+                    "State PSC (PCS)",
+                    "UPSC NDA / CDS / CAPF",
+                    "AFCAT / Agniveer"
+                ),
+                "SSC & Railways" to listOf(
+                    "SSC CGL / CHSL / MTS",
+                    "SSC GD / CPO / Stenographer",
+                    "RRB NTPC / Group D / ALP"
+                ),
+                "Banking & Insurance" to listOf(
+                    "IBPS PO / Clerk",
+                    "SBI PO / Clerk",
+                    "RBI Grade B / Assistant",
+                    "NABARD / SEBI",
+                    "LIC AAO / ADO"
+                ),
+                "Management & Commerce" to listOf(
+                    "CAT / XAT / SNAP / NMAT",
+                    "CA (Foundation / Inter / Final)",
+                    "CS / CMA"
+                ),
+                "Law, Teaching & University" to listOf(
+                    "CLAT / AILET",
+                    "CUET UG / PG",
+                    "UGC NET",
+                    "CTET / TET / KVS / DSSSB",
+                    "NIFT / NID / UCEED"
+                ),
+                "Abroad & Global" to listOf(
+                    "GRE / GMAT",
+                    "IELTS / TOEFL / SAT"
+                ),
+                "Other" to listOf(
+                    "Other Competitive Exam"
+                )
+            )
+        ),
+        ExamCategory(
+            emoji = "📖",
+            name = "School & Board Exams",
+            description = "CBSE, ICSE, State Boards, Class 6–12 & Olympiads",
+            subGroups = listOf(
+                "Boards & School" to listOf(
+                    "CBSE Board (Class 10 / 12)",
+                    "ICSE / ISC Board",
+                    "State Board (Class 10 / 12)",
+                    "Class 6–9 Foundation",
+                    "Olympiads / NTSE / KVPY"
+                )
+            )
+        ),
+        ExamCategory(
+            emoji = "🎓",
+            name = "College & University",
+            description = "Degree coursework, semester finals, lab & thesis",
+            subGroups = listOf(
+                "Degrees & Streams" to listOf(
+                    "B.Tech / B.E. Engineering",
+                    "MBBS / Medical",
+                    "B.Sc / M.Sc",
+                    "B.Com / M.Com / BBA / MBA",
+                    "B.A / M.A / Humanities",
+                    "LLB / Law"
+                )
+            )
+        ),
+        ExamCategory(
+            emoji = "💻",
+            name = "Programming & Tech",
+            description = "Coding practice, personal projects & software skills",
+            subGroups = listOf(
+                "Tech Tracks" to listOf(
+                    "DSA & Coding Interviews",
+                    "Web / App Development",
+                    "AI / ML & Data Science",
+                    "Cloud / DevOps / Cybersecurity"
+                )
+            )
+        ),
+        ExamCategory(
+            emoji = "⚡",
+            name = "Self-Study",
+            description = "Deep reading, languages, writing & skill building",
+            subGroups = listOf(
+                "Personal Mastery" to listOf(
+                    "Languages & Reading",
+                    "Skill Building & Hobbies"
+                )
+            )
+        )
+    )
+
+    fun findCategoryForSelection(selection: String): ExamCategory? {
+        return categories.firstOrNull { cat ->
+            cat.name.equals(selection, ignoreCase = true) ||
+                cat.subGroups.any { (_, items) -> items.any { it.equals(selection, ignoreCase = true) } }
+        }
+    }
+}
+
 object ProfileManager {
     private const val PREFS_NAME = "StudyTimerPrefs"
     private const val KEY_PROFILE_JSON = "__user_profile__"

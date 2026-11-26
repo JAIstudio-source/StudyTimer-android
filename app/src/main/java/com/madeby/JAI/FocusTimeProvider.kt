@@ -29,11 +29,7 @@ object FocusTimeProvider {
         val committedToday = sp.getLong("${todayStr}_focus_total", 0L)
 
         val timerStateStr = sp.getString("timerState", "IDLE") ?: "IDLE"
-        val prePauseStr = sp.getString("pre_pause_state", sp.getString("prePauseState", "STUDYING")) ?: "STUDYING"
-        val isTimerStudying = timerStateStr == "STUDYING" ||
-            (timerStateStr == "PAUSED" && prePauseStr == "STUDYING")
-
-        val runningStudy = if (isTimerStudying) {
+        val runningStudy = if (timerStateStr != "IDLE") {
             sp.getLong("accumulatedStudy", 0L).coerceAtLeast(0L)
         } else {
             0L

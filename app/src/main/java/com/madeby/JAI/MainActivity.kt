@@ -130,7 +130,9 @@ class MainActivity : AppCompatActivity() {
     internal var focusCountdownSecs: Long
         get() = timerViewModel.uiState.value.focusCountdownSecs
         set(value) {
-            getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putLong("focusCountdownSecs", value).apply()
+            if (timerViewModel.uiState.value.focusCountdownSecs != value) {
+                getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit().putLong("focus_countdown_secs", value).apply()
+            }
         }
     internal var focusRemainingSecs: Long
         get() = timerViewModel.uiState.value.focusRemainingSecs
@@ -2468,9 +2470,8 @@ class MainActivity : AppCompatActivity() {
                 if (isLandscape) {
                     if (lastIsBreakingState != isBreaking) {
                         lastIsBreakingState = isBreaking
-                        val isCountdown = (timerMode == "COUNTDOWN")
-                        val activeTextSize = if (isCountdown) 70f else 105f
-                        val subTextSize = if (isCountdown) 20f else 24f
+                        val activeTextSize = 105f
+                        val subTextSize = 24f
                         if (isBreaking) {
                             breakTimerDisplay.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
                             breakTimerDisplay.textSize = activeTextSize
@@ -2947,9 +2948,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateTimerRing(showCountdown: Boolean) {
         if (!::timerRing.isInitialized) return
-        val shouldShowCountdownRing = (timerMode == "COUNTDOWN")
+        val shouldShowCountdownRing = (timerMode == "COUNTDOWN") && !isLandscapeMode()
         timerRing.visibility = if (shouldShowCountdownRing) View.VISIBLE else View.GONE
-        if (!shouldShowCountdownRing) return
+        if (!shouldShowCountdownRing) {
+            timerRing.setTimerActive(false)
+            return
+        }
 
         val isPomoWhite = isPomodoroPureWhiteActive()
         val isDark = themeCoordinator.isDarkMode()
@@ -4283,8 +4287,8 @@ class MainActivity : AppCompatActivity() {
         updateStatusBarIcons()
     }
 
-    fun showSubjectPickerDialog(allowActiveSwitch: Boolean = false) {
-        SubjectDialogHelper(this).showSubjectPickerDialog(allowActiveSwitch)
+    fun showSubjectPickerDialog(allowActiveSwitch: Boolean = false, autoStartOnSelect: Boolean = false) {
+        SubjectDialogHelper(this).showSubjectPickerDialog(allowActiveSwitch, autoStartOnSelect)
     }
 
     internal fun checkPomoSubjectPrompt() {

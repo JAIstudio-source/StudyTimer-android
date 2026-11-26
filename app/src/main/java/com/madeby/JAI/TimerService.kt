@@ -1715,6 +1715,7 @@ class TimerService : Service() {
             putLong("last_leaderboard_sync_study_secs", lastLeaderboardSyncStudySecs)
             putLong("session_start_timestamp_ms", sessionStartTimestampMs)
             putString("active_session_date_str", activeSessionDateStr ?: SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date()))
+            putLong("focus_countdown_secs", focusCountdownSecs)
             putLong("focus_remaining_secs", focusRemainingSecs)
             putLong("break_countdown_secs", breakCountdownSecs)
             putLong("break_remaining_secs", breakRemainingSecs)
