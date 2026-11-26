@@ -895,10 +895,11 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         topRow.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
 
         val gridBtn = TextView(host).apply {
-            text = "History ›"
+            text = "History"
             setTextColor(plannerPrimary)
             textSize = 12f
             typeface = host.themeCoordinator.getAppTypeface(isBold = true)
+            ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, plannerPrimary, sizeDp = 14, padDp = 2)
             setPadding(dp(8), dp(4), dp(4), dp(4))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
             contentDescription = "Weekly Study History"
@@ -939,12 +940,11 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         summaryCard.addView(progressBar)
         parent.addView(summaryCard)
 
-        // 2. Filter Tabs (Dynamic high-contrast glass capsules adapting to light and dark wallpapers)
+        // 2. Filter Tabs (Match app theme card surface, with white-on-glass fallback for dark wallpapers)
         val activeCount = (totalCount - completedCount).coerceAtLeast(0)
-        val isPomoWhite = host.isPomodoroPureWhiteActive()
         val isWallpaperActive = WallpaperManager.getWallpaperType(host) != "NONE"
         val isBrightUnderTimer = WallpaperManager.isBackgroundUnderTimerBright(host)
-        val isBrightSurface = if (isWallpaperActive) isBrightUnderTimer else (isPomoWhite || !themeCoordinator.isDarkMode())
+        val isDarkWallpaper = isWallpaperActive && !isBrightUnderTimer
 
         val filterRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -966,30 +966,22 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 typeface = host.themeCoordinator.getAppTypeface(isBold = isSelected)
                 setPadding(dp(14), dp(7), dp(14), dp(7))
 
-                if (isBrightSurface) {
-                    // Bright wallpaper: Solid dark slate capsule matching the cards for maximum contrast
+                if (isSelected) {
                     background = GradientDrawable().apply {
                         cornerRadius = dp(14).toFloat()
-                        if (isSelected) {
-                            setColor(plannerPrimary)
-                        } else {
-                            setColor(0xFF1E293B.toInt())
-                            setStroke(dp(1), 0xFF334155.toInt())
-                        }
+                        setColor(plannerPrimary)
                     }
-                    setTextColor(if (isSelected) ThemeCoordinator.getContrastColor(plannerPrimary) else Color.WHITE)
+                    setTextColor(ThemeCoordinator.getContrastColor(plannerPrimary))
+                } else if (isDarkWallpaper) {
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(14).toFloat()
+                        setColor(0x22FFFFFF.toInt())
+                        setStroke(dp(1), 0x33FFFFFF.toInt())
+                    }
+                    setTextColor(Color.argb(230, 255, 255, 255))
                 } else {
-                    // Dark wallpaper: Translucent glass capsule with glowing selected state
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(14).toFloat()
-                        if (isSelected) {
-                            setColor(plannerPrimary)
-                        } else {
-                            setColor(0x22FFFFFF.toInt())
-                            setStroke(dp(1), 0x33FFFFFF.toInt())
-                        }
-                    }
-                    setTextColor(if (isSelected) ThemeCoordinator.getContrastColor(plannerPrimary) else tintedColor(themeCoordinator.textColor, 220))
+                    background = themeCoordinator.createCardBackground(14f)
+                    setTextColor(tintedColor(themeCoordinator.textColor, 220))
                 }
 
                 isClickable = true
@@ -1803,19 +1795,19 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     setTextColor(tintedColor(themeCoordinator.textColor, 140))
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
-                val expandArrow = TextView(host).apply {
-                    text = "▾"
-                    textSize = 14f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(tintedColor(themeCoordinator.textColor, 140))
-                }
+                val expandArrow = ThemeCoordinator.createIconView(
+                    host,
+                    R.drawable.ic_chevron_down,
+                    tintedColor(themeCoordinator.textColor, 140),
+                    sizeDp = 16
+                )
                 otherDaysHeader.addView(otherDaysTitle)
                 otherDaysHeader.addView(expandArrow)
 
                 otherDaysHeader.setOnClickListener {
                     isExpanded = !isExpanded
                     otherDaysContainer.visibility = if (isExpanded) View.VISIBLE else View.GONE
-                    expandArrow.text = if (isExpanded) "▴" else "▾"
+                    expandArrow.rotation = if (isExpanded) 180f else 0f
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                 }
 
@@ -5304,12 +5296,16 @@ class PlannerPanelBuilder(private val host: MainActivity) {
             isClickable = true
         }
         val moreOptionsToggleText = TextView(host).apply {
-            text = "More Options (Subjects, Days, Reminders) ▾"
+            text = "More Options (Subjects, Days, Reminders)"
             textSize = 12.5f
             typeface = host.themeCoordinator.getAppTypeface(isBold = true)
             setTextColor(themeCoordinator.primaryColor)
         }
+        val moreOptionsArrow = ThemeCoordinator.createIconView(host, R.drawable.ic_chevron_down, themeCoordinator.primaryColor, sizeDp = 16).apply {
+            (layoutParams as? LinearLayout.LayoutParams)?.marginStart = dp(4)
+        }
         moreOptionsHeader.addView(moreOptionsToggleText)
+        moreOptionsHeader.addView(moreOptionsArrow)
         inputsBox.addView(moreOptionsHeader)
 
         val moreOptionsContainer = LinearLayout(host).apply {
@@ -5322,7 +5318,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         moreOptionsHeader.setOnClickListener {
             isMoreOptionsExpanded = !isMoreOptionsExpanded
             moreOptionsContainer.visibility = if (isMoreOptionsExpanded) View.VISIBLE else View.GONE
-            moreOptionsToggleText.text = if (isMoreOptionsExpanded) "Fewer Options ▴" else "More Options (Subjects, Days, Reminders) ▾"
+            moreOptionsToggleText.text = if (isMoreOptionsExpanded) "Fewer Options" else "More Options (Subjects, Days, Reminders)"
+            moreOptionsArrow.rotation = if (isMoreOptionsExpanded) 180f else 0f
         }
 
         // Subject Tag Toggle Card (Off by default)
@@ -6945,11 +6942,8 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 ellipsize = android.text.TextUtils.TruncateAt.END
             }
 
-            val subjectArrowTv = TextView(host).apply {
-                text = " ▾"
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 13f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            val subjectArrowTv = ThemeCoordinator.createIconView(host, R.drawable.ic_unfold_more, themeCoordinator.primaryColor, sizeDp = 15).apply {
+                (layoutParams as? LinearLayout.LayoutParams)?.marginStart = dp(4)
             }
 
             subjectSelectBtn.addView(subjectLabelTv)

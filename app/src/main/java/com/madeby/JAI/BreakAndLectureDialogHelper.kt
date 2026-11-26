@@ -109,7 +109,20 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
         }
         content.addView(cancelBtn)
 
-        dialog.setContentView(content)
+        (content.parent as? ViewGroup)?.removeView(content)
+        val maxDialogH = (host.resources.displayMetrics.heightPixels * 0.86f).toInt()
+        val scrollWrapper = object : android.widget.ScrollView(host) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val capped = View.MeasureSpec.makeMeasureSpec(maxDialogH, View.MeasureSpec.AT_MOST)
+                super.onMeasure(widthMeasureSpec, capped)
+            }
+        }.apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(content)
+        }
+
+        dialog.setContentView(scrollWrapper)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show()
         val width = (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380))
@@ -214,7 +227,20 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             }
         }
 
-        dialog.setContentView(content)
+        (content.parent as? ViewGroup)?.removeView(content)
+        val maxDialogH = (host.resources.displayMetrics.heightPixels * 0.86f).toInt()
+        val scrollWrapper = object : android.widget.ScrollView(host) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val capped = View.MeasureSpec.makeMeasureSpec(maxDialogH, View.MeasureSpec.AT_MOST)
+                super.onMeasure(widthMeasureSpec, capped)
+            }
+        }.apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(content)
+        }
+
+        dialog.setContentView(scrollWrapper)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show()
         val width = (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380))
@@ -300,7 +326,20 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             }
         }
 
-        dialog.setContentView(content)
+        (content.parent as? ViewGroup)?.removeView(content)
+        val maxDialogH = (host.resources.displayMetrics.heightPixels * 0.86f).toInt()
+        val scrollWrapper = object : android.widget.ScrollView(host) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val capped = View.MeasureSpec.makeMeasureSpec(maxDialogH, View.MeasureSpec.AT_MOST)
+                super.onMeasure(widthMeasureSpec, capped)
+            }
+        }.apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(content)
+        }
+
+        dialog.setContentView(scrollWrapper)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show()
         val width = (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380))
@@ -390,7 +429,20 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
             host.onInactivityDialogDismissed()
         }
 
-        dialog.setContentView(content)
+        (content.parent as? ViewGroup)?.removeView(content)
+        val maxDialogH = (host.resources.displayMetrics.heightPixels * 0.86f).toInt()
+        val scrollWrapper = object : android.widget.ScrollView(host) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val capped = View.MeasureSpec.makeMeasureSpec(maxDialogH, View.MeasureSpec.AT_MOST)
+                super.onMeasure(widthMeasureSpec, capped)
+            }
+        }.apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(content)
+        }
+
+        dialog.setContentView(scrollWrapper)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show()
         val width = (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380))
@@ -482,7 +534,20 @@ class BreakAndLectureDialogHelper(private val host: MainActivity) {
         }
         content.addView(btnSkip)
 
-        dialog.setContentView(content)
+        (content.parent as? ViewGroup)?.removeView(content)
+        val maxDialogH = (host.resources.displayMetrics.heightPixels * 0.86f).toInt()
+        val scrollWrapper = object : android.widget.ScrollView(host) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val capped = View.MeasureSpec.makeMeasureSpec(maxDialogH, View.MeasureSpec.AT_MOST)
+                super.onMeasure(widthMeasureSpec, capped)
+            }
+        }.apply {
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+            addView(content)
+        }
+
+        dialog.setContentView(scrollWrapper)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dialog.show()
         val width = (host.resources.displayMetrics.widthPixels * 0.90f).toInt().coerceAtMost(dp(380))

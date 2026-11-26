@@ -85,7 +85,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 text = "Tap to select • Long press for options"
                 textSize = 12f
                 setTextColor(themeCoordinator.textColor)
-                alpha = 0.5f
+                alpha = if (themeCoordinator.isDarkMode()) 0.65f else 0.72f
                 gravity = Gravity.CENTER
                 setPadding(0, 0, 0, dp(14))
             }
@@ -246,8 +246,10 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.primaryColor)
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 14f)
-                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                    setMargins(0, 0, dp(4), 0)
+                minimumHeight = dp(48)
+                setPadding(dp(8), dp(10), dp(8), dp(10))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = dp(4)
                 }
                 isClickable = true
                 isFocusable = true
@@ -269,8 +271,10 @@ class SubjectDialogHelper(private val host: MainActivity) {
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
                 setTextColor(themeCoordinator.textColor)
                 background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 14f)
-                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                    setMargins(dp(4), 0, 0, 0)
+                minimumHeight = dp(48)
+                setPadding(dp(8), dp(10), dp(8), dp(10))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginStart = dp(4)
                 }
                 isClickable = true
                 isFocusable = true
@@ -548,12 +552,16 @@ class SubjectDialogHelper(private val host: MainActivity) {
                     textCol.addView(subTv)
                     addView(textCol)
 
-                    val chevron = TextView(host).apply {
-                        text = "›"
-                        textSize = 18f
-                        typeface = Typeface.DEFAULT_BOLD
-                        setTextColor(if (isDestructive) tintedColor(0xFFEF4444.toInt(), 140) else tintedColor(themeCoordinator.textColor, 100))
-                        setPadding(dp(6), 0, dp(2), 0)
+                    val chevron = ThemeCoordinator.createIconView(
+                        host,
+                        R.drawable.ic_chevron_right,
+                        if (isDestructive) tintedColor(0xFFEF4444.toInt(), 170) else tintedColor(themeCoordinator.textColor, 140),
+                        sizeDp = 16
+                    ).apply {
+                        (layoutParams as? LinearLayout.LayoutParams)?.apply {
+                            marginStart = dp(6)
+                            marginEnd = dp(2)
+                        }
                     }
                     addView(chevron)
 
@@ -1932,16 +1940,17 @@ class SubjectDialogHelper(private val host: MainActivity) {
             setPadding(0, 0, 0, dp(14))
         }
 
-        val prevBtn = TextView(host).apply {
-            text = "◄"
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 16f
-            gravity = Gravity.CENTER
-            minWidth = dp(48)
-            minHeight = dp(44)
+        val prevBtn = android.widget.ImageView(host).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            rotation = 180f
+            setColorFilter(themeCoordinator.primaryColor)
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            minimumWidth = dp(48)
+            minimumHeight = dp(44)
             contentDescription = "Previous date"
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(14), dp(8), dp(14), dp(8))
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 16f)
         }
 
@@ -1956,16 +1965,16 @@ class SubjectDialogHelper(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(8), 0, dp(8), 0) }
         }
 
-        val nextBtn = TextView(host).apply {
-            text = "►"
-            setTextColor(themeCoordinator.primaryColor)
-            textSize = 16f
-            gravity = Gravity.CENTER
-            minWidth = dp(48)
-            minHeight = dp(44)
+        val nextBtn = android.widget.ImageView(host).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            setColorFilter(themeCoordinator.primaryColor)
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            minimumWidth = dp(48)
+            minimumHeight = dp(44)
             contentDescription = "Next date"
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(14), dp(8), dp(14), dp(8))
+            isClickable = true
+            isFocusable = true
+            setPadding(dp(14), dp(10), dp(14), dp(10))
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 16f)
         }
 
@@ -2096,51 +2105,6 @@ class SubjectDialogHelper(private val host: MainActivity) {
             val activeSubjectsSorted = subjectMap.values
                 .filter { it.second > 0L }
                 .sortedByDescending { it.second }
-
-            // Period Summary Banner
-            val summaryRow = LinearLayout(host).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(9), dp(12), dp(9))
-                background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 30), 12f)
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                    setMargins(0, 0, 0, dp(14))
-                }
-            }
-            summaryRow.addView(TextView(host).apply {
-                text = formatDuration(totalSecsAllModal)
-                setTextColor(themeCoordinator.primaryColor)
-                textSize = 13f
-                typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            })
-            val dailyAvg = when (currentPeriod) {
-                SubjectTagManager.SubjectStatsPeriod.TODAY -> totalSecsAllModal
-                SubjectTagManager.SubjectStatsPeriod.WEEK -> (totalSecsAllModal / 7L).coerceAtLeast(0L)
-                SubjectTagManager.SubjectStatsPeriod.MONTH -> {
-                    val dom = if (currentMonthCal.get(Calendar.MONTH) == Calendar.getInstance().get(Calendar.MONTH)) {
-                        Calendar.getInstance().get(Calendar.DAY_OF_MONTH)
-                    } else {
-                        currentMonthCal.getActualMaximum(Calendar.DAY_OF_MONTH)
-                    }
-                    (totalSecsAllModal / dom.toLong().coerceAtLeast(1L)).coerceAtLeast(0L)
-                }
-                SubjectTagManager.SubjectStatsPeriod.ALL_TIME -> totalSecsAllModal
-            }
-            if (currentPeriod != SubjectTagManager.SubjectStatsPeriod.TODAY && totalSecsAllModal > 0L) {
-                summaryRow.addView(TextView(host).apply {
-                    text = "  •  ~${formatDuration(dailyAvg)}/day"
-                    setTextColor(themeCoordinator.textColor)
-                    alpha = 0.8f
-                    textSize = 12f
-                })
-            }
-            summaryRow.addView(TextView(host).apply {
-                text = "  •  ${activeSubjectsSorted.size} subjects"
-                setTextColor(themeCoordinator.textColor)
-                alpha = 0.65f
-                textSize = 12f
-            })
-            topChartCard.addView(summaryRow)
 
             val sharedPrefs = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
             val isDonut = sharedPrefs.safeBoolean("use_donut_chart", true)
@@ -2814,10 +2778,12 @@ class SubjectDialogHelper(private val host: MainActivity) {
 
             // Action: Full Analytics
             val analyticsBtn = TextView(host).apply {
-                text = "Open Full Subject Analytics ↗"
+                text = "Open Full Subject Analytics"
                 textSize = 13f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
+                val analyticsTextColor = ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor)
+                setTextColor(analyticsTextColor)
+                ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, analyticsTextColor, sizeDp = 15, padDp = 4)
                 gravity = Gravity.CENTER
                 background = GradientDrawable().apply {
                     cornerRadius = dp(12).toFloat()

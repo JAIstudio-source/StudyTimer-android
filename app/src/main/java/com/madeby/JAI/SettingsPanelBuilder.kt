@@ -85,14 +85,23 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 setPadding(dp(6), dp(4), dp(6), dp(6))
             }
 
-            val backArrowBtn = TextView(this).apply {
-                text = "←"
-                textSize = 24f
-                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.primaryColor)
-                gravity = Gravity.CENTER
+            val backArrowColor = if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.primaryColor
+            val backArrowBtn = FrameLayout(this).apply {
+                contentDescription = "Back"
+                isClickable = true
+                isFocusable = true
                 minimumWidth = dp(48)
                 minimumHeight = dp(48)
-                setPadding(dp(8), dp(4), dp(16), dp(4))
+                setPadding(dp(4), dp(4), dp(12), dp(4))
+                val iconView = ThemeCoordinator.createIconView(
+                    this@with,
+                    R.drawable.ic_chevron_left,
+                    backArrowColor,
+                    sizeDp = 22
+                ).apply {
+                    layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
+                }
+                addView(iconView)
                 setOnClickListener {
                     handleSettingsBack()
                 }
@@ -111,28 +120,32 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     AppSettingsTab.COMMUNITY -> "Leaderboard"
                     AppSettingsTab.DEVELOPER -> "Developer Tools"
                 }
-                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.textColor)
+                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFF8FAFC.toInt())
                 textSize = 22f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 letterSpacing = -0.01f
+                isSingleLine = true
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    marginEnd = if (currentSettingsTab != AppSettingsTab.HUB) dp(8) else 0
+                }
             }
             headerRow.addView(headerText)
 
             if (currentSettingsTab != AppSettingsTab.HUB) {
-                val spacer = View(this).apply {
-                    layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
-                }
-                headerRow.addView(spacer)
-
                 val allSettingsBtn = TextView(this).apply {
-                    text = "All Settings ▾"
+                    text = "All Settings"
                     textSize = 12f
                     gravity = Gravity.CENTER
+                    isSingleLine = true
+                    maxLines = 1
                     minHeight = dp(36)
                     minWidth = dp(48)
                     contentDescription = "Return to All Settings Hub"
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.primaryColor)
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, themeCoordinator.primaryColor, sizeDp = 14, padDp = 4)
                     background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 14f)
                     setPadding(dp(12), dp(6), dp(12), dp(6))
                     isClickable = true
@@ -164,7 +177,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     AppSettingsTab.COMMUNITY -> "Rankings & live study presence"
                     AppSettingsTab.DEVELOPER -> "Diagnostic tools & debug settings"
                 }
-                setTextColor(themeCoordinator.textColor)
+                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFF8FAFC.toInt())
                 alpha = 0.70f
                 textSize = 13f
                 setPadding(dp(6), 0, dp(6), dp(14))
@@ -679,11 +692,13 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 profileRow.addView(profileTextCol)
 
                 val editProfileBadge = TextView(this).apply {
-                    text = if (isGoogleAuth) "Manage ›" else "Sign In ›"
-                    setTextColor(if (isGoogleAuth) themeCoordinator.primaryColor else Color.parseColor("#38BDF8"))
+                    text = if (isGoogleAuth) "Manage" else "Sign In"
+                    val badgeColor = if (isGoogleAuth) themeCoordinator.primaryColor else Color.parseColor("#38BDF8")
+                    setTextColor(badgeColor)
                     textSize = 12.5f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    background = themeCoordinator.createGlassChip(tintedColor(if (isGoogleAuth) themeCoordinator.primaryColor else Color.parseColor("#38BDF8"), 40), 14f)
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, badgeColor, sizeDp = 14, padDp = 3)
+                    background = themeCoordinator.createGlassChip(tintedColor(badgeColor, 40), 14f)
                     setPadding(dp(10), dp(6), dp(10), dp(6))
                 }
                 profileRow.addView(editProfileBadge)
@@ -692,12 +707,13 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 // --- CATEGORIZED NAVIGATION ROW BUILDER ---
                 fun addHubRowToCard(card: LinearLayout, title: String, subtitle: String, targetTab: AppSettingsTab) {
-                    val chevron = TextView(this).apply {
-                        text = "›"
-                        textSize = 22f
-                        setTextColor(themeCoordinator.textColor)
-                        alpha = 0.65f
-                        setPadding(dp(8), 0, 0, 0)
+                    val chevron = ThemeCoordinator.createIconView(
+                        this,
+                        R.drawable.ic_chevron_right,
+                        tintedColor(themeCoordinator.textColor, 165),
+                        sizeDp = 18
+                    ).apply {
+                        (layoutParams as? LinearLayout.LayoutParams)?.marginStart = dp(8)
                     }
                     val iconView = createCategoryVectorIcon(targetTab)
                     val row = createSettingsRowWithView(iconView, title, subtitle, chevron)
@@ -1288,7 +1304,8 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     }
                     editContent.addView(examLabel)
 
-                    var expandedProfileCat: String? = ExamCatalog.findCategoryForSelection(selectedExam)?.name
+                    var expandedProfileCat: String? = null
+                    var profileDropdownScrollY = 0
                     val chipsScroll = HorizontalScrollView(this).apply {
                         isHorizontalScrollBarEnabled = false
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -1301,31 +1318,56 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     chipsScroll.addView(chipsLayout)
                     editContent.addView(chipsScroll)
 
-                    val subExamDropdownContainer = LinearLayout(this).apply {
-                        orientation = LinearLayout.VERTICAL
+                    val maxProfileDropdownH = dp(180)
+                    val subExamDropdownScroll = object : ScrollView(this) {
+                        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                            val capped = View.MeasureSpec.makeMeasureSpec(maxProfileDropdownH, View.MeasureSpec.AT_MOST)
+                            super.onMeasure(widthMeasureSpec, capped)
+                        }
+                    }.apply {
                         visibility = View.GONE
+                        isVerticalScrollBarEnabled = true
+                        isNestedScrollingEnabled = true
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 16), 12f)
                         setPadding(dp(12), dp(10), dp(12), dp(8))
+                        setOnTouchListener { v, event ->
+                            if (event.action == android.view.MotionEvent.ACTION_DOWN || event.action == android.view.MotionEvent.ACTION_MOVE) {
+                                v.parent?.requestDisallowInterceptTouchEvent(true)
+                            }
+                            false
+                        }
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                             setMargins(0, 0, 0, dp(14))
                         }
                     }
-                    editContent.addView(subExamDropdownContainer)
+                    val subExamDropdownContainer = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT)
+                    }
+                    subExamDropdownScroll.addView(subExamDropdownContainer)
+                    editContent.addView(subExamDropdownScroll)
 
                     lateinit var refreshProfileExamUI: () -> Unit
                     refreshProfileExamUI = {
                         chipsLayout.removeAllViews()
                         subExamDropdownContainer.removeAllViews()
 
+                        val onPrimaryText = ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor)
                         for (cat in ExamCatalog.categories) {
                             val hasSubMatch = cat.subGroups.any { (_, items) -> items.any { it.equals(selectedExam, ignoreCase = true) } }
                             val isSelected = cat.name.equals(selectedExam, ignoreCase = true) || hasSubMatch
                             val isExpanded = (expandedProfileCat == cat.name)
                             val chip = TextView(this).apply {
-                                text = if (cat.subGroups.isNotEmpty()) "${cat.name} ${if (isExpanded) "▴" else "▾"}" else cat.name
+                                text = cat.name
                                 textSize = 12f
                                 typeface = themeCoordinator.getAppTypeface(isBold = isSelected)
-                                setTextColor(if (isSelected) Color.WHITE else themeCoordinator.textColor)
+                                val chipTextColor = if (isSelected) onPrimaryText else themeCoordinator.textColor
+                                setTextColor(chipTextColor)
+                                if (cat.subGroups.isNotEmpty()) {
+                                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_down, chipTextColor, sizeDp = 13, padDp = 4)
+                                } else {
+                                    setCompoundDrawablesRelative(null, null, null, null)
+                                }
                                 background = if (isSelected) {
                                     themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
                                 } else {
@@ -1333,7 +1375,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                 }
                                 setPadding(dp(12), dp(6), dp(12), dp(6))
                                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                                    setMargins(0, 0, dp(8), 0)
+                                    marginEnd = dp(8)
                                 }
                                 setOnClickListener {
                                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -1341,6 +1383,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                         selectedExam = cat.name
                                         ProfileManager.saveDraftForm(this@with, null, null, cat.name)
                                     }
+                                    profileDropdownScrollY = 0
                                     expandedProfileCat = if (expandedProfileCat == cat.name) null else cat.name
                                     refreshProfileExamUI()
                                 }
@@ -1350,14 +1393,14 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                         val activeCat = ExamCatalog.categories.firstOrNull { it.name == expandedProfileCat }
                         if (activeCat != null && activeCat.subGroups.isNotEmpty()) {
-                            subExamDropdownContainer.visibility = View.VISIBLE
+                            subExamDropdownScroll.visibility = View.VISIBLE
                             for ((groupTitle, exams) in activeCat.subGroups) {
                                 val grpTv = TextView(this).apply {
                                     text = groupTitle.uppercase(Locale.US)
-                                    textSize = 10f
+                                    textSize = 12f
                                     letterSpacing = 0.06f
                                     typeface = themeCoordinator.getAppTypeface(isBold = true)
-                                    setTextColor(tintedColor(themeCoordinator.textColor, 145))
+                                    setTextColor(tintedColor(themeCoordinator.textColor, 175))
                                     setPadding(0, dp(4), 0, dp(5))
                                 }
                                 subExamDropdownContainer.addView(grpTv)
@@ -1377,9 +1420,9 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                     val isExamSel = examName.equals(selectedExam, ignoreCase = true)
                                     val subChip = TextView(this).apply {
                                         text = examName
-                                        textSize = 11.5f
+                                        textSize = 12f
                                         typeface = themeCoordinator.getAppTypeface(isBold = isExamSel)
-                                        setTextColor(if (isExamSel) Color.WHITE else themeCoordinator.textColor)
+                                        setTextColor(if (isExamSel) onPrimaryText else themeCoordinator.textColor)
                                         gravity = Gravity.CENTER
                                         maxLines = 2
                                         ellipsize = android.text.TextUtils.TruncateAt.END
@@ -1394,6 +1437,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                         }
                                         setOnClickListener {
                                             it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                                            profileDropdownScrollY = subExamDropdownScroll.scrollY
                                             selectedExam = examName
                                             ProfileManager.saveDraftForm(this@with, null, null, examName)
                                             refreshProfileExamUI()
@@ -1407,8 +1451,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                                     }
                                 }
                             }
+                            if (profileDropdownScrollY > 0) {
+                                val targetY = profileDropdownScrollY
+                                subExamDropdownScroll.post { subExamDropdownScroll.scrollTo(0, targetY) }
+                            }
                         } else {
-                            subExamDropdownContainer.visibility = View.GONE
+                            subExamDropdownScroll.visibility = View.GONE
                         }
                     }
                     refreshProfileExamUI()
@@ -1425,7 +1473,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     editContent.addView(bioLabel)
 
                     val editBioField = EditText(this).apply {
-                        hint = "Add a brief bio or study goal..."
+                        hint = "Add a brief bio or study goal…"
                         setText(draftBio ?: currentProfile.bio)
                         setTextColor(themeCoordinator.textColor)
                         setHintTextColor(tintedColor(themeCoordinator.textColor, 100))
@@ -1504,10 +1552,11 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     countryFieldRow.addView(countryTextCol)
 
                     val changeCountryBtn = TextView(this).apply {
-                        text = "Change ›"
+                        text = "Change"
                         setTextColor(themeCoordinator.primaryColor)
                         textSize = 12.5f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 14, padDp = 2)
                     }
                     countryFieldRow.addView(changeCountryBtn)
                     editContent.addView(countryFieldRow)
@@ -1799,10 +1848,11 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     cloudNavRow.addView(syncCol)
 
                     val chevron = TextView(this@with).apply {
-                        text = "Manage \u203A"
+                        text = "Manage"
                         setTextColor(themeCoordinator.primaryColor)
                         textSize = 12.5f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 14, padDp = 2)
                         background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 12f)
                         setPadding(dp(10), dp(5), dp(10), dp(5))
                     }
@@ -1952,11 +2002,12 @@ class SettingsPanelBuilder(private val host: MainActivity) {
 
                 // Edit Profile Button
                 val editBtn = TextView(this).apply {
-                    text = "Edit ›"
+                    text = "Edit"
                     textSize = 12.5f
                     gravity = Gravity.CENTER
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.primaryColor)
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 14, padDp = 2)
                     background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 10f)
                     setPadding(dp(12), dp(6), dp(12), dp(6))
                     setOnClickListener {
@@ -2448,10 +2499,13 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     "Block distracting apps while studying"
                 }
                 val shieldStatusBadge = TextView(this).apply {
-                    text = if (isBlockerActive) "Active" else "Enable ›"
+                    text = if (isBlockerActive) "Active" else "Enable"
                     setTextColor(if (isBlockerActive) Color.parseColor("#10B981") else themeCoordinator.primaryColor)
                     textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                    if (!isBlockerActive) {
+                        ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 13, padDp = 2)
+                    }
                     background = themeCoordinator.createGlassChip(
                         tintedColor(if (isBlockerActive) Color.parseColor("#10B981") else themeCoordinator.primaryColor, 35),
                         12f
@@ -2559,11 +2613,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 // 2. Chime Choice Picker
                 val selectedChimeId = StudyAudioManager.getSelectedChime(this)
                 val currentChime = StudyAudioManager.CHIME_OPTIONS.find { it.id == selectedChimeId } ?: StudyAudioManager.CHIME_OPTIONS[0]
-                val chevron1 = TextView(this).apply {
-                    text = "›"
-                    textSize = 18f
-                    setTextColor(themeCoordinator.primaryColor)
-                }
+                val chevron1 = ThemeCoordinator.createIconView(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 16)
                 val chimePickerRow = createSettingsRow("", "Timer Sound Tone", currentChime.displayName, chevron1)
                 chimePickerRow.setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -2605,11 +2655,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 // 5. Ambient Sound Choice
                 val selectedAmbientId = StudyAudioManager.getSelectedAmbient(this)
                 val currentAmbient = StudyAudioManager.AMBIENT_OPTIONS.find { it.id == selectedAmbientId } ?: StudyAudioManager.AMBIENT_OPTIONS[0]
-                val chevron2 = TextView(this).apply {
-                    text = "›"
-                    textSize = 18f
-                    setTextColor(themeCoordinator.primaryColor)
-                }
+                val chevron2 = ThemeCoordinator.createIconView(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 16)
                 val ambientPickerRow = createSettingsRow("", "Focus Sound Choice", "${currentAmbient.iconEmoji} ${currentAmbient.displayName}", chevron2)
                 ambientPickerRow.setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
@@ -2625,11 +2671,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 layout.addView(createSectionLabel("BACKGROUND RELIABILITY"))
                 val reliabilityCard = createSettingsCard()
                 val detectedBrand = OemOptimizationHelper.detectBrand()
-                val chevronRel = TextView(this).apply {
-                    text = "›"
-                    textSize = 18f
-                    setTextColor(themeCoordinator.primaryColor)
-                }
+                val chevronRel = ThemeCoordinator.createIconView(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 16)
                 val oemRow = createSettingsRow(
                     "",
                     "Prevent Sleep Interruptions",
@@ -3024,7 +3066,10 @@ layout.addView(reminderCard)
 
                 layout.addView(createSectionLabel("LOCAL DATA & BACKUPS"))
                 val dataCard = createSettingsCard()
-                val exportRow = createSettingsRow("", getString(R.string.export_logs), getString(R.string.export_logs_sub), createActionChip("Export ›"))
+                val exportChip = createActionChip("Export").apply {
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 13, padDp = 2)
+                }
+                val exportRow = createSettingsRow("", getString(R.string.export_logs), getString(R.string.export_logs_sub), exportChip)
                 exportRow.setOnClickListener {
                     HapticFeedbackHelper.performMicroHaptic(host, it)
                     val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
@@ -3038,7 +3083,10 @@ layout.addView(reminderCard)
                 dataCard.addView(exportRow)
                 dataCard.addView(createDivider())
 
-                val importRow = createSettingsRow("", getString(R.string.import_data), getString(R.string.import_data_sub), createActionChip("Restore ›"))
+                val importChip = createActionChip("Restore").apply {
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 13, padDp = 2)
+                }
+                val importRow = createSettingsRow("", getString(R.string.import_data), getString(R.string.import_data_sub), importChip)
                 importRow.setOnClickListener {
                     HapticFeedbackHelper.performMicroHaptic(host, it)
                     val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
@@ -3885,10 +3933,11 @@ layout.addView(reminderCard)
                 wallpaperRow.addView(wpTextCol)
 
                 val changeWpChip = TextView(this).apply {
-                    text = "Change \u203A"
+                    text = "Change"
                     textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.primaryColor)
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 13, padDp = 2)
                     background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 10f)
                     setPadding(dp(10), dp(5), dp(10), dp(5))
                 }
@@ -3907,10 +3956,11 @@ layout.addView(reminderCard)
                 val currentFontItem = FontStyleManager.FONT_OPTIONS.find { it.id == currentFontId } ?: FontStyleManager.FONT_OPTIONS[0]
 
                 val fontBadge = TextView(this).apply {
-                    text = "${currentFontItem.displayName} \u203A"
+                    text = currentFontItem.displayName
                     textSize = 12.5f
                     typeface = FontStyleManager.getTypeface(this@with, currentFontItem.id)
                     setTextColor(themeCoordinator.primaryColor)
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 14, padDp = 2)
                     background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 12f)
                     setPadding(dp(11), dp(5), dp(11), dp(5))
                 }
@@ -3974,10 +4024,11 @@ layout.addView(reminderCard)
                     "$currentCountryName (Default)"
                 }
                 val countryBadge = TextView(this).apply {
-                    text = "$countryDisplay ›"
+                    text = countryDisplay
                     textSize = 12.5f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                     setTextColor(themeCoordinator.primaryColor)
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 14, padDp = 2)
                     background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 40), 12f)
                     setPadding(dp(11), dp(5), dp(11), dp(5))
                 }

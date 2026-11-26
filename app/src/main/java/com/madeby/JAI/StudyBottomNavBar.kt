@@ -163,6 +163,7 @@ class StudyBottomNavBar @JvmOverloads constructor(
 
             val icon = ImageView(context).apply {
                 setImageResource(dest.iconRes)
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply {
                     bottomMargin = dp(2)
                 }
@@ -170,7 +171,7 @@ class StudyBottomNavBar @JvmOverloads constructor(
 
             val label = TextView(context).apply {
                 text = dest.label
-                textSize = 11f
+                textSize = 12f
                 typeface = FontStyleManager.getBoldTypeface(context)
                 gravity = Gravity.CENTER
             }

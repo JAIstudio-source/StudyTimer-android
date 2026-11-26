@@ -904,14 +904,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun attachBaseContext(newBase: Context) {
-        val config = Configuration(newBase.resources.configuration)
-        config.fontScale = config.fontScale.coerceIn(0.85f, 1.05f)
-        super.attachBaseContext(newBase.createConfigurationContext(config))
+        super.attachBaseContext(newBase)
     }
 
     override fun applyOverrideConfiguration(overrideConfiguration: Configuration?) {
         if (overrideConfiguration != null) {
-            overrideConfiguration.fontScale = overrideConfiguration.fontScale.coerceIn(0.85f, 1.05f)
+            overrideConfiguration.fontScale = overrideConfiguration.fontScale.coerceIn(0.85f, 2.0f)
         }
         super.applyOverrideConfiguration(overrideConfiguration)
     }
@@ -919,6 +917,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(R.style.AppTheme_NoActionBar)
         super.onCreate(savedInstanceState)
+        lastConfigOrientation = resources.configuration.orientation
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             window.attributes.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
@@ -1158,7 +1157,11 @@ class MainActivity : AppCompatActivity() {
             showSwitchToLectureDialog()
         }
 
-        applyImmersiveModeForLandscape()
+        if (isLandscapeMode() && currentPanel == AppPanel.FOCUS) {
+            applyImmersiveModeForLandscape()
+        } else if (!isLandscapeMode() && !isPortraitFullscreenActive) {
+            showSystemUI()
+        }
 
         // Set has_seen_app_guide true so it doesn't interrupt first launch
         val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
@@ -1189,8 +1192,8 @@ class MainActivity : AppCompatActivity() {
             if (currentPanel == AppPanel.HEATMAP) {
                 val safeSideLeft = maxOf(dp(24), lastNavLeftInset)
                 val safeSideRight = maxOf(dp(24), lastNavRightInset)
-                val safeTop = maxOf(dp(12), lastStatusBarInset)
-                panelHost.setPadding(safeSideLeft, safeTop, safeSideRight, dp(12))
+                val safeTop = maxOf(dp(8), lastStatusBarInset - dp(4))
+                panelHost.setPadding(safeSideLeft, safeTop, safeSideRight, dp(6))
             } else {
                 val sidePaddingLeft = if (lastNavLeftInset > 0) lastNavLeftInset else 0
                 val sidePaddingRight = if (lastNavRightInset > 0) lastNavRightInset else 0
@@ -1230,7 +1233,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
-        newConfig.fontScale = newConfig.fontScale.coerceIn(0.85f, 1.05f)
+        newConfig.fontScale = newConfig.fontScale.coerceIn(0.85f, 2.0f)
         super.onConfigurationChanged(newConfig)
         val orientationChanged = (newConfig.orientation != lastConfigOrientation)
         lastConfigOrientation = newConfig.orientation
@@ -1264,6 +1267,8 @@ class MainActivity : AppCompatActivity() {
                 applyImmersiveModeForLandscape()
             } else if (isPortraitFullscreenActive && currentPanel == AppPanel.FOCUS) {
                 hideSystemUI()
+            } else {
+                showSystemUI()
             }
         }
     }
@@ -3399,7 +3404,18 @@ class MainActivity : AppCompatActivity() {
                 // Slot 1 (Center): Auxiliary - BREAK
                 mainBtn.visibility = View.VISIBLE
                 mainBtn.text = "Break"
-                mainBtn.setOnClickListener { handleStateToggle() }
+                mainBtn.setOnClickListener {
+                    val isFreedomMode = appPrefs.getBoolean("pomodoro_freedom_mode", false)
+                    if (timerMode == "COUNTDOWN" && !isFreedomMode) {
+                        appPrefs.edit()
+                            .putLong("focus_remaining_secs", focusRemainingSecs)
+                            .putLong("focusRemainingSecs", focusRemainingSecs)
+                            .apply()
+                        showBreakDurationDialog()
+                    } else {
+                        handleStartBreakOnly(0L)
+                    }
+                }
                 if (isPomoWhite) {
                     mainBtn.setTextColor(0xFF0F172A.toInt())
                     mainBtn.background = android.graphics.drawable.GradientDrawable().apply {
@@ -3550,7 +3566,18 @@ class MainActivity : AppCompatActivity() {
                     mainBtn.setTextColor(dynamicBtnTextColor)
                     mainBtn.background = outlinedButtonBackground()
                 }
-                mainBtn.setOnClickListener { handleStateToggle() }
+                mainBtn.setOnClickListener {
+                    val isFreedomMode = appPrefs.getBoolean("pomodoro_freedom_mode", false)
+                    if (timerMode == "COUNTDOWN" && !isFreedomMode) {
+                        appPrefs.edit()
+                            .putLong("focus_remaining_secs", focusRemainingSecs)
+                            .putLong("focusRemainingSecs", focusRemainingSecs)
+                            .apply()
+                        showBreakDurationDialog()
+                    } else {
+                        handleStartBreakOnly(0L)
+                    }
+                }
 
                 // Slot 2 (Right): Terminal Action - FINISH
                 stopBtn.visibility = View.VISIBLE
@@ -3752,14 +3779,28 @@ class MainActivity : AppCompatActivity() {
             handler.removeCallbacks(updateRunnable)
             handler.post(updateRunnable)
         }
-        val currentOrientation = resources.configuration.orientation
+        val conf = resources.configuration
+        val currentOrientation = when (conf.orientation) {
+            Configuration.ORIENTATION_LANDSCAPE -> Configuration.ORIENTATION_LANDSCAPE
+            Configuration.ORIENTATION_PORTRAIT -> Configuration.ORIENTATION_PORTRAIT
+            else -> if (resources.displayMetrics.widthPixels > resources.displayMetrics.heightPixels) {
+                Configuration.ORIENTATION_LANDSCAPE
+            } else {
+                Configuration.ORIENTATION_PORTRAIT
+            }
+        }
         if (lastConfigOrientation != currentOrientation) {
             lastConfigOrientation = currentOrientation
             isPortraitFullscreenActive = false
+            applyLayoutInsetsForOrientation(currentOrientation)
             buildCurrentPanel()
             updateVisualStyles()
         }
-        applyImmersiveModeForLandscape()
+        if (isLandscapeMode() && currentPanel == AppPanel.FOCUS) {
+            applyImmersiveModeForLandscape()
+        } else if (!isLandscapeMode() && !isPortraitFullscreenActive) {
+            showSystemUI()
+        }
         StudyWidgetProvider.refresh(this)
         LectureScheduleScheduler.scheduleAll(this)
         checkOngoingScheduledLecturePrompt()

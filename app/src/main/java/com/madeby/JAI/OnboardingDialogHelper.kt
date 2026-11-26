@@ -66,19 +66,40 @@ object OnboardingDialogHelper {
 
         // Clean White Canvas & Stark Black/Slate Typography
         val textPrimary = 0xFF0F172A.toInt()      // Deep obsidian slate / black
-        val textSecondary = 0xFF475569.toInt()    // Slate neutral
-        val textMuted = 0xFF94A3B8.toInt()        // Clean subtle placeholder
+        val textSecondary = 0xFF475569.toInt()    // Slate neutral (7.58:1 on #FFFFFF)
+        val textMuted = 0xFF64748B.toInt()        // Accessible muted slate (4.76:1 on #FFFFFF)
         val tileBgNormal = 0xFFF8FAFC.toInt()     // Soft clean off-white card surface
-        val tileBorderNormal = 0xFFE2E8F0.toInt() // Crisp 1dp border
+        val tileBorderNormal = 0xFFCBD5E1.toInt() // Crisp 1dp border with stronger edge contrast
         val tileBgSelected = Color.argb(22, Color.red(primary), Color.green(primary), Color.blue(primary))
         val tileBorderSelected = primary
+        val onPrimaryText = ThemeCoordinator.getContrastColor(primary)
 
         var currentStep = 1
+        var lastRenderedStep = 0
         var enteredName = ""
         var selectedFocus = "Competitive Exams"
-        var expandedCategoryName: String? = "Competitive Exams"
+        var expandedCategoryName: String? = null
+        var justExpandedCategory: String? = null
+        var dropdownScrollY = 0
         var selectedDailyHours = 4
         var selectedTimerMode = "COUNTDOWN"
+
+        val easeOutInterpolator = android.view.animation.PathInterpolator(0.23f, 1f, 0.32f, 1f)
+        fun animatorsEnabled(): Boolean {
+            return try {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    android.animation.ValueAnimator.areAnimatorsEnabled()
+                } else {
+                    android.provider.Settings.Global.getFloat(
+                        activity.contentResolver,
+                        android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                        1f
+                    ) > 0f
+                }
+            } catch (_: Exception) {
+                true
+            }
+        }
 
         // Root container with clean white background
         val rootLayout = LinearLayout(activity).apply {
@@ -336,10 +357,37 @@ object OnboardingDialogHelper {
         }
 
         fun renderStep() {
+            val prevStep = lastRenderedStep
+            val isStepChange = prevStep != 0 && prevStep != currentStep
+            lastRenderedStep = currentStep
             updateProgress()
+            contentContainer.animate().cancel()
             contentContainer.removeAllViews()
 
             secondaryBtn.text = if (currentStep > 1) "Back" else "Skip"
+
+            if (isStepChange) {
+                contentContainer.alpha = 0f
+                if (animatorsEnabled()) {
+                    val dir = if (currentStep > prevStep) 1f else -1f
+                    contentContainer.translationX = dir * dp(20).toFloat()
+                    contentContainer.animate()
+                        .alpha(1f)
+                        .translationX(0f)
+                        .setDuration(260L)
+                        .setInterpolator(easeOutInterpolator)
+                        .start()
+                } else {
+                    contentContainer.translationX = 0f
+                    contentContainer.animate()
+                        .alpha(1f)
+                        .setDuration(150L)
+                        .start()
+                }
+            } else {
+                contentContainer.alpha = 1f
+                contentContainer.translationX = 0f
+            }
 
             when (currentStep) {
                 1 -> {
@@ -434,17 +482,17 @@ object OnboardingDialogHelper {
                         val selectedSubInCat = cat.subGroups.flatMap { it.second }.firstOrNull {
                             it.equals(selectedFocus, ignoreCase = true)
                         }
-                        val isSelected = isDirectSelected || selectedSubInCat != null
+                        val isSelected = selectedSubInCat != null || (isDirectSelected && cat.subGroups.isEmpty())
                         val isExpanded = (expandedCategoryName == cat.name)
 
-                        // Single card container with inline dropdown submenu (no new card)
+                        // Single card container with neutral border & surface (no colored shade/border)
                         val cardContainer = LinearLayout(activity).apply {
                             orientation = LinearLayout.VERTICAL
                             setPadding(dp(16), dp(14), dp(16), dp(14))
                             background = GradientDrawable().apply {
                                 cornerRadius = dp(16).toFloat()
-                                setColor(if (isSelected) tileBgSelected else tileBgNormal)
-                                setStroke(if (isSelected) dp(2) else dp(1), if (isSelected) tileBorderSelected else tileBorderNormal)
+                                setColor(tileBgNormal)
+                                setStroke(dp(1), tileBorderNormal)
                             }
                             layoutParams = LinearLayout.LayoutParams(
                                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -460,9 +508,18 @@ object OnboardingDialogHelper {
                             isClickable = true
                             isFocusable = true
                             setOnClickListener {
-                                selectedFocus = selectedSubInCat ?: cat.name
-                                expandedCategoryName = if (expandedCategoryName == cat.name) null else cat.name
-                                renderStep()
+                                if (cat.subGroups.isEmpty()) {
+                                    selectedFocus = cat.name
+                                    expandedCategoryName = null
+                                    renderStep()
+                                } else {
+                                    val nextExpanded = if (expandedCategoryName == cat.name) null else cat.name
+                                    dropdownScrollY = 0
+                                    expandedCategoryName = nextExpanded
+                                    justExpandedCategory = nextExpanded
+                                    renderStep()
+                                    justExpandedCategory = null
+                                }
                             }
                         }
 
@@ -497,11 +554,17 @@ object OnboardingDialogHelper {
                         }
                         textCol.addView(capTv)
 
-                        val chevronTv = TextView(activity).apply {
-                            text = if (cat.subGroups.isNotEmpty()) (if (isExpanded) "▴" else "▾") else ""
-                            textSize = 14f
-                            setTextColor(if (isSelected) primary else textSecondary)
-                            setPadding(dp(8), 0, dp(4), 0)
+                        val chevronIv = ThemeCoordinator.createIconView(
+                            activity,
+                            R.drawable.ic_chevron_down,
+                            if (isSelected) primary else textSecondary,
+                            sizeDp = 18
+                        ).apply {
+                            rotation = if (isExpanded) 180f else 0f
+                            (layoutParams as? LinearLayout.LayoutParams)?.apply {
+                                marginStart = dp(6)
+                                marginEnd = dp(4)
+                            }
                         }
 
                         val indicator = View(activity).apply {
@@ -521,7 +584,7 @@ object OnboardingDialogHelper {
 
                         topRow.addView(iconTv)
                         topRow.addView(textCol)
-                        if (cat.subGroups.isNotEmpty()) topRow.addView(chevronTv)
+                        if (cat.subGroups.isNotEmpty()) topRow.addView(chevronIv)
                         topRow.addView(indicator)
                         cardContainer.addView(topRow)
 
@@ -537,14 +600,45 @@ object OnboardingDialogHelper {
                             }
                             cardContainer.addView(divider)
 
-                            val subMenuContainer = LinearLayout(activity).apply {
-                                orientation = LinearLayout.VERTICAL
+                            val maxDropdownHeight = dp(195)
+                            val dropdownScroll = object : ScrollView(activity) {
+                                override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                                    val capped = View.MeasureSpec.makeMeasureSpec(maxDropdownHeight, View.MeasureSpec.AT_MOST)
+                                    super.onMeasure(widthMeasureSpec, capped)
+                                }
+                            }.apply {
+                                isVerticalScrollBarEnabled = true
+                                isNestedScrollingEnabled = true
+                                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                                setOnTouchListener { v, event ->
+                                    if (event.action == android.view.MotionEvent.ACTION_DOWN || event.action == android.view.MotionEvent.ACTION_MOVE) {
+                                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                                    }
+                                    false
+                                }
                                 layoutParams = LinearLayout.LayoutParams(
                                     LinearLayout.LayoutParams.MATCH_PARENT,
                                     LinearLayout.LayoutParams.WRAP_CONTENT
                                 )
                             }
 
+                            val subMenuContainer = LinearLayout(activity).apply {
+                                orientation = LinearLayout.VERTICAL
+                                layoutParams = FrameLayout.LayoutParams(
+                                    FrameLayout.LayoutParams.MATCH_PARENT,
+                                    FrameLayout.LayoutParams.WRAP_CONTENT
+                                )
+                                if (justExpandedCategory == cat.name) {
+                                    alpha = 0f
+                                    animate()
+                                        .alpha(1f)
+                                        .setDuration(if (animatorsEnabled()) 180L else 120L)
+                                        .setInterpolator(easeOutInterpolator)
+                                        .start()
+                                }
+                            }
+
+                            val examChips = mutableListOf<Pair<String, TextView>>()
                             for ((groupTitle, exams) in cat.subGroups) {
                                 val groupHeader = TextView(activity).apply {
                                     text = groupTitle.uppercase(java.util.Locale.US)
@@ -577,13 +671,13 @@ object OnboardingDialogHelper {
                                         text = examName
                                         textSize = 12f
                                         typeface = theme.getAppTypeface(isBold = isExamSel)
-                                        setTextColor(if (isExamSel) Color.WHITE else textPrimary)
+                                        setTextColor(if (isExamSel) onPrimaryText else textPrimary)
                                         gravity = Gravity.CENTER
                                         maxLines = 2
                                         ellipsize = android.text.TextUtils.TruncateAt.END
                                         setPadding(dp(10), dp(8), dp(10), dp(8))
                                         background = GradientDrawable().apply {
-                                            cornerRadius = dp(10).toFloat()
+                                            cornerRadius = dp(8).toFloat()
                                             setColor(if (isExamSel) primary else Color.WHITE)
                                             setStroke(dp(1), if (isExamSel) primary else 0xFFCBD5E1.toInt())
                                         }
@@ -592,9 +686,27 @@ object OnboardingDialogHelper {
                                         }
                                         setOnClickListener {
                                             selectedFocus = examName
-                                            renderStep()
+                                            for ((name, c) in examChips) {
+                                                val sel = name.equals(selectedFocus, ignoreCase = true)
+                                                c.typeface = theme.getAppTypeface(isBold = sel)
+                                                c.setTextColor(if (sel) onPrimaryText else textPrimary)
+                                                (c.background as? GradientDrawable)?.apply {
+                                                    setColor(if (sel) primary else Color.WHITE)
+                                                    setStroke(dp(1), if (sel) primary else 0xFFCBD5E1.toInt())
+                                                }
+                                            }
+                                            titleTv.typeface = theme.getAppTypeface(isBold = true)
+                                            capTv.text = "Selected: $examName"
+                                            capTv.typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                                            capTv.setTextColor(primary)
+                                            chevronIv.setColorFilter(primary)
+                                            (indicator.background as? GradientDrawable)?.apply {
+                                                setColor(primary)
+                                                setStroke(0, Color.TRANSPARENT)
+                                            }
                                         }
                                     }
+                                    examChips.add(examName to chip)
                                     currentRow?.addView(chip)
                                     if (i == exams.lastIndex && exams.size % 2 == 1) {
                                         currentRow?.addView(View(activity).apply {
@@ -603,7 +715,12 @@ object OnboardingDialogHelper {
                                     }
                                 }
                             }
-                            cardContainer.addView(subMenuContainer)
+                            dropdownScroll.addView(subMenuContainer)
+                            if (dropdownScrollY > 0) {
+                                val targetY = dropdownScrollY
+                                dropdownScroll.post { dropdownScroll.scrollTo(0, targetY) }
+                            }
+                            cardContainer.addView(dropdownScroll)
                         }
 
                         contentContainer.addView(cardContainer)
@@ -632,8 +749,9 @@ object OnboardingDialogHelper {
 
                     // Daily Target Selector
                     val goalSectionHeader = TextView(activity).apply {
-                        text = "DAILY STUDY TARGET"
-                        textSize = 11.5f
+                        text = "Daily Study Target"
+                        isAllCaps = true
+                        textSize = 12f
                         letterSpacing = 0.08f
                         typeface = theme.getAppTypeface(isBold = true)
                         setTextColor(primary)

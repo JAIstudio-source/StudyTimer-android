@@ -100,6 +100,7 @@ object UniversalHeaderHelper {
             val avatarImageView = ImageView(activity).apply {
                 setImageBitmap(avatarBitmap)
                 scaleType = ImageView.ScaleType.FIT_CENTER
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             }
             avatarContainer.addView(avatarImageView)

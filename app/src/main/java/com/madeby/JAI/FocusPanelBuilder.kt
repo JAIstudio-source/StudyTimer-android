@@ -174,6 +174,11 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 )
             }
 
+            val isFlatStyle = !themeCoordinator.isGlassStyle()
+            val useLightPillSurface = if (isFlatStyle) !themeCoordinator.isDarkMode() else (!themeCoordinator.isDarkMode() && (!isWallpaperActive || isBrightUnderTimer))
+            val lightPillFill = if (isFlatStyle) 0xFFFFFFFF.toInt() else 0xF2FFFFFF.toInt()
+            val darkPillFill = if (isFlatStyle) 0xFF12131A.toInt() else if (themeCoordinator.isDarkMode()) 0xCC1E293B.toInt() else 0x331E293B.toInt()
+
             // 1. Subject Pill Button
             if (showSubjectTagging) {
                 val subjectPill = LinearLayout(this).apply {
@@ -183,24 +188,25 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     isFocusable = true
                     contentDescription = "Selected study subject: ${activeSubject.name}. Tap to change subject."
 
-                    val pillBg = if (isBrightSurface) {
+                    val pillBg = if (useLightPillSurface) {
                         GradientDrawable().apply {
                             cornerRadius = dp(16).toFloat()
-                            setColor(0xF2FFFFFF.toInt())
+                            setColor(lightPillFill)
                             setStroke(dp(1.5f), tintedColor(subjectColor, 180))
                         }
                     } else {
                         GradientDrawable().apply {
                             cornerRadius = dp(16).toFloat()
-                            setColor(if (themeCoordinator.isDarkMode()) 0x331E293B.toInt() else 0x25FFFFFF.toInt())
+                            setColor(darkPillFill)
                             setStroke(dp(1.5f), tintedColor(subjectColor, 220))
                         }
                     }
                     background = pillBg
                     setPadding(dp(10), dp(6), dp(10), dp(6))
+                    minimumHeight = dp(44)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        dp(38)
+                        LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
                         marginEnd = dp(6)
                     }
@@ -215,8 +221,9 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 }
 
                 val dotContainer = FrameLayout(this).apply {
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     layoutParams = LinearLayout.LayoutParams(dp(12), dp(12)).apply {
-                        rightMargin = dp(6)
+                        marginEnd = dp(6)
                     }
                 }
                 val outerRing = View(this).apply {
@@ -244,7 +251,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     typeface = themeCoordinator.getAppTypeface(isBold = true)
                     val isStudying = host.currentTimerState == TimerState.STUDYING
                     setTextColor(
-                        if (isBrightSurface) 0xFF0F172A.toInt()
+                        if (useLightPillSurface) 0xFF0F172A.toInt()
                         else if (isStudying) Color.parseColor("#10B981")
                         else 0xFFFFFFFF.toInt()
                     )
@@ -254,11 +261,13 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 }
                 subjectPill.addView(subjectText)
 
-                val dropdownChevron = TextView(this).apply {
-                    text = " ▾"
-                    textSize = 11f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(if (isBrightSurface) 0xFF475569.toInt() else subjectColor)
+                val dropdownChevron = ThemeCoordinator.createIconView(
+                    this,
+                    R.drawable.ic_unfold_more,
+                    if (useLightPillSurface) 0xFF475569.toInt() else subjectColor,
+                    sizeDp = 14
+                ).apply {
+                    (layoutParams as? LinearLayout.LayoutParams)?.marginStart = dp(2)
                 }
                 subjectPill.addView(dropdownChevron)
                 sessionPillsRow.addView(subjectPill)
@@ -273,14 +282,15 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     isFocusable = true
                     val pillBg = GradientDrawable().apply {
                         cornerRadius = dp(16).toFloat()
-                        setColor(if (isBrightSurface) 0xF2FFFFFF.toInt() else 0x25FFFFFF.toInt())
-                        setStroke(dp(1), if (isBrightSurface) 0xFFCBD5E1.toInt() else tintedColor(themeCoordinator.accentColor, 180))
+                        setColor(if (useLightPillSurface) lightPillFill else darkPillFill)
+                        setStroke(dp(1), if (useLightPillSurface) 0xFFCBD5E1.toInt() else tintedColor(themeCoordinator.accentColor, 180))
                     }
                     background = pillBg
                     setPadding(dp(10), dp(6), dp(8), dp(6))
+                    minimumHeight = dp(44)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        dp(38)
+                        LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
                         marginEnd = dp(6)
                     }
@@ -292,8 +302,9 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 val goalIcon = ImageView(this).apply {
                     setImageResource(R.drawable.ic_target)
                     setColorFilter(themeCoordinator.accentColor)
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                     layoutParams = LinearLayout.LayoutParams(dp(13), dp(13)).apply {
-                        setMargins(0, 0, dp(4), 0)
+                        marginEnd = dp(4)
                     }
                 }
                 goalPill.addView(goalIcon)
@@ -302,7 +313,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     text = activeGoalTitle
                     textSize = 11.5f
                     typeface = themeCoordinator.getAppTypeface(isBold = false)
-                    setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else themeCoordinator.accentColor)
+                    setTextColor(if (useLightPillSurface) 0xFF0F172A.toInt() else themeCoordinator.accentColor)
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     maxWidth = dp(85)
@@ -313,7 +324,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     text = " ✕"
                     textSize = 11f
                     typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(if (isBrightSurface) 0xFF64748B.toInt() else tintedColor(themeCoordinator.textColor, 140))
+                    setTextColor(if (useLightPillSurface) 0xFF64748B.toInt() else 0xCCFFFFFF.toInt())
                     setPadding(dp(4), 0, dp(4), 0)
                     setOnClickListener {
                         if (currentTimerState == TimerState.STUDYING || currentTimerState == TimerState.BREAK) {
@@ -336,14 +347,15 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     contentDescription = "Select chapter / sub-topic. Current: $topicLabel"
                     val pillBg = GradientDrawable().apply {
                         cornerRadius = dp(16).toFloat()
-                        setColor(if (isBrightSurface) 0xF2FFFFFF.toInt() else 0x22FFFFFF.toInt())
-                        setStroke(dp(1), if (hasSubTopic) tintedColor(themeCoordinator.primaryColor, 180) else (if (isBrightSurface) 0xFFCBD5E1.toInt() else tintedColor(themeCoordinator.textColor, 45)))
+                        setColor(if (useLightPillSurface) lightPillFill else darkPillFill)
+                        setStroke(dp(1), if (hasSubTopic) tintedColor(themeCoordinator.primaryColor, 180) else (if (useLightPillSurface) 0xFFCBD5E1.toInt() else 0x44FFFFFF.toInt()))
                     }
                     background = pillBg
                     setPadding(dp(10), dp(6), dp(10), dp(6))
+                    minimumHeight = dp(44)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        dp(38)
+                        LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
                         marginEnd = dp(6)
                     }
@@ -359,18 +371,20 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     text = topicLabel
                     textSize = 12f
                     typeface = themeCoordinator.getAppTypeface(isBold = hasSubTopic)
-                    setTextColor(if (isBrightSurface) (if (hasSubTopic) themeCoordinator.primaryColor else 0xFF0F172A.toInt()) else (if (hasSubTopic) themeCoordinator.primaryColor else 0xFFFFFFFF.toInt()))
+                    setTextColor(if (useLightPillSurface) (if (hasSubTopic) themeCoordinator.primaryColor else 0xFF0F172A.toInt()) else (if (hasSubTopic) themeCoordinator.primaryColor else 0xFFFFFFFF.toInt()))
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     maxWidth = dp(85)
                 }
                 topicPill.addView(topicText)
 
-                val topicChevron = TextView(this).apply {
-                    text = " ▾"
-                    textSize = 10f
-                    typeface = Typeface.DEFAULT_BOLD
-                    setTextColor(if (hasSubTopic) themeCoordinator.primaryColor else (if (isBrightSurface) 0xFF64748B.toInt() else tintedColor(themeCoordinator.textColor, 130)))
+                val topicChevron = ThemeCoordinator.createIconView(
+                    this,
+                    R.drawable.ic_unfold_more,
+                    if (hasSubTopic) themeCoordinator.primaryColor else (if (useLightPillSurface) 0xFF64748B.toInt() else 0xCCFFFFFF.toInt()),
+                    sizeDp = 14
+                ).apply {
+                    (layoutParams as? LinearLayout.LayoutParams)?.marginStart = dp(2)
                 }
                 topicPill.addView(topicChevron)
                 sessionPillsRow.addView(topicPill)
@@ -388,8 +402,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 contentDescription = "Timer Mode: $modeLabel. Tap to switch mode."
                 val pillBg = GradientDrawable().apply {
                     cornerRadius = dp(16).toFloat()
-                    setColor(if (isBrightSurface) 0xF2FFFFFF.toInt() else 0x22FFFFFF.toInt())
-                    setStroke(dp(1), if (isBrightSurface) 0xFFCBD5E1.toInt() else tintedColor(themeCoordinator.primaryColor, 130))
+                    setColor(if (useLightPillSurface) lightPillFill else darkPillFill)
+                    setStroke(dp(1), if (useLightPillSurface) 0xFFCBD5E1.toInt() else tintedColor(themeCoordinator.primaryColor, 130))
                 }
                 background = pillBg
                 setPadding(dp(10), dp(6), dp(10), dp(6))
@@ -410,10 +424,12 @@ class FocusPanelBuilder(private val host: MainActivity) {
             }
 
             val modeText = TextView(this).apply {
-                text = "$modeLabel ▾"
+                text = modeLabel
                 textSize = 12f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
-                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt())
+                val modeTextColor = if (useLightPillSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
+                setTextColor(modeTextColor)
+                ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, if (useLightPillSurface) 0xFF475569.toInt() else 0xCCFFFFFF.toInt(), sizeDp = 14, padDp = 4)
             }
             modePill.addView(modeText)
             sessionPillsRow.addView(modePill)
@@ -532,6 +548,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     return false
                 }
             })
+            centerClocksWrapper.contentDescription = "Timer display. Double-tap to pause or resume, tap for fullscreen."
+            centerClocksWrapper.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             centerClocksWrapper.setOnTouchListener { _, event ->
                 gestureDetector.onTouchEvent(event)
             }
@@ -781,13 +799,14 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 }
 
                 val subjName = TextView(host).apply {
-                    text = "${activeSubject.name} ▾"
+                    text = activeSubject.name
                     textSize = 12f
                     typeface = themeCoordinator.getAppTypeface(isBold = true)
                     setTextColor(textColor)
                     setSingleLine(true)
                     ellipsize = android.text.TextUtils.TruncateAt.END
                     maxWidth = dp(220)
+                    ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, tintedColor(textColor, 180), sizeDp = 14, padDp = 4)
                 }
                 addView(subjName)
             }
@@ -910,6 +929,8 @@ class FocusPanelBuilder(private val host: MainActivity) {
                     return false
                 }
             })
+            centerArea.contentDescription = "Timer display. Double-tap to pause or resume, tap to toggle controls."
+            centerArea.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
             centerArea.setOnTouchListener { _, event ->
                 gestureDetector.onTouchEvent(event)
             }

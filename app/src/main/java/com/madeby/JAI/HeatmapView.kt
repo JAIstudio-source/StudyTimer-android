@@ -191,7 +191,14 @@ class HeatmapView @JvmOverloads constructor(
         monthRowH = 18f * density
 
         if (forcedCellSize > 0f) {
-            cellSize = forcedCellSize
+            val availH = MeasureSpec.getSize(heightMeasureSpec)
+            val heightMode = MeasureSpec.getMode(heightMeasureSpec)
+            cellSize = if (heightMode != MeasureSpec.UNSPECIFIED && availH > 0) {
+                val maxCellForHeight = ((availH - topPad - monthRowH - 6f * density - 6f * gapPx) / 7f).coerceAtLeast(10f * density)
+                kotlin.math.min(forcedCellSize, maxCellForHeight)
+            } else {
+                forcedCellSize
+            }
             if (numCols < 26) {
                 computeRollingDates(26)
             }

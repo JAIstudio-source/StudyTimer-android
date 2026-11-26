@@ -59,6 +59,22 @@ class TimerRingView(context: Context) : View(context) {
         setMeasuredDimension(size, size)
     }
 
+    private fun animatorsEnabled(): Boolean {
+        return try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                ValueAnimator.areAnimatorsEnabled()
+            } else {
+                android.provider.Settings.Global.getFloat(
+                    context.contentResolver,
+                    android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
+                    1f
+                ) > 0f
+            }
+        } catch (_: Exception) {
+            true
+        }
+    }
+
     fun setProgress(fraction: Float, color: Int, track: Int, animate: Boolean = true) {
         val f = fraction.coerceIn(0f, 1f)
         val target = f * 360f
@@ -68,7 +84,7 @@ class TimerRingView(context: Context) : View(context) {
         this.trackColor = track
         targetDeg = target
         val from = sweepDeg
-        if (!animate || abs(target - from) < 0.02f) {
+        if (!animate || !animatorsEnabled() || abs(target - from) < 0.02f) {
             animator?.cancel()
             sweepDeg = target
             invalidate()
@@ -101,7 +117,7 @@ class TimerRingView(context: Context) : View(context) {
     private var pulseAnimator: ValueAnimator? = null
 
     fun setTimerActive(active: Boolean) {
-        if (active && pulseAnimator == null) {
+        if (active && animatorsEnabled() && pulseAnimator == null) {
             pulseAnimator = ValueAnimator.ofFloat(0.65f, 1.0f).apply {
                 duration = 1500
                 repeatMode = ValueAnimator.REVERSE

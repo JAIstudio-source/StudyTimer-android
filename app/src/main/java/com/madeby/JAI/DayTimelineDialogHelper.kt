@@ -575,11 +575,12 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(10), 0, dp(4))
             }
-            val logsChevron = TextView(host).apply {
-                text = "▾"
-                textSize = 13f
-                setTextColor(themeCoordinator.primaryColor)
-            }
+            val logsChevron = ThemeCoordinator.createIconView(
+                host,
+                R.drawable.ic_chevron_down,
+                themeCoordinator.primaryColor,
+                sizeDp = 16
+            )
             logsRow.addView(TextView(host).apply {
                 text = host.getString(R.string.cal_see_logs)
                 setTextColor(themeCoordinator.primaryColor)
@@ -613,7 +614,7 @@ class DayTimelineDialogHelper(private val host: MainActivity) {
             logsRow.setOnClickListener {
                 val show = logsScroll.visibility != View.VISIBLE
                 logsScroll.visibility = if (show) View.VISIBLE else View.GONE
-                logsChevron.text = if (show) "▴" else "▾"
+                logsChevron.rotation = if (show) 180f else 0f
             }
 
             content.addView(logsRow)

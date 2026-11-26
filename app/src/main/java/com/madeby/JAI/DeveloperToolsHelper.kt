@@ -324,13 +324,14 @@ object DeveloperToolsHelper {
         }
 
         val confirmBtn = Button(activity).apply {
+            val btnBgColor = if (isDestructive) Color.parseColor("#EF4444") else themeCoordinator.primaryColor
             text = confirmText
-            setTextColor(Color.WHITE)
+            setTextColor(ThemeCoordinator.getContrastColor(btnBgColor))
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
-                setColor(if (isDestructive) Color.parseColor("#EF4444") else themeCoordinator.primaryColor)
+                setColor(btnBgColor)
             }
             setPadding(dp(16), dp(8), dp(16), dp(8))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40))
@@ -387,9 +388,10 @@ object DeveloperToolsHelper {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         val openFullBtn = TextView(activity).apply {
-            text = "Open Full Console ↗"
+            text = "Open Full Console"
             textSize = 11.5f
             setTextColor(themeCoordinator.textColor)
+            ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.textColor, sizeDp = 13, padDp = 2)
             alpha = 0.7f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 14f)
@@ -2866,10 +2868,11 @@ object DeveloperToolsHelper {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val subjectChip = TextView(activity).apply {
-            text = "${selectedSubject?.name ?: "General Focus"} ▾"
+            text = selectedSubject?.name ?: "General Focus"
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.primaryColor)
+            ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, themeCoordinator.primaryColor, sizeDp = 14, padDp = 4)
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 35), 8f)
             setPadding(dp(10), dp(6), dp(10), dp(6))
         }
@@ -2884,11 +2887,7 @@ object DeveloperToolsHelper {
                 includeCreateOption = false,
                 onSelected = { sub ->
                     selectedSubject = sub
-                    subjectChip.text = if (sub == null) {
-                        "General Focus ▾"
-                    } else {
-                        "${sub?.name ?: "General Focus"} ▾"
-                    }
+                    subjectChip.text = sub?.name ?: "General Focus"
                     updateUI()
                 }
             )
@@ -2918,10 +2917,11 @@ object DeveloperToolsHelper {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val timeSlotToggle = TextView(activity).apply {
-            text = "Ended Just Now ▾"
+            text = "Ended Just Now"
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.textColor)
+            ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, themeCoordinator.textColor, sizeDp = 14, padDp = 4)
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 25), 8f)
             setPadding(dp(10), dp(6), dp(10), dp(6))
         }
@@ -2936,27 +2936,29 @@ object DeveloperToolsHelper {
             setPadding(0, dp(8), 0, dp(4))
         }
         val startTimeBtn = TextView(activity).apply {
-            text = "Start: ${timeFmt.format(startCal.time)} ▾"
+            text = "Start: ${timeFmt.format(startCal.time)}"
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.textColor)
+            ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, themeCoordinator.textColor, sizeDp = 14, padDp = 4)
             gravity = Gravity.CENTER
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 10f)
             setPadding(dp(8), dp(8), dp(8), dp(8))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                rightMargin = dp(4)
+                marginEnd = dp(4)
             }
         }
         val endTimeBtn = TextView(activity).apply {
-            text = "End: ${timeFmt.format(endCal.time)} ▾"
+            text = "End: ${timeFmt.format(endCal.time)}"
             textSize = 12f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(themeCoordinator.textColor)
+            ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, themeCoordinator.textColor, sizeDp = 14, padDp = 4)
             gravity = Gravity.CENTER
             background = themeCoordinator.createGlassChip(tintedColor(themeCoordinator.primaryColor, 50), 10f)
             setPadding(dp(8), dp(8), dp(8), dp(8))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                leftMargin = dp(4)
+                marginStart = dp(4)
             }
         }
         customTimeRow.addView(startTimeBtn)
@@ -2967,7 +2969,7 @@ object DeveloperToolsHelper {
             var diffMs = endCal.timeInMillis - startCal.timeInMillis
             if (diffMs <= 0) {
                 endCal.timeInMillis = startCal.timeInMillis + (30 * 60000L)
-                endTimeBtn.text = "End: ${timeFmt.format(endCal.time)} ▾"
+                endTimeBtn.text = "End: ${timeFmt.format(endCal.time)}"
                 diffMs = 30 * 60000L
             }
             enteredMins = (diffMs / 60000L).coerceIn(1L, 1440L)
@@ -2977,13 +2979,15 @@ object DeveloperToolsHelper {
         timeSlotToggle.setOnClickListener {
             isSpecificTimeSlot = !isSpecificTimeSlot
             if (isSpecificTimeSlot) {
-                timeSlotToggle.text = "Custom Time ▾"
+                timeSlotToggle.text = "Custom Time"
                 timeSlotToggle.setTextColor(themeCoordinator.primaryColor)
+                ThemeCoordinator.setTrailingIcon(timeSlotToggle, R.drawable.ic_unfold_more, themeCoordinator.primaryColor, sizeDp = 14, padDp = 4)
                 customTimeRow.visibility = View.VISIBLE
                 syncFromClockWheel()
             } else {
-                timeSlotToggle.text = "Ended Just Now ▾"
+                timeSlotToggle.text = "Ended Just Now"
                 timeSlotToggle.setTextColor(themeCoordinator.textColor)
+                ThemeCoordinator.setTrailingIcon(timeSlotToggle, R.drawable.ic_unfold_more, themeCoordinator.textColor, sizeDp = 14, padDp = 4)
                 customTimeRow.visibility = View.GONE
                 updateUI()
             }
@@ -2997,7 +3001,7 @@ object DeveloperToolsHelper {
                     startCal.set(Calendar.HOUR_OF_DAY, hourOfDay)
                     startCal.set(Calendar.MINUTE, minute)
                     startCal.set(Calendar.SECOND, 0)
-                    startTimeBtn.text = "Start: ${timeFmt.format(startCal.time)} ▾"
+                    startTimeBtn.text = "Start: ${timeFmt.format(startCal.time)}"
                     syncFromClockWheel()
                 },
                 startCal.get(Calendar.HOUR_OF_DAY),
@@ -3014,7 +3018,7 @@ object DeveloperToolsHelper {
                     endCal.set(Calendar.HOUR_OF_DAY, hourOfDay)
                     endCal.set(Calendar.MINUTE, minute)
                     endCal.set(Calendar.SECOND, 0)
-                    endTimeBtn.text = "End: ${timeFmt.format(endCal.time)} ▾"
+                    endTimeBtn.text = "End: ${timeFmt.format(endCal.time)}"
                     syncFromClockWheel()
                 },
                 endCal.get(Calendar.HOUR_OF_DAY),
@@ -3043,10 +3047,11 @@ object DeveloperToolsHelper {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val pickDateBtn = TextView(activity).apply {
-            text = "Pick Date ▾"
+            text = "Pick Date"
             textSize = 11.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(0xFF0F172A.toInt())
+            ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, 0xFF0F172A.toInt(), sizeDp = 14, padDp = 4)
             background = GradientDrawable().apply {
                 cornerRadius = dp(8).toFloat()
                 setColor(Color.parseColor("#38BDF8"))

@@ -381,12 +381,12 @@ object TimerModeBottomSheet {
         }
         moreOptionsCard.addView(moreText)
 
-        val chevron = TextView(activity).apply {
-            text = "›"
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt())
-        }
+        val chevron = ThemeCoordinator.createIconView(
+            activity,
+            R.drawable.ic_chevron_right,
+            if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt(),
+            sizeDp = 18
+        )
         moreOptionsCard.addView(chevron)
 
         root.addView(moreOptionsCard)

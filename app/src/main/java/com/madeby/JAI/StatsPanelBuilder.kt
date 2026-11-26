@@ -177,14 +177,14 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val root = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT)
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            setPadding(dp(4), 0, dp(4), 0)
         }
 
         val headerRow = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(dp(4), dp(6), dp(4), dp(10))
+                setMargins(dp(4), 0, dp(4), dp(6))
             }
         }
         val headerCol = LinearLayout(host).apply {
@@ -201,18 +201,18 @@ class StatsPanelBuilder(private val host: MainActivity) {
         headerCol.addView(TextView(host).apply {
             text = host.getString(R.string.heatmap_hint)
             setTextColor(themeCoordinator.textColor)
-            alpha = 0.45f
-            textSize = 11f
+            alpha = 0.72f
+            textSize = 12f
             setPadding(0, dp(3), 0, 0)
         })
         headerRow.addView(headerCol)
         headerRow.addView(TextView(host).apply {
             text = host.getString(R.string.btn_done)
-            setTextColor(0xFFFFFFFF.toInt())
+            setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(dp(18), dp(8), dp(18), dp(8))
-            background = themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 30f)
+            background = themeCoordinator.createButtonBackground(themeCoordinator.primaryColor)
             setOnClickListener { navigateToPanel(AppPanel.STATS) }
         })
         root.addView(headerRow)
@@ -233,7 +233,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val subjectScroll = HorizontalScrollView(host).apply {
             isHorizontalScrollBarEnabled = false
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(dp(4), 0, dp(4), dp(10))
+                setMargins(dp(4), 0, dp(4), dp(6))
             }
         }
         val subjectRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL }
@@ -241,14 +241,14 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val heatmapCard = LinearLayout(host).apply {
             orientation = LinearLayout.VERTICAL
             background = themeCoordinator.createCardBackground()
-            setPadding(dp(16), dp(14), dp(16), dp(12))
+            setPadding(dp(14), dp(10), dp(14), dp(8))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
 
         val legendContainer = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(10), 0, 0)
+            setPadding(0, dp(6), 0, 0)
         }
 
         fun updateLegendColors(activeColor: Int) {
@@ -300,10 +300,10 @@ class StatsPanelBuilder(private val host: MainActivity) {
             val isAll = activeHeatmapSubjectId == null
             val allChip = TextView(host).apply {
                 text = "All Subjects"
-                textSize = 11.5f
+                textSize = 12f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                setTextColor(if (isAll) Color.WHITE else themeCoordinator.textColor)
-                background = if (isAll) themeCoordinator.createGlassChip(themeCoordinator.primaryColor, 12f) else themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                setTextColor(if (isAll) ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor) else themeCoordinator.textColor)
+                background = if (isAll) themeCoordinator.createButtonBackground(themeCoordinator.primaryColor) else themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
                 setPadding(dp(12), dp(6), dp(12), dp(6))
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                     setMargins(0, 0, dp(6), 0)
@@ -322,10 +322,10 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 val subCol = try { Color.parseColor(sub.colorHex) } catch (_: Exception) { themeCoordinator.primaryColor }
                 val chip = TextView(host).apply {
                     text = sub.name
-                    textSize = 11.5f
+                    textSize = 12f
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-                    setTextColor(if (isSel) Color.WHITE else themeCoordinator.textColor)
-                    background = if (isSel) themeCoordinator.createGlassChip(subCol, 12f) else themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
+                    setTextColor(if (isSel) ThemeCoordinator.getContrastColor(subCol) else themeCoordinator.textColor)
+                    background = if (isSel) themeCoordinator.createButtonBackground(subCol) else themeCoordinator.createGlassChip(tintedColor(themeCoordinator.textColor, 30), 12f)
                     setPadding(dp(12), dp(6), dp(12), dp(6))
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
                         setMargins(0, 0, dp(6), 0)
@@ -608,16 +608,19 @@ class StatsPanelBuilder(private val host: MainActivity) {
         // 2. Insights Subtab Segment Control (Overview vs Timeline & History)
         val isWallpaperActive = WallpaperManager.getWallpaperType(host) != "NONE"
         val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(host)
-        val isBrightSurface = if (isWallpaperActive) isBrightUnder else !themeCoordinator.isDarkMode()
+        val isDarkWallpaper = isWallpaperActive && !isBrightUnder
 
         val tabSegment = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            val isDark = themeCoordinator.isDarkMode()
-            background = GradientDrawable().apply {
-                cornerRadius = dp(20).toFloat()
-                setColor(if (isBrightSurface) 0xF0FFFFFF.toInt() else if (isDark) 0x331E293B.toInt() else 0x22CBD5E1.toInt())
-                setStroke(dp(1), if (isBrightSurface) 0xFFCBD5E1.toInt() else if (isDark) 0x44475569.toInt() else 0x40CBD5E1.toInt())
+            background = if (isDarkWallpaper) {
+                GradientDrawable().apply {
+                    cornerRadius = dp(20).toFloat()
+                    setColor(0x331E293B.toInt())
+                    setStroke(dp(1), 0x44475569.toInt())
+                }
+            } else {
+                themeCoordinator.createCardBackground(20f)
             }
             setPadding(dp(4), dp(4), dp(4), dp(4))
             layoutParams = LinearLayout.LayoutParams(
@@ -635,8 +638,14 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 textSize = 12.5f
                 gravity = Gravity.CENTER
                 typeface = themeCoordinator.getAppTypeface(isBold = isSelected)
-                setTextColor(if (isSelected) Color.WHITE else if (isBrightSurface) 0xFF334155.toInt() else themeCoordinator.textColor)
-                alpha = if (isSelected) 1f else if (isBrightSurface) 0.95f else 0.7f
+                setTextColor(
+                    when {
+                        isSelected -> ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor)
+                        isDarkWallpaper -> Color.argb(225, 255, 255, 255)
+                        else -> themeCoordinator.textColor
+                    }
+                )
+                alpha = if (isSelected) 1f else 0.78f
                 background = if (isSelected) {
                     GradientDrawable().apply {
                         cornerRadius = dp(16).toFloat()
@@ -736,10 +745,11 @@ class StatsPanelBuilder(private val host: MainActivity) {
         // Top Header with Label & Streak Chip
         val heroTopRow = LinearLayout(host).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         heroTopRow.addView(TextView(host).apply {
-            text = "TODAY'S FOCUS"
+            text = "Today's Focus"
+            isAllCaps = true
             setTextColor(themeCoordinator.primaryColor)
-            textSize = 11f
-            letterSpacing = 0.18f
+            textSize = 12f
+            letterSpacing = 0.14f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         })
         heroTopRow.addView(LinearLayout(host).apply { layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
@@ -747,8 +757,10 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val streakChip = LinearLayout(host).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = 0
+            contentDescription = "$streak day streak. Tap for streak freeze options."
             background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
+                cornerRadius = dp(12).toFloat()
                 val streakBg = if (themeCoordinator.isDarkMode()) {
                     0xFF1E212D.toInt()
                 } else {
@@ -757,23 +769,26 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 setColor(streakBg)
                 setStroke(dp(1), tintedColor(themeCoordinator.primaryColor, if (themeCoordinator.isDarkMode()) 60 else 90))
             }
-            setPadding(dp(10), dp(4), dp(10), dp(4))
+            setPadding(dp(9), dp(4), dp(9), dp(4))
             isClickable = true
+            isFocusable = true
             setOnClickListener {
                 it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                 showStreakFreezeDialog()
             }
         }
+        val streakFlameColor = StreakUpAnimationDialog.getStreakTier(streak).primaryColor
         streakChip.addView(ImageView(host).apply {
             setImageResource(R.drawable.ic_flame)
-            setColorFilter(themeCoordinator.primaryColor)
-            contentDescription = host.getString(R.string.content_desc_streak)
-            layoutParams = LinearLayout.LayoutParams(dp(14), dp(14))
+            setColorFilter(streakFlameColor)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            layoutParams = LinearLayout.LayoutParams(dp(12), dp(12))
         })
         streakChip.addView(TextView(host).apply {
             text = "${streak}d streak"
             setTextColor(themeCoordinator.textColor)
-            textSize = 11.5f
+            textSize = 11f
+            fontFeatureSettings = "tnum"
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(dp(4), 0, 0, 0)
         })
@@ -799,6 +814,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             text = host.getString(R.string.duration_h_m, todayH, todayM)
             setTextColor(themeCoordinator.textColor)
             textSize = 32f
+            fontFeatureSettings = "tnum"
             letterSpacing = -0.03f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         })
@@ -1372,6 +1388,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
             text = host.getString(R.string.duration_h_m, totalLifeFocus / 3600, (totalLifeFocus % 3600) / 60)
             setTextColor(themeCoordinator.primaryColor)
             textSize = 24f
+            fontFeatureSettings = "tnum"
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setPadding(0, dp(2), 0, 0)
         }
@@ -1830,14 +1847,16 @@ class StatsPanelBuilder(private val host: MainActivity) {
             })
             exportCard.addView(exportTextCol)
             exportCard.addView(TextView(host).apply {
-                text = "Export \u2197"
+                text = "Export"
                 textSize = 11.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 background = GradientDrawable().apply {
                     cornerRadius = dp(12).toFloat()
                     setColor(themeCoordinator.primaryColor)
                 }
-                setTextColor(ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor))
+                val exportTextColor = ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor)
+                setTextColor(exportTextColor)
+                ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, exportTextColor, sizeDp = 13, padDp = 3)
                 setPadding(dp(12), dp(6), dp(12), dp(6))
             })
             content.addView(exportCard)
@@ -1865,11 +1884,12 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             val customizeBtn = TextView(host).apply {
-                text = "Customize >"
+                text = "Customize"
                 setTextColor(themeCoordinator.primaryColor)
                 alpha = 0.85f
                 textSize = 11.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 13, padDp = 2)
                 setPadding(dp(8), dp(4), dp(4), dp(4))
                 setOnClickListener {
                     showCustomizeHighlightsDialog()
@@ -1894,13 +1914,20 @@ class StatsPanelBuilder(private val host: MainActivity) {
                 }
             }
 
-            val viewMoreBtn = TextView(host).apply {
-                text = "View Highlights  \u25BE"
+            val viewMoreLabel = TextView(host).apply {
+                text = "View Highlights"
                 setTextColor(themeCoordinator.primaryColor)
                 textSize = 12.5f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            }
+            val viewMoreArrow = ThemeCoordinator.createIconView(host, R.drawable.ic_chevron_down, themeCoordinator.primaryColor, sizeDp = 16).apply {
+                (layoutParams as? LinearLayout.LayoutParams)?.marginStart = dp(6)
+            }
+            val viewMoreBtn = LinearLayout(host).apply {
+                orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                minHeight = dp(40)
+                minimumHeight = dp(40)
+                contentDescription = "View Highlights"
                 background = GradientDrawable().apply {
                     cornerRadius = dp(20).toFloat()
                     if (themeCoordinator.isDarkMode()) {
@@ -1912,17 +1939,21 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         setStroke(dp(1), 0xFFCBD5E1.toInt())
                     }
                 }
-                setPadding(dp(22), dp(9), dp(22), dp(9))
+                setPadding(dp(20), dp(9), dp(18), dp(9))
                 isClickable = true
                 isFocusable = true
+                addView(viewMoreLabel)
+                addView(viewMoreArrow)
                 setOnClickListener {
                     it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
                     if (moreStatsContainer.visibility == View.VISIBLE) {
                         moreStatsContainer.visibility = View.GONE
-                        text = "View Highlights  \u25BE"
+                        viewMoreLabel.text = "View Highlights"
+                        viewMoreArrow.rotation = 0f
                     } else {
                         moreStatsContainer.visibility = View.VISIBLE
-                        text = "Hide Highlights  \u25B4"
+                        viewMoreLabel.text = "Hide Highlights"
+                        viewMoreArrow.rotation = 180f
                     }
                 }
             }

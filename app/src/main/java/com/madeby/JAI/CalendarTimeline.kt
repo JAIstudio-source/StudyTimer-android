@@ -738,10 +738,11 @@ class CalendarTimeline(private val host: MainActivity) {
                     }
 
                     val tapHint = TextView(this).apply {
-                        text = "Details ›"
+                        text = "Details"
                         setTextColor(themeCoordinator.primaryColor)
                         textSize = 11.5f
                         typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                        ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 13, padDp = 2)
                     }
 
                     bottomRow.addView(dateText)
@@ -1194,10 +1195,11 @@ class CalendarTimeline(private val host: MainActivity) {
         val sdf = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault())
 
         val dateBtn = TextView(activity).apply {
-            text = "Exam Date: ${sdf.format(cal.time)} ▾"
+            text = "Exam Date: ${sdf.format(cal.time)}"
             setTextColor(themeCoordinator.textColor)
             textSize = 13f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_unfold_more, host.tintedColor(themeCoordinator.textColor, 180), sizeDp = 15, padDp = 6)
             background = themeCoordinator.createGlassChip(host.tintedColor(themeCoordinator.primaryColor, 45), 12f)
             setPadding(dp(14), dp(12), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
@@ -1211,7 +1213,7 @@ class CalendarTimeline(private val host: MainActivity) {
                         cal.set(Calendar.YEAR, year)
                         cal.set(Calendar.MONTH, month)
                         cal.set(Calendar.DAY_OF_MONTH, dayOfMonth)
-                        text = "Exam Date: ${sdf.format(cal.time)} ▾"
+                        text = "Exam Date: ${sdf.format(cal.time)}"
                     },
                     cal.get(Calendar.YEAR),
                     cal.get(Calendar.MONTH),
@@ -1248,11 +1250,12 @@ class CalendarTimeline(private val host: MainActivity) {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
 
-        val arrowText = TextView(activity).apply {
-            text = "▾"
-            textSize = 13f
-            setTextColor(host.tintedColor(themeCoordinator.textColor, 180))
-        }
+        val arrowText = ThemeCoordinator.createIconView(
+            activity,
+            R.drawable.ic_unfold_more,
+            host.tintedColor(themeCoordinator.textColor, 180),
+            sizeDp = 15
+        )
 
         fun updateSubjectUI() {
             val dotColor = selectedSubject?.let {

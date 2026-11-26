@@ -155,10 +155,11 @@ class SystemDialogHelper(private val activity: MainActivity) {
         val detectedBrand = OemOptimizationHelper.detectBrand()
         if (detectedBrand != OemOptimizationHelper.OemBrand.OTHER) {
             val guideLink = TextView(activity).apply {
-                text = "View setup guide for ${detectedBrand.brandName} ›"
+                text = "View setup guide for ${detectedBrand.brandName}"
                 setTextColor(themeCoordinator.primaryColor)
                 textSize = 13f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+                ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 14, padDp = 4)
                 setPadding(0, dp(12), 0, 0)
                 setOnClickListener {
                     dialog.dismiss()

@@ -25,6 +25,36 @@ class ThemeCoordinator(private val context: Context) {
             return if (luminance > 0.55) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
         }
 
+        fun setTrailingIcon(
+            tv: android.widget.TextView,
+            @androidx.annotation.DrawableRes resId: Int,
+            tintColor: Int,
+            sizeDp: Int = 14,
+            padDp: Int = 4
+        ) {
+            val d = androidx.core.content.ContextCompat.getDrawable(tv.context, resId)?.mutate() ?: return
+            val px = (sizeDp * tv.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            d.setBounds(0, 0, px, px)
+            d.setTint(tintColor)
+            tv.setCompoundDrawablesRelative(null, null, d, null)
+            tv.compoundDrawablePadding = (padDp * tv.resources.displayMetrics.density).toInt()
+        }
+
+        fun createIconView(
+            context: Context,
+            @androidx.annotation.DrawableRes resId: Int,
+            tintColor: Int,
+            sizeDp: Int = 16
+        ): android.widget.ImageView {
+            val px = (sizeDp * context.resources.displayMetrics.density).toInt().coerceAtLeast(1)
+            return android.widget.ImageView(context).apply {
+                setImageResource(resId)
+                setColorFilter(tintColor)
+                importantForAccessibility = android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                layoutParams = android.widget.LinearLayout.LayoutParams(px, px)
+            }
+        }
+
         val SOFT_FOCUS_PALETTE = listOf(
             "#818CF8", // Soft Lavender / Indigo
             "#60A5FA", // Soft Sky Blue

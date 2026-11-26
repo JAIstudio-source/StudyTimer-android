@@ -1340,10 +1340,9 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             background = GradientDrawable().apply {
                 cornerRadius = dp(20).toFloat()
                 val bgCol = if (host.themeCoordinator.isDarkMode()) {
-                    if (isCurrent) Color.argb(40, Color.red(host.themeCoordinator.primaryColor), Color.green(host.themeCoordinator.primaryColor), Color.blue(host.themeCoordinator.primaryColor))
-                    else Color.parseColor("#14161F")
+                    Color.parseColor("#14161F")
                 } else {
-                    if (isCurrent) Color.argb(30, 99, 102, 241) else Color.parseColor("#FFFFFF")
+                    Color.parseColor("#FFFFFF")
                 }
                 setColor(bgCol)
                 setStroke(
@@ -1499,14 +1498,13 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
             background = GradientDrawable().apply {
                 cornerRadius = dp(16).toFloat()
                 val bgCol = if (host.themeCoordinator.isDarkMode()) {
-                    if (isCurrent) Color.argb(45, Color.red(host.themeCoordinator.primaryColor), Color.green(host.themeCoordinator.primaryColor), Color.blue(host.themeCoordinator.primaryColor))
-                    else Color.parseColor("#12141C")
+                    Color.parseColor("#12141C")
                 } else {
-                    if (isCurrent) Color.argb(35, 99, 102, 241) else Color.parseColor("#FFFFFF")
+                    Color.parseColor("#FFFFFF")
                 }
                 setColor(bgCol)
                 setStroke(
-                    dp(1),
+                    dp(if (isCurrent) 2 else 1),
                     if (isCurrent) host.themeCoordinator.primaryColor else Color.argb(40, 255, 255, 255)
                 )
             }
