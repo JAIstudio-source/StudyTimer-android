@@ -840,7 +840,7 @@ object OnboardingDialogHelper {
                         contentContainer.addView(tile)
                     }
 
-                    primaryBtn.text = "Get Started 🚀"
+                    primaryBtn.text = "Get Started"
                 }
             }
         }

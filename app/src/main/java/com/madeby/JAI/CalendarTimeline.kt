@@ -563,6 +563,9 @@ class CalendarTimeline(private val host: MainActivity) {
             sectionContainer.addView(headerRow)
 
             if (exams.isEmpty()) {
+                AppGuideHelper.maybeShowExamCountdownNudge(host) {
+                    showAddEditExamModal(null)
+                }
                 // Empty state card
                 val emptyCard = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL

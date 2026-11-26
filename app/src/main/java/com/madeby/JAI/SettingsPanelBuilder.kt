@@ -760,7 +760,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                 layout.addView(createSectionLabel("HELP & SUPPORT"))
                 val helpCard = createSettingsCard()
 
-                val guideRow = createSettingsRow("", "How to Use & App Guide", "")
+                val guideRow = createSettingsRow("", "Feature Guide & Tools", "App Blocker, Flip-to-Focus, Sounds & more")
                 guideRow.setOnClickListener {
                     showAppGuideDialog()
                 }
@@ -2097,10 +2097,11 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         resumeParticipation()
                     }
                 }
-                leaderboardSettingsCard.addView(partRow)
-
-                // Sub-options inside leaderboardSubOptions (Conditional: only visible when participating)
-                leaderboardSubOptions.addView(createDivider())
+                if (LeaderboardManager.ALLOW_LEADERBOARD_PAUSE) {
+                    leaderboardSettingsCard.addView(partRow)
+                    // Sub-options inside leaderboardSubOptions (Conditional: only visible when participating)
+                    leaderboardSubOptions.addView(createDivider())
+                }
 
                 val liveSwitch = SwitchMaterial(this).apply {
                     isChecked = isShareLive
@@ -2579,7 +2580,25 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                         pauseFaceUpContainer.visibility = if (isChecked) View.VISIBLE else View.GONE
                     }
                 }
-                controlsCard.addView(createSettingsRow("", "Flip to Focus", "Turn phone face down to start timer", flipSwitch))
+                val flipRow = createSettingsRow("", "Flip to Focus", "Turn phone face down to start timer", flipSwitch)
+                controlsCard.addView(flipRow)
+                if (AppGuideHelper.pendingHighlightKey == "flip_to_focus") {
+                    AppGuideHelper.pendingHighlightKey = null
+                    flipRow.post {
+                        settingsScrollView.smoothScrollTo(0, (controlsCard.top + flipRow.top - dp(40)).coerceAtLeast(0))
+                        val prevBg = flipRow.background
+                        flipRow.background = GradientDrawable().apply {
+                            cornerRadius = dp(12).toFloat()
+                            setColor(tintedColor(themeCoordinator.primaryColor, 40))
+                            setStroke(dp(1.5f), themeCoordinator.primaryColor)
+                        }
+                        flipRow.postDelayed({
+                            if (!isFinishing && !isDestroyed) {
+                                flipRow.background = prevBg
+                            }
+                        }, 850L)
+                    }
+                }
                 controlsCard.addView(pauseFaceUpContainer)
                 controlsCard.addView(createDivider())
 

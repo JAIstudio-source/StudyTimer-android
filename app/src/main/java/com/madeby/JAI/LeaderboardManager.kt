@@ -319,7 +319,11 @@ object LeaderboardManager {
         return@withContext cached
     }
 
+    // Temporarily keep leaderboard active for all logged-in users until community reaches 100+ users.
+    const val ALLOW_LEADERBOARD_PAUSE = false
+
     fun isParticipating(context: Context): Boolean {
+        if (!ALLOW_LEADERBOARD_PAUSE) return true
         return context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
             .getBoolean("leaderboard_participate", true)
     }
@@ -330,9 +334,10 @@ object LeaderboardManager {
     }
 
     fun setParticipating(context: Context, enabled: Boolean) {
+        val effective = if (!ALLOW_LEADERBOARD_PAUSE) true else enabled
         context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
             .edit()
-            .putBoolean("leaderboard_participate", enabled)
+            .putBoolean("leaderboard_participate", effective)
             .apply()
     }
 

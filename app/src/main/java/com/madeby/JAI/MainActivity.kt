@@ -1740,7 +1740,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     internal fun showAppGuideDialog() {
-        PlannerPanelBuilder(this).showAppGuideDialog()
+        AppGuideHelper.show(this)
     }
 
     internal fun showDeletePlannerGoalMatrixDialog(goalId: String, goalTitle: String, onDeleted: () -> Unit) {
@@ -2688,11 +2688,11 @@ class MainActivity : AppCompatActivity() {
                         }
                     } else {
                         val isChecked = goal.completed
-                        val progressText = if (actualMins > 0) "${actualMins}m" else (if (isChecked) "Done" else "Mark Done")
+                        val progressText = if (isChecked) "Done" else ""
                         val chipColor = if (isChecked) greenColor else plannerPrimary
 
                         (statsContainer.findViewWithTag<TextView>("goal_chip_${goal.id}"))?.let { chip ->
-                            chip.visibility = if (isChecked || actualMins > 0) View.VISIBLE else View.GONE
+                            chip.visibility = if (isChecked) View.VISIBLE else View.GONE
                             chip.text = progressText
                             chip.setTextColor(chipColor)
                             chip.background = themeCoordinator.createGlassChip(tintedColor(chipColor, 50), 8f)
@@ -2931,6 +2931,7 @@ class MainActivity : AppCompatActivity() {
         }
         playToggleFeedback()
         StudyWidgetProvider.refresh(this)
+        AppGuideHelper.maybeShowPauseSoundNudge(this)
     }
 
     internal fun handleStartBreakOnly(breakSecs: Long = 300L) {
@@ -3084,6 +3085,7 @@ class MainActivity : AppCompatActivity() {
             try { rootLayout.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP) } catch (_: Exception) {}
         } else {
             playStopFeedback()
+            AppGuideHelper.maybeShowPostSessionNudge(this, savedStudy)
         }
 
         if (currentPanel == AppPanel.FOCUS) {

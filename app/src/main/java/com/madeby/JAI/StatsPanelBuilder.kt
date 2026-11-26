@@ -711,6 +711,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val todayBH = todayBreak / 3600
         val todayBM = (todayBreak % 3600) / 60
         val streak = snap.streak
+        AppGuideHelper.maybeShowStreakFreezeNudge(host, streak)
 
         val avg7 = snap.avg7
         val avgH = avg7 / 3600
@@ -1663,10 +1664,20 @@ class StatsPanelBuilder(private val host: MainActivity) {
                     background = themeCoordinator.createCardBackground()
                     setPadding(dp(20), dp(28), dp(20), dp(28))
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(8)) }
-                    addView(TextView(host).apply {
-                        text = "\uD83C\uDFA7\uFE0F"
-                        textSize = 36f
-                        gravity = Gravity.CENTER
+                    addView(FrameLayout(host).apply {
+                        layoutParams = LinearLayout.LayoutParams(dp(64), dp(64))
+                        background = GradientDrawable().apply {
+                            shape = GradientDrawable.OVAL
+                            setColor(tintedColor(themeCoordinator.primaryColor, 28))
+                        }
+                        addView(ThemeCoordinator.createIconView(
+                            host,
+                            R.drawable.ic_book,
+                            themeCoordinator.primaryColor,
+                            sizeDp = 30
+                        ).apply {
+                            layoutParams = FrameLayout.LayoutParams(dp(30), dp(30), Gravity.CENTER)
+                        })
                     })
                     addView(TextView(host).apply {
                         text = host.getString(R.string.no_sessions_yet)
@@ -1683,6 +1694,29 @@ class StatsPanelBuilder(private val host: MainActivity) {
                         textSize = 12f
                         gravity = Gravity.CENTER
                         setPadding(0, dp(4), 0, 0)
+                    })
+                    addView(TextView(host).apply {
+                        text = "Explore App Features"
+                        textSize = 12.5f
+                        typeface = themeCoordinator.getAppTypeface(isBold = true)
+                        setTextColor(themeCoordinator.primaryColor)
+                        ThemeCoordinator.setTrailingIcon(this, R.drawable.ic_chevron_right, themeCoordinator.primaryColor, sizeDp = 14, padDp = 4)
+                        background = GradientDrawable().apply {
+                            cornerRadius = dp(14).toFloat()
+                            setColor(tintedColor(themeCoordinator.primaryColor, 26))
+                            setStroke(dp(1), tintedColor(themeCoordinator.primaryColor, 90))
+                        }
+                        setPadding(dp(14), dp(7), dp(12), dp(7))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            setMargins(0, dp(14), 0, 0)
+                        }
+                        setOnClickListener {
+                            it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            host.showAppGuideDialog()
+                        }
                     })
                 })
             } else {

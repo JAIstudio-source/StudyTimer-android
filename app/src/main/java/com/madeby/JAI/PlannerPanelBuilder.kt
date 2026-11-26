@@ -1007,6 +1007,10 @@ class PlannerPanelBuilder(private val host: MainActivity) {
         filterRow.addView(createFilterTab(PlannerFilter.DONE, "Done", completedCount))
         parent.addView(filterRow)
 
+        val hasGoalsWithoutSubjectOrTopic = activeGoalsList.isNotEmpty() &&
+            activeGoalsList.all { (it.subjectId.isNullOrBlank() || it.subjectId == "all") && it.subTopic.isNullOrBlank() }
+        AppGuideHelper.maybeShowPlannerSubjectNudge(host, hasGoalsWithoutSubjectOrTopic)
+
         val filteredGoals = when (currentPlannerFilter) {
             PlannerFilter.ALL -> activeGoalsList.filter { isGoalScheduledToday(it) }
             PlannerFilter.ACTIVE -> activeGoalsList.filter { isGoalScheduledToday(it) && !isGoalDone(it) }
@@ -1185,7 +1189,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         return GoalDisplayInfo(
                             isChecked = true,
                             checkSymbol = "✓",
-                            progressText = if (actualMins > 0) "${actualMins}m" else "Done",
+                            progressText = "Done",
                             chipColor = greenColor,
                             isDeficit = false,
                             isGreyMark = false
@@ -1194,7 +1198,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         return GoalDisplayInfo(
                             isChecked = false,
                             checkSymbol = "",
-                            progressText = if (actualMins > 0) "${actualMins}m" else "",
+                            progressText = "",
                             chipColor = plannerPrimary,
                             isDeficit = false,
                             isGreyMark = false
@@ -1285,7 +1289,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     parent.findViewWithTag<TextView>("goal_chip_${updatedGoal.id}")?.apply {
                         text = newInfo.progressText
                         setTextColor(newInfo.chipColor)
-                        val shouldShow = newInfo.isChecked || (updatedGoal.targetMinutes > 0 || (progressMap[updatedGoal.id]?.actualMinutes ?: 0) > 0)
+                        val shouldShow = newInfo.progressText.isNotEmpty() && (newInfo.isChecked || updatedGoal.targetMinutes > 0)
                         visibility = if (shouldShow) View.VISIBLE else View.GONE
                     }
 
@@ -1634,7 +1638,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     }
                 }
 
-                val shouldShowTime = isChecked || (targetMins > 0 || actualMins > 0)
+                val shouldShowTime = info.progressText.isNotEmpty() && (isChecked || targetMins > 0)
                 val chipTv = TextView(host).apply {
                     tag = "goal_chip_${goal.id}"
                     text = info.progressText
