@@ -14,7 +14,9 @@ import java.util.*
 object LeaderboardManager {
     private const val TAG = "LeaderboardManager"
     private const val CACHE_TTL_MS = 120_000L // 2 minutes in-memory TTL
-    private const val MIN_FETCH_COOLDOWN_MS = 20_000L // 20s cooldown even for forceRefresh
+    private const val MIN_FETCH_COOLDOWN_MS = 45_000L // 45s cooldown even for forceRefresh
+    private const val PROFILE_CACHE_TTL_MS = 1_800_000L // 30 minutes profile cache TTL
+    private val userProfileCacheTimestamps = java.util.concurrent.ConcurrentHashMap<String, Long>()
     const val MAX_DAILY_LEADERBOARD_SECONDS = 57600 // 16 Hours daily sanity hard cap
 
     private data class CacheRecord(
@@ -223,12 +225,27 @@ object LeaderboardManager {
     private fun enrichLeaderboardWithProfiles(supabaseUrl: String, anonKey: String, entries: List<LeaderboardEntry>): List<LeaderboardEntry> {
         if (entries.isEmpty()) return entries
 
+        val now = System.currentTimeMillis()
         val neededUserIds = entries.mapNotNull { e ->
             val uid = e.userId.trim()
-            if (uid.isNotBlank() && !uid.startsWith("guest_")) uid else null
+            if (uid.isNotBlank() && !uid.startsWith("guest_")) {
+                val cachedAt = userProfileCacheTimestamps[uid] ?: 0L
+                if ((now - cachedAt) >= PROFILE_CACHE_TTL_MS || !userProfileCache.containsKey(uid)) uid else null
+            } else null
         }.distinct()
 
-        if (neededUserIds.isEmpty()) return entries
+        if (neededUserIds.isEmpty()) {
+            return entries.map { entry ->
+                val cached = userProfileCache[entry.userId.trim()]
+                if (cached != null) {
+                    entry.copy(
+                        bio = if (cached.bio.isNotBlank()) cached.bio else entry.bio,
+                        examTarget = if (cached.targetExam.isNotBlank()) cached.targetExam else entry.examTarget,
+                        streakDays = if (cached.streakDays > 0) cached.streakDays else entry.streakDays
+                    )
+                } else entry
+            }
+        }
 
         try {
             val idsParam = neededUserIds.joinToString(",") { it }
@@ -242,6 +259,7 @@ object LeaderboardManager {
             conn.readTimeout = 4000
 
             if (conn.responseCode in 200..299) {
+                neededUserIds.forEach { userProfileCacheTimestamps[it] = now }
                 val respText = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
                 if (respText.isNotBlank()) {
                     val arr = JSONArray(respText)
@@ -894,6 +912,11 @@ object LeaderboardManager {
         return (realSessionSum + inFlightStudy + devBonus).coerceAtLeast(0L)
     }
 
+    @Volatile private var lastSyncedOfflineDate: String = ""
+    @Volatile private var lastSyncedOfflineSecs: Int = -1
+    @Volatile private var lastSyncedOfflineStudying: Boolean = false
+    @Volatile private var lastSyncedOfflineAtMs: Long = 0L
+
     /**
      * Verifies all offline study logged in TimelineLogger and syncs the authentic verified
      * total to the daily_leaderboard table on Supabase, strictly filtering out any manual tampering.
@@ -905,13 +928,28 @@ object LeaderboardManager {
         val prefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         val timerState = prefs.getString("timerState", "IDLE") ?: "IDLE"
         val isStudying = (timerState == "STUDYING")
+        val now = System.currentTimeMillis()
+        if (todayStr == lastSyncedOfflineDate &&
+            verifiedSecs == lastSyncedOfflineSecs &&
+            isStudying == lastSyncedOfflineStudying &&
+            (now - lastSyncedOfflineAtMs) < 300_000L
+        ) {
+            return@withContext true
+        }
         val curSub = SubjectTagManager.getSelectedSubject(context)
-        overrideLeaderboardDailyTotal(
+        val ok = overrideLeaderboardDailyTotal(
             context,
             totalSeconds = verifiedSecs,
             isStudying = isStudying,
             subject = curSub.name,
             color = curSub.colorHex
         )
+        if (ok) {
+            lastSyncedOfflineDate = todayStr
+            lastSyncedOfflineSecs = verifiedSecs
+            lastSyncedOfflineStudying = isStudying
+            lastSyncedOfflineAtMs = now
+        }
+        ok
     }
 }

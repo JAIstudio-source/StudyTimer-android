@@ -31,8 +31,8 @@ object AppAnalytics {
     private const val KEY_LAST_FLUSH_TIME = "last_flush_time"
     private const val KEY_LAST_COHORT_SYNC_TIME = "last_cohort_sync_time"
 
-    private const val MIN_FLUSH_INTERVAL_MS = 180000L // 3 minutes throttling for routine events
-    private const val MIN_COHORT_INTERVAL_MS = 300000L // 5 minutes throttling for background syncs
+    private const val MIN_FLUSH_INTERVAL_MS = 900000L // 15 minutes throttling for routine events
+    private const val MIN_COHORT_INTERVAL_MS = 86400000L // 24 hours throttling for background cohort syncs
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val isFlushing = AtomicBoolean(false)

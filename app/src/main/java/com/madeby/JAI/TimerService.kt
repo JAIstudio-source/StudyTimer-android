@@ -1115,7 +1115,7 @@ class TimerService : Service() {
                                 }
                             }
 
-                            if (accumulatedStudy - lastLeaderboardSyncStudySecs >= 20L) {
+                            if (accumulatedStudy - lastLeaderboardSyncStudySecs >= 120L) {
                                 val chunk = (accumulatedStudy - lastLeaderboardSyncStudySecs).toInt()
                                 lastLeaderboardSyncStudySecs = accumulatedStudy
                                 val sub = if (timerMode == "LECTURE" && lectureModeEnabled) {

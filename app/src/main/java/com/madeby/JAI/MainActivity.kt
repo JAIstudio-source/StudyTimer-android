@@ -3892,9 +3892,6 @@ class MainActivity : AppCompatActivity() {
         if (::updateRunnable.isInitialized) {
             handler.removeCallbacks(updateRunnable)
         }
-        if (AuthManager.isLoggedIn(this)) {
-            triggerAutoSyncIfEligible(force = false)
-        }
     }
 
 
@@ -4406,14 +4403,28 @@ class MainActivity : AppCompatActivity() {
     internal fun triggerAutoSyncIfEligible(force: Boolean = false) {
         if (!AuthManager.isLoggedIn(this)) return
         val now = SystemClock.elapsedRealtime()
-        if (!force && (now - lastForegroundSyncCheckTime < 30_000L)) return
+        if (!force && (now - lastForegroundSyncCheckTime < 180_000L)) return
         lastForegroundSyncCheckTime = now
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
+                val localTs = BackupManager(this@MainActivity).getLastModifiedTimestamp()
+                if (!force) {
+                    val lightCloudTs = CloudSyncManager.fetchRemoteTimestampOnly(this@MainActivity)
+                    if (lightCloudTs != null) {
+                        if (kotlin.math.abs(lightCloudTs - localTs) <= 1500L) {
+                            return@launch
+                        }
+                        if (localTs > lightCloudTs + 1500L) {
+                            android.util.Log.i("MainActivity", "Live auto-sync: Local data ($localTs) is newer than cloud ($lightCloudTs). Uploading to cloud...")
+                            CloudSyncManager.syncDataToCloud(this@MainActivity, force = true)
+                            return@launch
+                        }
+                    }
+                }
+
                 val (remoteMeta, rawRecord) = CloudSyncManager.fetchRemoteMetadata(this@MainActivity)
                 if (remoteMeta != null && rawRecord != null) {
-                    val localTs = BackupManager(this@MainActivity).getLastModifiedTimestamp()
                     val cloudTs = maxOf(remoteMeta.lastModifiedTimestamp, remoteMeta.updatedAt)
                     if (cloudTs > localTs + 1500L) {
                         android.util.Log.i("MainActivity", "Live auto-sync: Cloud data ($cloudTs) is newer than local ($localTs). Merging in background...")

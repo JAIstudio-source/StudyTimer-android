@@ -96,7 +96,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
         pollJob?.cancel()
         pollJob = CoroutineScope(Dispatchers.Main).launch {
             while (true) {
-                kotlinx.coroutines.delay(30_000L)
+                kotlinx.coroutines.delay(90_000L)
                 if (!root.isAttachedToWindow) break
                 if (!isLoading) {
                     loadLeaderboardData(root, forceRefresh = true, isSilent = true)
@@ -434,7 +434,7 @@ class LeaderboardPanelBuilder(private val host: MainActivity) {
                 host,
                 java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
             ).toInt()
-            if (todayRealSecs > 0 && AuthManager.isLoggedIn(host) && LeaderboardManager.isParticipating(host) && (nowMs - lastPresenceSyncTimestamp >= 20_000L)) {
+            if (todayRealSecs > 0 && AuthManager.isLoggedIn(host) && LeaderboardManager.isParticipating(host) && (nowMs - lastPresenceSyncTimestamp >= 60_000L)) {
                 lastPresenceSyncTimestamp = nowMs
                 val sp = host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
                 val tState = sp.getString("timerState", "IDLE") ?: "IDLE"

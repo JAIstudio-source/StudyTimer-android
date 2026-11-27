@@ -104,6 +104,55 @@ object CloudSyncManager {
         data class Error(val message: String) : SyncCheckResult()
     }
 
+    /**
+     * Lightweight check that fetches only timestamp columns (~60 bytes) instead of the full
+     * prefs_data blob, so routine foreground sync checks avoid unnecessary egress.
+     * Returns max(last_modified_timestamp, updated_at), or null if no direct user_id row exists.
+     */
+    suspend fun fetchRemoteTimestampOnly(context: Context): Long? = withContext(Dispatchers.IO) {
+        val supabaseUrl = BuildConfig.SUPABASE_URL
+        val anonKey = BuildConfig.SUPABASE_ANON_KEY
+        val userId = AuthManager.getUserId(context)
+        if (supabaseUrl.isBlank() || anonKey.isBlank() || userId.isNullOrBlank()) return@withContext null
+
+        try {
+            var authToken = resolveAuthToken(context, anonKey)
+            val encodedUserId = java.net.URLEncoder.encode(userId, "UTF-8")
+            val url = URL("$supabaseUrl/rest/v1/user_sync_data?user_id=eq.$encodedUserId&order=updated_at.desc&limit=1&select=updated_at,last_modified_timestamp")
+            var conn = url.openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("apikey", anonKey)
+            conn.setRequestProperty("Authorization", "Bearer $authToken")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.connectTimeout = 6000
+            conn.readTimeout = 6000
+
+            var code = conn.responseCode
+            if (code == 401 && authToken != anonKey) {
+                authToken = anonKey
+                conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("apikey", anonKey)
+                conn.setRequestProperty("Authorization", "Bearer $anonKey")
+                conn.setRequestProperty("Accept", "application/json")
+                conn.connectTimeout = 6000
+                conn.readTimeout = 6000
+                code = conn.responseCode
+            }
+            if (code !in 200..299) return@withContext null
+            val body = conn.inputStream.bufferedReader().use { it.readText() }
+            if (body.isBlank()) return@withContext null
+            val arr = org.json.JSONArray(body)
+            if (arr.length() == 0) return@withContext null
+            val row = arr.getJSONObject(0)
+            val updatedAt = row.optLong("updated_at", 0L)
+            val lastMod = row.optLong("last_modified_timestamp", updatedAt)
+            maxOf(if (lastMod > 0L) lastMod else updatedAt, updatedAt)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     suspend fun fetchRemoteMetadata(context: Context): Pair<CloudRecordMetadata?, JSONObject?> = withContext(Dispatchers.IO) {
         val supabaseUrl = BuildConfig.SUPABASE_URL
         val anonKey = BuildConfig.SUPABASE_ANON_KEY
