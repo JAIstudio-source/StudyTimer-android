@@ -45,32 +45,35 @@ object OnboardingDialogHelper {
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE)
         dialog.setCancelable(false)
 
+        val theme = activity.themeCoordinator
+        val isDark = theme.isDarkMode()
+        val canvasBg = if (isDark) 0xFF000000.toInt() else Color.WHITE
+        val primary = theme.primaryColor
+
         val window = dialog.window
         window?.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-        window?.setBackgroundDrawable(ColorDrawable(Color.WHITE))
+        window?.setBackgroundDrawable(ColorDrawable(canvasBg))
         window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
 
-        // Ensure status bar & navigation bar icons are dark (light theme)
+        // Ensure status bar & navigation bar icons match theme
         if (window != null) {
-            window.statusBarColor = Color.WHITE
-            window.navigationBarColor = Color.WHITE
+            window.statusBarColor = canvasBg
+            window.navigationBarColor = canvasBg
             val insetsController = WindowCompat.getInsetsController(window, window.decorView)
-            insetsController.isAppearanceLightStatusBars = true
-            insetsController.isAppearanceLightNavigationBars = true
+            insetsController.isAppearanceLightStatusBars = !isDark
+            insetsController.isAppearanceLightNavigationBars = !isDark
         }
-
-        val theme = activity.themeCoordinator
-        val primary = theme.primaryColor
 
         fun dp(v: Int): Int = activity.dp(v)
 
-        // Clean White Canvas & Stark Black/Slate Typography
-        val textPrimary = 0xFF0F172A.toInt()      // Deep obsidian slate / black
-        val textSecondary = 0xFF475569.toInt()    // Slate neutral (7.58:1 on #FFFFFF)
-        val textMuted = 0xFF64748B.toInt()        // Accessible muted slate (4.76:1 on #FFFFFF)
-        val tileBgNormal = 0xFFF8FAFC.toInt()     // Soft clean off-white card surface
-        val tileBorderNormal = 0xFFCBD5E1.toInt() // Crisp 1dp border with stronger edge contrast
-        val tileBgSelected = Color.argb(22, Color.red(primary), Color.green(primary), Color.blue(primary))
+        // Adaptive Canvas & Typography
+        val textPrimary = if (isDark) 0xFFFFFFFF.toInt() else 0xFF0F172A.toInt()
+        val textSecondary = if (isDark) 0xFFCBD5E1.toInt() else 0xFF475569.toInt()
+        val textMuted = if (isDark) 0xFF94A3B8.toInt() else 0xFF64748B.toInt()
+        val tileBgNormal = if (isDark) 0xFF12141E.toInt() else 0xFFF8FAFC.toInt()
+        val tileBorderNormal = if (isDark) 0xFF262A38.toInt() else 0xFFCBD5E1.toInt()
+        val chipBgNormal = if (isDark) 0xFF181B26.toInt() else Color.WHITE
+        val tileBgSelected = Color.argb(if (isDark) 38 else 22, Color.red(primary), Color.green(primary), Color.blue(primary))
         val tileBorderSelected = primary
         val onPrimaryText = ThemeCoordinator.getContrastColor(primary)
 
@@ -104,7 +107,7 @@ object OnboardingDialogHelper {
         // Root container with clean white background
         val rootLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.WHITE)
+            setBackgroundColor(canvasBg)
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -424,8 +427,8 @@ object OnboardingDialogHelper {
                         setPadding(dp(18), dp(16), dp(18), dp(16))
                         background = GradientDrawable().apply {
                             cornerRadius = dp(16).toFloat()
-                            setColor(0xFFF8FAFC.toInt())
-                            setStroke(dp(1), 0xFFE2E8F0.toInt())
+                            setColor(tileBgNormal)
+                            setStroke(dp(1), tileBorderNormal)
                         }
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -440,8 +443,8 @@ object OnboardingDialogHelper {
                         })
                         setOnFocusChangeListener { _, hasFocus ->
                             (background as? GradientDrawable)?.apply {
-                                setStroke(if (hasFocus) dp(2) else dp(1), if (hasFocus) primary else 0xFFE2E8F0.toInt())
-                                setColor(if (hasFocus) Color.WHITE else 0xFFF8FAFC.toInt())
+                                setStroke(if (hasFocus) dp(2) else dp(1), if (hasFocus) primary else tileBorderNormal)
+                                setColor(if (hasFocus) chipBgNormal else tileBgNormal)
                             }
                         }
                         setOnEditorActionListener { _, actionId, _ ->
@@ -678,8 +681,8 @@ object OnboardingDialogHelper {
                                         setPadding(dp(10), dp(8), dp(10), dp(8))
                                         background = GradientDrawable().apply {
                                             cornerRadius = dp(8).toFloat()
-                                            setColor(if (isExamSel) primary else Color.WHITE)
-                                            setStroke(dp(1), if (isExamSel) primary else 0xFFCBD5E1.toInt())
+                                            setColor(if (isExamSel) primary else chipBgNormal)
+                                            setStroke(dp(1), if (isExamSel) primary else tileBorderNormal)
                                         }
                                         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f).apply {
                                             if (i % 2 == 0) marginEnd = dp(6)
@@ -691,8 +694,8 @@ object OnboardingDialogHelper {
                                                 c.typeface = theme.getAppTypeface(isBold = sel)
                                                 c.setTextColor(if (sel) onPrimaryText else textPrimary)
                                                 (c.background as? GradientDrawable)?.apply {
-                                                    setColor(if (sel) primary else Color.WHITE)
-                                                    setStroke(dp(1), if (sel) primary else 0xFFCBD5E1.toInt())
+                                                    setColor(if (sel) primary else chipBgNormal)
+                                                    setStroke(dp(1), if (sel) primary else tileBorderNormal)
                                                 }
                                             }
                                             titleTv.typeface = theme.getAppTypeface(isBold = true)
@@ -784,14 +787,14 @@ object OnboardingDialogHelper {
                             isAllCaps = false
                             textSize = 14.5f
                             typeface = theme.getAppTypeface(isBold = isSelected)
-                            setTextColor(if (isSelected) Color.WHITE else 0xFF334155.toInt())
+                            setTextColor(if (isSelected) onPrimaryText else textSecondary)
                             background = GradientDrawable().apply {
                                 cornerRadius = dp(14).toFloat()
                                 if (isSelected) {
                                     setColor(primary)
                                 } else {
-                                    setColor(0xFFF1F5F9.toInt())
-                                    setStroke(dp(1), 0xFFE2E8F0.toInt())
+                                    setColor(tileBgNormal)
+                                    setStroke(dp(1), tileBorderNormal)
                                 }
                             }
                             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
@@ -824,7 +827,7 @@ object OnboardingDialogHelper {
                             Pair("Pomodoro Technique (25/5)", "Structured focus intervals with automatic resting breaks")
                         ),
                         Triple(
-                            "SUBJECT",
+                            "STOPWATCH",
                             "⏳",
                             Pair("Stopwatch (Count-Up)", "Continuous flow timer for open-ended deep sessions")
                         )
@@ -876,13 +879,20 @@ object OnboardingDialogHelper {
                 )
                 ProfileManager.saveProfile(activity, newProfile)
 
+                activity.timerMode = selectedTimerMode
+                if (selectedTimerMode == "STOPWATCH" && activity.currentTimerState == TimerState.IDLE) {
+                    activity.focusRemainingSecs = 0L
+                }
                 prefs.edit()
                     .putString("custom_display_name", validName)
                     .putString("user_target_focus", selectedFocus)
                     .putString("target_exam", selectedFocus)
                     .putString("timer_mode", selectedTimerMode)
+                    .putString("timerMode", selectedTimerMode)
                     .putBoolean("has_completed_onboarding_v2", true)
                     .apply()
+
+                SubjectTagManager.seedDefaultSubjectsForExam(activity, selectedFocus)
 
                 dialog.dismiss()
                 activity.buildCurrentPanel()

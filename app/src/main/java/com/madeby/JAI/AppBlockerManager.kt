@@ -222,6 +222,39 @@ object AppBlockerManager {
         return hasUsageStatsPermission(context) && hasOverlayPermission(context)
     }
 
+    fun canActivateBlocker(context: Context): Boolean {
+        return hasOverlayPermission(context)
+    }
+
+    fun isFocusLockMode(context: Context): Boolean {
+        return !hasUsageStatsPermission(context) && hasOverlayPermission(context)
+    }
+
+    const val FOCUS_LOCK_PACKAGE = "focus_lock_mode"
+
+    /**
+     * Triggered when the user leaves StudyTimer during an active study session while in
+     * Focus Lock mode (Overlay permission granted, Usage Access skipped).
+     */
+    fun onStudyTimerLeftForeground(context: Context) {
+        if (!isEnabled(context)) return
+        if (isEmergencyBypassActive()) return
+        if (!isFocusLockMode(context)) return
+
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        if (powerManager?.isInteractive == false) return
+
+        val sp = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        if (sp.getString("timerState", "IDLE") != "STUDYING") return
+
+        if (BlockerOverlayWindowManager.isShowing()) return
+
+        lastOverlayLaunchTime = System.currentTimeMillis()
+        currentBlockedPackage = FOCUS_LOCK_PACKAGE
+        muteBackgroundMedia(context)
+        BlockerOverlayWindowManager.show(context, FOCUS_LOCK_PACKAGE)
+    }
+
     // --- System & Essential Package Filtering ---
 
     /**

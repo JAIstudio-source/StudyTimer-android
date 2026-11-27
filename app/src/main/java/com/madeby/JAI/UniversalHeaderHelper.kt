@@ -34,6 +34,9 @@ object UniversalHeaderHelper {
         val primary = theme.primaryColor
         val textColor = theme.textColor
         val isPomoWhite = activity.isPomodoroPureWhiteActive()
+        val isWallpaperActive = WallpaperManager.getWallpaperType(activity) != WallpaperManager.TYPE_NONE
+        val isBrightUnder = WallpaperManager.isBackgroundUnderTimerBright(activity)
+        val isBrightSurface = if (isWallpaperActive) isBrightUnder else (isPomoWhite || !isDark)
         val prefs = activity.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
 
         fun dp(v: Int): Int = activity.dp(v)
@@ -56,11 +59,11 @@ object UniversalHeaderHelper {
                     setColor(0xFFF1F5F9.toInt())
                     setStroke(dp(1), 0xFFCBD5E1.toInt())
                 }
-            } else if (!isDark) {
+            } else if (isBrightSurface) {
                 GradientDrawable().apply {
                     cornerRadius = dp(18).toFloat()
-                    setColor(0xFFFFFFFF.toInt())
-                    setStroke(dp(1), 0xFFE2E8F0.toInt())
+                    setColor(if (theme.isGlassStyle()) 0x99FFFFFF.toInt() else 0xFFFFFFFF.toInt())
+                    setStroke(dp(1), if (theme.isGlassStyle()) 0x99CBD5E1.toInt() else 0xFFE2E8F0.toInt())
                 }
             } else {
                 theme.createGlassChip(activity.tintedColor(primary, 40), 18f)
@@ -126,7 +129,7 @@ object UniversalHeaderHelper {
             text = displayName
             textSize = 13f
             typeface = theme.getAppTypeface(isBold = true)
-            setTextColor(if (isPomoWhite) 0xFF0F172A.toInt() else textColor)
+            setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt())
             setSingleLine(true)
             ellipsize = android.text.TextUtils.TruncateAt.END
             maxWidth = if (!title.isNullOrBlank()) dp(62) else dp(115)

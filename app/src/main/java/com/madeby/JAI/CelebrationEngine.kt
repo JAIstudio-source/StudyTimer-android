@@ -40,6 +40,11 @@ object CelebrationEngine {
     private const val KEY_LAST_CELEBRATED_STREAK = "last_celebrated_streak"
     private const val KEY_LAST_CELEBRATED_GOAL_DATE = "last_celebrated_goal_date"
     private const val KEY_LAST_CELEBRATED_STREAK_DATE = "last_celebrated_streak_date"
+    private const val KEY_PENDING_STREAK = "pending_streak_celebration"
+    private const val KEY_PENDING_STREAK_OLD = "pending_streak_old"
+    private const val KEY_PENDING_STREAK_NEW = "pending_streak_new"
+    private const val KEY_PENDING_STREAK_MILESTONE = "pending_streak_milestone"
+    private const val KEY_PENDING_STREAK_DATE = "pending_streak_date"
 
     enum class BloomShape {
         STAR_4,
@@ -96,25 +101,55 @@ object CelebrationEngine {
 
             val oldStreak = if (lastStreak > 0 && lastStreak < currentStreak) lastStreak else (currentStreak - 1).coerceAtLeast(0)
 
+            if (isStreakIncreased && activity.currentPanel != AppPanel.STATS) {
+                prefs.edit()
+                    .putBoolean(KEY_PENDING_STREAK, true)
+                    .putInt(KEY_PENDING_STREAK_OLD, oldStreak)
+                    .putInt(KEY_PENDING_STREAK_NEW, currentStreak)
+                    .putBoolean(KEY_PENDING_STREAK_MILESTONE, isNewStreakMilestone)
+                    .putString(KEY_PENDING_STREAK_DATE, todayStr)
+                    .apply()
+            }
+
             activity.runOnUiThread {
-                if (isNewGoalAchieved && isStreakIncreased) {
-                    val onStreakDismiss: () -> Unit = {
-                        showCelebrationDialog(activity, isGoalAchieved = true, streak = currentStreak)
-                    }
-                    if (isNewStreakMilestone) {
-                        showCelebrationDialog(activity, isGoalAchieved = false, streak = currentStreak, onDismiss = onStreakDismiss)
-                    } else {
-                        StreakUpAnimationDialog.show(activity, oldStreak = oldStreak, newStreak = currentStreak, onDismiss = onStreakDismiss)
-                    }
-                } else if (isNewStreakMilestone) {
-                    showCelebrationDialog(activity, isGoalAchieved = false, streak = currentStreak)
-                } else if (isStreakIncreased) {
-                    StreakUpAnimationDialog.show(activity, oldStreak = oldStreak, newStreak = currentStreak)
-                } else if (isNewGoalAchieved) {
+                if (isNewGoalAchieved) {
                     showCelebrationDialog(activity, isGoalAchieved = true, streak = currentStreak)
+                } else if (isStreakIncreased && activity.currentPanel == AppPanel.STATS) {
+                    if (isNewStreakMilestone) {
+                        showCelebrationDialog(activity, isGoalAchieved = false, streak = currentStreak)
+                    } else {
+                        StreakUpAnimationDialog.show(activity, oldStreak = oldStreak, newStreak = currentStreak)
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Displays the deferred streak celebration when the user opens the Insights tab.
+     */
+    fun showPendingStreakIfNeeded(activity: MainActivity) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        val prefs = activity.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(KEY_PENDING_STREAK, false)) return
+
+        val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+        val pendingDate = prefs.getString(KEY_PENDING_STREAK_DATE, null)
+        val oldStreak = prefs.safeInt(KEY_PENDING_STREAK_OLD, 0)
+        val newStreak = prefs.safeInt(KEY_PENDING_STREAK_NEW, 1)
+        val isMilestone = prefs.getBoolean(KEY_PENDING_STREAK_MILESTONE, false)
+
+        prefs.edit().putBoolean(KEY_PENDING_STREAK, false).apply()
+        if (pendingDate != todayStr || newStreak <= 0) return
+
+        activity.window.decorView.postDelayed({
+            if (activity.isFinishing || activity.isDestroyed || activity.currentPanel != AppPanel.STATS) return@postDelayed
+            if (isMilestone) {
+                showCelebrationDialog(activity, isGoalAchieved = false, streak = newStreak)
+            } else {
+                StreakUpAnimationDialog.show(activity, oldStreak = oldStreak, newStreak = newStreak)
+            }
+        }, 250L)
     }
 
     private data class StreakMilestoneInfo(
@@ -201,8 +236,7 @@ object CelebrationEngine {
             val milestoneInfo = getStreakMilestoneInfo(streak, primaryColor)
             val strokeColor = if (isGoalAchieved) primaryColor else milestoneInfo.accentColor
 
-            // Multi-sensory rewards: Sound + Haptics
-            StudyAudioManager.playCelebrationSound(activity)
+            // Multi-sensory feedback: Haptics
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 activity.window.decorView.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
             }

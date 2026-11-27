@@ -711,6 +711,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val todayBH = todayBreak / 3600
         val todayBM = (todayBreak % 3600) / 60
         val streak = snap.streak
+        CelebrationEngine.showPendingStreakIfNeeded(host)
         AppGuideHelper.maybeShowStreakFreezeNudge(host, streak)
 
         val avg7 = snap.avg7
@@ -820,25 +821,6 @@ class StatsPanelBuilder(private val host: MainActivity) {
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
         })
 
-        val trendChip = TextView(host).apply {
-            tag = "overview_trend_chip"
-            textSize = 11.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(8), dp(3), dp(8), dp(3))
-            val overM = ((todayFocus - heroGoalSecs) / 60L)
-            if (goalReached && overM > 0L) {
-                text = "+${overM}m over goal"
-                setTextColor(0xFF43D36E.toInt())
-                background = GradientDrawable().apply { cornerRadius = dp(8).toFloat(); setColor(0x2243D36E.toInt()) }
-                visibility = View.VISIBLE
-            } else {
-                visibility = View.GONE
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                setMargins(dp(8), 0, 0, dp(4))
-            }
-        }
-        timeRow.addView(trendChip)
         counterCol.addView(timeRow)
 
         val targetSubtext = TextView(host).apply {
@@ -930,7 +912,13 @@ class StatsPanelBuilder(private val host: MainActivity) {
         }
 
         val remainingSecs = (heroGoalSecs - todayFocus).coerceAtLeast(0L)
-        val remainingLabel = if (goalReached) "Goal Reached!" else "${formatGoalLabel(remainingSecs)} left"
+        val overSecs = (todayFocus - heroGoalSecs).coerceAtLeast(0L)
+        val overM = overSecs / 60L
+        val remainingLabel = when {
+            goalReached && overM > 0L -> "+${formatGoalLabel(overSecs)} over goal"
+            goalReached -> "Goal Reached!"
+            else -> "${formatGoalLabel(remainingSecs)} left"
+        }
         val breakLabel = if (todayBH > 0) "${todayBH}h ${todayBM}m break" else "${todayBM}m break"
         inlineBadgesRow.addView(createPillBadge("", remainingLabel, isGreenAccent = goalReached, viewTag = "overview_remaining_badge"))
         inlineBadgesRow.addView(createPillBadge("", breakLabel, viewTag = "overview_break_badge"))

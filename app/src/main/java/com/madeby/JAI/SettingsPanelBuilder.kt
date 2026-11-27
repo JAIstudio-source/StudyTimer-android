@@ -3363,6 +3363,28 @@ layout.addView(reminderCard)
                 }
                 bgAndStyleContainer.addView(bgRowTitle)
 
+                val followSystem = sharedPrefs.getBoolean("follow_system_theme", false)
+                val followSystemSwitch = SwitchMaterial(this).apply {
+                    isChecked = followSystem
+                    setOnCheckedChangeListener { _, isChecked ->
+                        HapticFeedbackHelper.performMicroHaptic(host, this)
+                        pendingSettingsScrollY = settingsScrollView.scrollY
+                        host.tabPageCache.clear()
+                        sharedPrefs.edit().putBoolean("follow_system_theme", isChecked).apply()
+                        themeCoordinator.applyThemeCoordinates()
+                        navigateToPanel(AppPanel.SETTINGS)
+                    }
+                }
+                val followRow = createSettingsRow(
+                    "",
+                    "Follow System Theme",
+                    "Automatically match device Dark / Light mode",
+                    followSystemSwitch
+                ).apply {
+                    setPadding(dp(2), 0, 0, dp(10))
+                }
+                bgAndStyleContainer.addView(followRow)
+
                 val activeMode = themeCoordinator.activeBgMode
                 data class BgOption(val key: String, val name: String, val surfaceColor: Int, val isSelected: Boolean)
                 val bgOptions = listOf(
@@ -3422,7 +3444,10 @@ layout.addView(reminderCard)
                         HapticFeedbackHelper.performMicroHaptic(host, it)
                         pendingSettingsScrollY = settingsScrollView.scrollY
                         host.tabPageCache.clear()
-                        sharedPrefs.edit().putString("activeBgMode", opt.key).apply()
+                        sharedPrefs.edit()
+                            .putBoolean("follow_system_theme", false)
+                            .putString("activeBgMode", opt.key)
+                            .apply()
                         themeCoordinator.applyThemeCoordinates()
                         navigateToPanel(AppPanel.SETTINGS)
                     }

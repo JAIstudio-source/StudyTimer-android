@@ -203,6 +203,7 @@ class StudyScorecardExportHelper(private val host: MainActivity) {
                     GradientDrawable().apply {
                         cornerRadius = dp(14).toFloat()
                         setColor(if (themeCoordinator.isDarkMode()) 0xFF1E212D.toInt() else 0xFFF1F5F9.toInt())
+                        setStroke(dp(1), if (themeCoordinator.isDarkMode()) 0x26FFFFFF.toInt() else 0xFFCBD5E1.toInt())
                     }
                 }
             }
@@ -234,17 +235,18 @@ class StudyScorecardExportHelper(private val host: MainActivity) {
             for ((idx, fPair) in formats.withIndex()) {
                 val chip = formatChips.getOrNull(idx) ?: continue
                 val isSel = fPair.first == selectedFormat
-                chip.setTextColor(if (isSel) ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor) else themeCoordinator.textColor)
+                chip.setTextColor(if (isSel) 0xFFFFFFFF.toInt() else themeCoordinator.textColor)
                 chip.background = if (isSel) {
                     GradientDrawable().apply {
                         cornerRadius = dp(12).toFloat()
                         setColor(0xFF0F172A.toInt())
-                        setStroke(dp(1), themeCoordinator.primaryColor)
+                        setStroke(dp(2), themeCoordinator.primaryColor)
                     }
                 } else {
                     GradientDrawable().apply {
                         cornerRadius = dp(12).toFloat()
                         setColor(if (themeCoordinator.isDarkMode()) 0xFF1E212D.toInt() else 0xFFF1F5F9.toInt())
+                        setStroke(dp(1), if (themeCoordinator.isDarkMode()) 0x26FFFFFF.toInt() else 0xFFCBD5E1.toInt())
                     }
                 }
             }

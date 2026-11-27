@@ -925,17 +925,23 @@ class MainActivity : AppCompatActivity() {
 
         val sharedPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         if (!sharedPrefs.contains("activeBgMode")) {
+            val isSystemDark = (resources.configuration.uiMode and
+                Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
             sharedPrefs.edit()
-                .putString("activeBgMode", "LIGHT")
+                .putString("activeBgMode", if (isSystemDark) "OLED" else "LIGHT")
+                .putBoolean("follow_system_theme", true)
                 .putString("ui_style", "GLASS")
-                .putString("wallpaper_type", WallpaperManager.TYPE_PRESET)
-                .putString("wallpaper_preset_id", "stationery_nordic_mint")
+                .putString(
+                    "wallpaper_type",
+                    if (isSystemDark) WallpaperManager.TYPE_LIVE_COSMIC else WallpaperManager.TYPE_PRESET
+                )
+                .putString("wallpaper_preset_id", "stationery_warm_parchment")
                 .putFloat("wallpaper_dim_alpha", 0.0f)
                 .putBoolean("wallpaper_user_set_dim", true)
-                .putInt("customHue", 243)
-                .putInt("customPrimary", Color.parseColor("#4F46E5"))
-                .putInt("customSecondaryHue", 199)
-                .putInt("customSecondary", Color.parseColor("#0284C7"))
+                .putInt("customHue", 198)
+                .putInt("customPrimary", Color.parseColor("#38BDF8"))
+                .putInt("customSecondaryHue", 234)
+                .putInt("customSecondary", Color.parseColor("#818CF8"))
                 .putString("timer_mode", "SUBJECT")
                 .putBoolean("enable_subject_tagging", true)
                 .putBoolean("show_subject_pie_chart", true)
@@ -1242,6 +1248,21 @@ class MainActivity : AppCompatActivity() {
 
         applyLayoutInsetsForOrientation(newConfig.orientation)
 
+        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val isSystemDark = (newConfig.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+        val themeChangedBySystem = if (prefs.getBoolean("follow_system_theme", false)) {
+            val targetMode = if (isSystemDark) "OLED" else "LIGHT"
+            if (themeCoordinator.activeBgMode != targetMode) {
+                themeCoordinator.applyThemeCoordinates(systemDarkOverride = isSystemDark)
+                tabPageCache.clear()
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+
         if (orientationChanged) {
             isPortraitFullscreenActive = false
             if (isLandscape && currentPanel == AppPanel.FOCUS) {
@@ -1263,6 +1284,10 @@ class MainActivity : AppCompatActivity() {
                     .start()
             }
         } else {
+            if (themeChangedBySystem) {
+                buildCurrentPanel()
+                updateVisualStyles()
+            }
             if (isLandscape && currentPanel == AppPanel.FOCUS) {
                 applyImmersiveModeForLandscape()
             } else if (isPortraitFullscreenActive && currentPanel == AppPanel.FOCUS) {
@@ -2746,7 +2771,13 @@ class MainActivity : AppCompatActivity() {
                     it.text = if (goalReached) "✓" else "${heroGoalPctRaw.toInt()}%"
                 }
                 val remainingSecs = (heroGoalSecs - todayFocus).coerceAtLeast(0L)
-                val remainingLabel = if (goalReached) "Goal Reached!" else "${formatGoalLabel(remainingSecs)} left"
+                val overSecs = (todayFocus - heroGoalSecs).coerceAtLeast(0L)
+                val overM = overSecs / 60L
+                val remainingLabel = when {
+                    goalReached && overM > 0L -> "+${formatGoalLabel(overSecs)} over goal"
+                    goalReached -> "Goal Reached!"
+                    else -> "${formatGoalLabel(remainingSecs)} left"
+                }
                 (statsContainer.findViewWithTag<TextView>("overview_remaining_badge"))?.let {
                     it.text = remainingLabel
                 }
@@ -3259,11 +3290,9 @@ class MainActivity : AppCompatActivity() {
         val isBrightSurface = if (isWallpaperActive) isBrightUnderTimer else (isPomoWhite || !themeCoordinator.isDarkMode())
 
         val timerColor = if (isBrightSurface) {
-            0xFF0F172A.toInt() // High-contrast obsidian slate for bright backgrounds
-        } else if (pureWhiteTimerEnabled() || (isWallpaperActive && !isBrightUnderTimer)) {
-            0xFFFFFFFF.toInt() // Crisp pure white for dark backgrounds
+            0xFF0F172A.toInt() // High-contrast dark slate for bright backgrounds
         } else {
-            themeCoordinator.primaryColor
+            0xFFFFFFFF.toInt() // Crisp pure white for dark backgrounds
         }
 
         val dynamicBtnTextColor = if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt()
@@ -3289,7 +3318,7 @@ class MainActivity : AppCompatActivity() {
             ThemeCoordinator.getContrastColor(themeCoordinator.primaryColor)
         }
 
-        if (isPomoWhite) {
+        if (::studyTimerDisplay.isInitialized) {
             studyTimerDisplay.setShadowLayer(0f, 0f, 0f, 0)
         }
 
@@ -3378,10 +3407,10 @@ class MainActivity : AppCompatActivity() {
                     applyStatusBadgePill(stateTitle, null, null)
                 }
                 studyTimerDisplay.setTextColor(timerColor)
-                if (isPomoWhite) {
-                    breakTimerDisplay.setTextColor(0xFF64748B.toInt())
+                if (isBrightSurface) {
+                    breakTimerDisplay.setTextColor(0xFF475569.toInt())
                 } else {
-                    breakTimerDisplay.setTextColor(themeCoordinator.textColor)
+                    breakTimerDisplay.setTextColor(0xFFFFFFFF.toInt())
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = if (isLandscapeOrientation || timerMode == "COUNTDOWN") View.GONE else View.VISIBLE
 
@@ -3470,7 +3499,7 @@ class MainActivity : AppCompatActivity() {
                     studyTimerDisplay.setTextColor(0xFF64748B.toInt())
                     breakTimerDisplay.setTextColor(0xFF000000.toInt())
                 } else {
-                    studyTimerDisplay.setTextColor(if (pureWhiteTimerEnabled()) 0xFFFFFFFF.toInt() else themeCoordinator.textColor)
+                    studyTimerDisplay.setTextColor(if (isBrightSurface) 0xFF64748B.toInt() else 0xFFFFFFFF.toInt())
                     breakTimerDisplay.setTextColor(themeCoordinator.secondaryColor)
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = View.VISIBLE
@@ -3530,10 +3559,10 @@ class MainActivity : AppCompatActivity() {
                 val pauseBorder = if (isBrightSurface) 0x66D97706.toInt() else Color.argb(120, Color.red(pauseAmber), Color.green(pauseAmber), Color.blue(pauseAmber))
                 applyStatusBadgePill(getString(R.string.paused), pauseText, pauseBorder)
                 studyTimerDisplay.setTextColor(timerColor)
-                if (isPomoWhite) {
-                    breakTimerDisplay.setTextColor(0xFF64748B.toInt())
+                if (isBrightSurface) {
+                    breakTimerDisplay.setTextColor(0xFF475569.toInt())
                 } else {
-                    breakTimerDisplay.setTextColor(themeCoordinator.textColor)
+                    breakTimerDisplay.setTextColor(0xFFFFFFFF.toInt())
                 }
                 if (!isZenModeActive) breakTimerDisplay.visibility = if (isLandscapeOrientation || (timerMode == "COUNTDOWN" && currentBreakSeconds == 0L)) View.GONE else View.VISIBLE
 
@@ -3782,6 +3811,18 @@ class MainActivity : AppCompatActivity() {
             handler.post(updateRunnable)
         }
         val conf = resources.configuration
+        val prefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        if (prefs.getBoolean("follow_system_theme", false)) {
+            val appUiMode = applicationContext.resources.configuration.uiMode
+            val isSystemDark = (appUiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+            val targetMode = if (isSystemDark) "OLED" else "LIGHT"
+            if (themeCoordinator.activeBgMode != targetMode) {
+                themeCoordinator.applyThemeCoordinates(systemDarkOverride = isSystemDark)
+                tabPageCache.clear()
+                buildCurrentPanel()
+                updateVisualStyles()
+            }
+        }
         val currentOrientation = when (conf.orientation) {
             Configuration.ORIENTATION_LANDSCAPE -> Configuration.ORIENTATION_LANDSCAPE
             Configuration.ORIENTATION_PORTRAIT -> Configuration.ORIENTATION_PORTRAIT
@@ -3810,6 +3851,13 @@ class MainActivity : AppCompatActivity() {
         checkCelebration()
         triggerAutoSyncIfEligible()
         syncFlipToFocusState()
+        if (AppBlockerManager.isEnabled(this) && !AppBlockerManager.canActivateBlocker(this)) {
+            AppBlockerManager.setEnabled(this, false)
+            if (currentPanel == AppPanel.SETTINGS) {
+                tabPageCache.clear()
+                buildCurrentPanel()
+            }
+        }
         AppBlockerManager.onStudyTimerResumed(this)
         val oldProfile = ProfileManager.getProfile(this)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
@@ -4396,10 +4444,20 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (currentTimerState == TimerState.STUDYING) {
+            AppBlockerManager.onStudyTimerLeftForeground(this)
+        }
+    }
+
     override fun onStop() {
         super.onStop()
         hasPlayedStatsEntranceAnimation = false
         CommunityPanelBuilder.cancelActivePolling()
+        if (!isChangingConfigurations && !isFinishing && currentTimerState == TimerState.STUDYING) {
+            AppBlockerManager.onStudyTimerLeftForeground(this)
+        }
         if (AuthManager.isLoggedIn(this)) {
             triggerAutoSyncIfEligible(force = false)
         }

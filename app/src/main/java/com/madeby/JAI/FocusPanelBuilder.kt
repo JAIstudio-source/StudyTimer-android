@@ -507,9 +507,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
                 setPadding(0, 0, 0, 5)
-                if (themeCoordinator.isGlassStyle() && !pureWhiteTimerEnabled() && !isPomoWhite) {
-                    setShadowLayer(16f, 0f, 0f, tintedColor(themeCoordinator.primaryColor, 90))
-                }
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
             }
 
@@ -564,7 +561,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 text = "Double-tap to pause • Tap for fullscreen"
                 textSize = 11.5f
                 letterSpacing = 0.04f
-                setTextColor(if (isBrightSurface) 0xFF475569.toInt() else tintedColor(themeCoordinator.textColor, if (themeCoordinator.isDarkMode()) 95 else 115))
+                setTextColor(if (isBrightSurface) 0xFF475569.toInt() else 0xB3FFFFFF.toInt())
                 gravity = Gravity.CENTER
                 visibility = if (isGestureHintDismissed || currentTimerState != TimerState.IDLE) View.GONE else View.VISIBLE
                 layoutParams = FrameLayout.LayoutParams(
@@ -622,7 +619,7 @@ class FocusPanelBuilder(private val host: MainActivity) {
             stopBtn = HoldRingButton(this).apply {
                 text = "Finish"
                 ringColor = themeCoordinator.primaryColor
-                setTextColor(themeCoordinator.textColor)
+                setTextColor(if (isBrightSurface) 0xFF0F172A.toInt() else 0xFFFFFFFF.toInt())
                 textSize = 14f
                 letterSpacing = 0.02f
                 typeface = themeCoordinator.getAppTypeface(isBold = true)
@@ -889,9 +886,6 @@ class FocusPanelBuilder(private val host: MainActivity) {
                 fontFeatureSettings = "tnum"
                 gravity = Gravity.CENTER
                 setPadding(0, 0, 0, dp(2))
-                if (themeCoordinator.isGlassStyle() && !pureWhiteTimerEnabled() && !isPomoWhite) {
-                    setShadowLayer(16f, 0f, 0f, tintedColor(themeCoordinator.primaryColor, 90))
-                }
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
             }
 

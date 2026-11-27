@@ -118,8 +118,8 @@ class StudyBottomNavBar @JvmOverloads constructor(
                 }
             } else {
                 if (themeCoordinator.isGlassStyle()) {
-                    setColor(0xF5FFFFFF.toInt())
-                    setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
+                    setColor(0xCCFFFFFF.toInt())
+                    setStroke((1f * density).toInt(), 0x99CBD5E1.toInt())
                 } else {
                     setColor(0xFFFFFFFF.toInt())
                     setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())

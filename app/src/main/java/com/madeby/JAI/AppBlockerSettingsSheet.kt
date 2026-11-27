@@ -128,7 +128,10 @@ object AppBlockerSettingsSheet {
         root.addView(headerRow)
 
         // 3. Master Toggle Card
-        val isCurrentlyEnabled = AppBlockerManager.isEnabled(activity)
+        val isCurrentlyEnabled = AppBlockerManager.isEnabled(activity) && AppBlockerManager.canActivateBlocker(activity)
+        if (AppBlockerManager.isEnabled(activity) && !AppBlockerManager.canActivateBlocker(activity)) {
+            AppBlockerManager.setEnabled(activity, false)
+        }
 
         val masterCard = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -220,10 +223,11 @@ object AppBlockerSettingsSheet {
         }
         updateMasterCardVisuals(isCurrentlyEnabled)
 
-        // 4. Actions & Search Container
+        // 4. Actions & Search Container (shown when enabled + Usage Access granted)
+        val hasUsageAtOpen = AppBlockerManager.hasUsageStatsPermission(activity)
         val actionsContainer = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            visibility = if (isCurrentlyEnabled) View.VISIBLE else View.GONE
+            visibility = if (isCurrentlyEnabled && hasUsageAtOpen) View.VISIBLE else View.GONE
         }
 
         // 5. Search Box
@@ -400,6 +404,94 @@ object AppBlockerSettingsSheet {
         actionsContainer.addView(scrollView)
 
         root.addView(actionsContainer)
+
+        // Focus Lock Notice Card (shown when enabled WITHOUT Usage Access; hides per-app toggles)
+        val focusLockNoticeCard = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                cornerRadius = dp(14).toFloat()
+                setColor(if (isDark) Color.argb(24, Color.red(primary), Color.green(primary), Color.blue(primary)) else Color.argb(18, Color.red(primary), Color.green(primary), Color.blue(primary)))
+                setStroke(dp(1), Color.argb(85, Color.red(primary), Color.green(primary), Color.blue(primary)))
+            }
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(16)
+            }
+            visibility = if (isCurrentlyEnabled && !hasUsageAtOpen) View.VISIBLE else View.GONE
+        }
+        focusLockNoticeCard.addView(TextView(activity).apply {
+            text = "Focus Lock Mode Active"
+            textSize = 14.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(primary)
+        })
+        focusLockNoticeCard.addView(TextView(activity).apply {
+            text = "Recommended: Grant Usage Access to choose which apps stay allowed. Without it, Focus Lock blocks all apps when you leave StudyTimer."
+            textSize = 12.5f
+            setTextColor(if (isDark) 0xCCFFFFFF.toInt() else 0xFF334155.toInt())
+            setPadding(0, dp(6), 0, dp(12))
+        })
+        val grantUsageFromSheetBtn = TextView(activity).apply {
+            text = "Grant Usage Access"
+            textSize = 13f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(ThemeCoordinator.getContrastColor(primary))
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(primary)
+            }
+            setPadding(dp(14), dp(9), dp(14), dp(9))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener {
+                HapticFeedbackHelper.performMicroHaptic(activity, it)
+                try {
+                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                        data = Uri.parse("package:${activity.packageName}")
+                    }
+                    activity.startActivity(intent)
+                } catch (_: Exception) {
+                    activity.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                }
+            }
+        }
+        focusLockNoticeCard.addView(grantUsageFromSheetBtn)
+        root.addView(focusLockNoticeCard)
+
+        fun syncBlockerContentVisibility(enabled: Boolean) {
+            if (!enabled) {
+                actionsContainer.visibility = View.GONE
+                focusLockNoticeCard.visibility = View.GONE
+            } else if (AppBlockerManager.hasUsageStatsPermission(activity)) {
+                actionsContainer.visibility = View.VISIBLE
+                focusLockNoticeCard.visibility = View.GONE
+            } else {
+                actionsContainer.visibility = View.GONE
+                focusLockNoticeCard.visibility = View.VISIBLE
+            }
+        }
+
+        val sheetLifecycleObserver = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && dialog.isShowing) {
+                val hasOverlayNow = AppBlockerManager.canActivateBlocker(activity)
+                if (!hasOverlayNow && masterSwitch.isChecked) {
+                    AppBlockerManager.setEnabled(activity, false)
+                    masterSwitch.isChecked = false
+                    updateMasterCardVisuals(false)
+                    syncBlockerContentVisibility(false)
+                } else {
+                    syncBlockerContentVisibility(masterSwitch.isChecked && hasOverlayNow)
+                }
+            }
+        }
+        activity.lifecycle.addObserver(sheetLifecycleObserver)
+        dialog.setOnDismissListener {
+            activity.lifecycle.removeObserver(sheetLifecycleObserver)
+        }
 
         // 9. Bottom Done Button
         val doneBtn = TextView(activity).apply {
@@ -643,26 +735,26 @@ object AppBlockerSettingsSheet {
                 if (AppBlockerManager.hasAllPermissions(activity)) {
                     AppBlockerManager.setEnabled(activity, true)
                     updateMasterCardVisuals(true)
-                    actionsContainer.visibility = View.VISIBLE
+                    syncBlockerContentVisibility(true)
                 } else {
                     showPermissionsDialog(activity) { granted ->
                         if (granted) {
                             masterSwitch.isChecked = true
                             AppBlockerManager.setEnabled(activity, true)
                             updateMasterCardVisuals(true)
-                            actionsContainer.visibility = View.VISIBLE
+                            syncBlockerContentVisibility(true)
                         } else {
                             masterSwitch.isChecked = false
                             AppBlockerManager.setEnabled(activity, false)
                             updateMasterCardVisuals(false)
-                            actionsContainer.visibility = View.GONE
+                            syncBlockerContentVisibility(false)
                         }
                     }
                 }
             } else {
                 AppBlockerManager.setEnabled(activity, false)
                 updateMasterCardVisuals(false)
-                actionsContainer.visibility = View.GONE
+                syncBlockerContentVisibility(false)
             }
         }
 
@@ -714,8 +806,8 @@ object AppBlockerSettingsSheet {
             setPadding(0, dp(6), 0, dp(14))
         })
 
-        // Permission 1: Usage Access Card
-        val usageCard = LinearLayout(activity).apply {
+        // Permission 1: Display Over Other Apps Card (First for easy setup)
+        val overlayCard = LinearLayout(activity).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(14), dp(10), dp(14), dp(10))
@@ -726,52 +818,12 @@ object AppBlockerSettingsSheet {
                 bottomMargin = dp(10)
             }
         }
-        val usageTextLayout = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val usageTitle = TextView(activity).apply {
-            text = "1. Usage access"
-            textSize = 13.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(textColor)
-        }
-        val usageSubtitle = TextView(activity).apply {
-            text = "To know when a blocked app opens"
-            textSize = 11.5f
-            setTextColor(if (isDark) 0x8AFFFFFF.toInt() else 0xFF64748B.toInt())
-            setPadding(0, dp(1), 0, 0)
-        }
-        usageTextLayout.addView(usageTitle)
-        usageTextLayout.addView(usageSubtitle)
-        usageCard.addView(usageTextLayout)
-
-        val usageBtn = TextView(activity).apply {
-            textSize = 12.5f
-            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-        }
-        usageCard.addView(usageBtn)
-        root.addView(usageCard)
-
-        // Permission 2: Display Over Other Apps Card
-        val overlayCard = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = dp(16)
-            }
-        }
         val overlayTextLayout = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val overlayTitle = TextView(activity).apply {
-            text = "2. Display over apps"
+            text = "1. Display over apps"
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             setTextColor(textColor)
@@ -793,6 +845,67 @@ object AppBlockerSettingsSheet {
         }
         overlayCard.addView(overlayBtn)
         root.addView(overlayCard)
+
+        // Permission 2: Usage Access Card (Second; optional for Focus Lock)
+        val usageCard = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(12)
+            }
+        }
+        val usageTextLayout = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val usageTitle = TextView(activity).apply {
+            text = "2. Usage access"
+            textSize = 13.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setTextColor(textColor)
+        }
+        val usageSubtitle = TextView(activity).apply {
+            text = "For blocking specific apps (optional for Focus Lock)"
+            textSize = 11.5f
+            setTextColor(if (isDark) 0x8AFFFFFF.toInt() else 0xFF64748B.toInt())
+            setPadding(0, dp(1), 0, 0)
+        }
+        usageTextLayout.addView(usageTitle)
+        usageTextLayout.addView(usageSubtitle)
+        usageCard.addView(usageTextLayout)
+
+        val usageBtn = TextView(activity).apply {
+            textSize = 12.5f
+            typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+        }
+        usageCard.addView(usageBtn)
+        root.addView(usageCard)
+
+        // Recommended note shown when only Display Over Apps is granted (Focus Lock fallback)
+        val focusLockWarningCard = TextView(activity).apply {
+            text = "Recommended: Grant Usage Access so allowed apps still work. Without it, Focus Lock will block all apps if you leave StudyTimer."
+            textSize = 12f
+            setTextColor(if (isDark) 0xE6FFFFFF.toInt() else 0xFF1E293B.toInt())
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.argb(if (isDark) 24 else 18, Color.red(primary), Color.green(primary), Color.blue(primary)))
+                setStroke(dp(1), Color.argb(80, Color.red(primary), Color.green(primary), Color.blue(primary)))
+            }
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = dp(14)
+            }
+            visibility = View.GONE
+        }
+        root.addView(focusLockWarningCard)
 
         // Bottom Action Row
         val btnRow = LinearLayout(activity).apply {
@@ -823,7 +936,7 @@ object AppBlockerSettingsSheet {
 
         val proceedBtn = TextView(activity).apply {
             text = "Done"
-            setTextColor(Color.WHITE)
+            setTextColor(ThemeCoordinator.getContrastColor(primary))
             textSize = 13.5f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             background = GradientDrawable().apply {
@@ -833,13 +946,17 @@ object AppBlockerSettingsSheet {
             setPadding(dp(18), dp(8), dp(18), dp(8))
             isClickable = true
             setOnClickListener {
-                val allGranted = AppBlockerManager.hasAllPermissions(activity)
-                if (allGranted) {
+                if (AppBlockerManager.hasAllPermissions(activity)) {
                     hasCompleted = true
                     dialog.dismiss()
                     onResult(true)
+                } else if (AppBlockerManager.hasOverlayPermission(activity)) {
+                    hasCompleted = true
+                    dialog.dismiss()
+                    AppToast.show(activity, "Focus Lock enabled (no Usage Access)")
+                    onResult(true)
                 } else {
-                    AppToast.show(activity, "Please grant both permissions to proceed")
+                    AppToast.show(activity, "Please grant Display over apps permission to proceed")
                 }
             }
         }
@@ -929,11 +1046,13 @@ object AppBlockerSettingsSheet {
                 }
             }
 
-            // 3. Auto-Proceed when both are granted
+            // 3. Auto-Proceed when both are granted; allow Focus Lock when only Overlay is granted
+            focusLockWarningCard.visibility = if (!hasUsage && hasOverlay) View.VISIBLE else View.GONE
             if (hasUsage && hasOverlay) {
                 hasCompleted = true
                 HapticFeedbackHelper.performMicroHaptic(activity)
                 proceedBtn.text = "Granted ✓"
+                proceedBtn.setTextColor(Color.WHITE)
                 proceedBtn.background = GradientDrawable().apply {
                     cornerRadius = dp(10).toFloat()
                     setColor(0xFF10B981.toInt())
@@ -944,6 +1063,20 @@ object AppBlockerSettingsSheet {
                         onResult(true)
                     }
                 }, 350L)
+            } else if (hasOverlay) {
+                proceedBtn.text = "Continue with Focus Lock"
+                proceedBtn.setTextColor(ThemeCoordinator.getContrastColor(primary))
+                proceedBtn.background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(primary)
+                }
+            } else {
+                proceedBtn.text = "Done"
+                proceedBtn.setTextColor(ThemeCoordinator.getContrastColor(primary))
+                proceedBtn.background = GradientDrawable().apply {
+                    cornerRadius = dp(10).toFloat()
+                    setColor(primary)
+                }
             }
         }
 

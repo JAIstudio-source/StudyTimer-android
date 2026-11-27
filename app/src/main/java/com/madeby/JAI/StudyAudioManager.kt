@@ -74,7 +74,7 @@ object StudyAudioManager {
 
     fun isChimeEnabled(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getBoolean(KEY_CHIME_ENABLED, true)
+        return prefs.getBoolean(KEY_CHIME_ENABLED, false)
     }
 
     fun setChimeEnabled(context: Context, enabled: Boolean) {
@@ -221,24 +221,6 @@ object StudyAudioManager {
         }
     }
 
-    /**
-     * Plays celebratory applause on milestone or goal achievement.
-     */
-    fun playCelebrationApplause(context: Context) {
-        if (!isChimeEnabled(context)) return
-        try {
-            val mp = MediaPlayer.create(context.applicationContext, R.raw.celebration_applause) ?: return
-            mp.setOnCompletionListener {
-                try {
-                    it.release()
-                } catch (_: Exception) {}
-            }
-            mp.start()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to play celebration applause", e)
-        }
-    }
-
     // =========================================================================
     // Ambient Focus Soundscapes
     // =========================================================================
@@ -361,31 +343,6 @@ object StudyAudioManager {
             ambientPlayer?.isPlaying == true
         } catch (_: Exception) {
             false
-        }
-    }
-
-    /**
-     * Plays a brief celebratory cheer/applause sound when a study goal or milestone is achieved.
-     * Respects the user's master sound toggle.
-     */
-    fun playCelebrationSound(context: Context) {
-        if (!isChimeEnabled(context)) return
-        try {
-            val player = MediaPlayer.create(context.applicationContext, R.raw.celebration_applause)
-            player.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
-            player.setOnCompletionListener {
-                try {
-                    it.release()
-                } catch (_: Exception) {}
-            }
-            player.start()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to play celebration sound", e)
         }
     }
 }

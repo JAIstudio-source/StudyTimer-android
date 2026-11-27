@@ -737,9 +737,14 @@ object CloudSyncManager {
                 val subEditor = subPrefs.edit()
                 val cloudSubObj = JSONObject(subjectTagsStr)
 
-                // Merge custom subjects
+                val wasSeededOnly = subPrefs.getBoolean("subjects_seeded_by_onboarding", false)
+                val localDurCheck = subPrefs.getString("subject_durations_json", "{}") ?: "{}"
+                val cloudHasSubjects = cloudSubObj.has("custom_subjects_json") || cloudSubObj.has("hidden_subjects_set")
+                val replaceSeededWithCloud = wasSeededOnly && (localDurCheck == "{}" || localDurCheck.isBlank()) && cloudHasSubjects
+
+                // Merge custom subjects (or replace temporary onboarding defaults with cloud data)
                 if (cloudSubObj.has("custom_subjects_json")) {
-                    val localCustom = subPrefs.getString("custom_subjects_json", "[]") ?: "[]"
+                    val localCustom = if (replaceSeededWithCloud) "[]" else (subPrefs.getString("custom_subjects_json", "[]") ?: "[]")
                     val cloudCustom = cloudSubObj.optString("custom_subjects_json", "[]")
                     if (localCustom == "[]" || localCustom.isBlank()) {
                         subEditor.putString("custom_subjects_json", cloudCustom)
@@ -768,13 +773,17 @@ object CloudSyncManager {
                     }
                 }
 
-                // Merge hidden subjects
+                // Merge hidden subjects (or replace temporary onboarding defaults with cloud data)
                 if (cloudSubObj.has("hidden_subjects_set")) {
-                    val localHidden = try {
-                        subPrefs.getStringSet("hidden_subjects_set", emptySet()) ?: emptySet()
-                    } catch (_: ClassCastException) {
-                        val raw = runCatching { subPrefs.getString("hidden_subjects_set", null) }.getOrNull()
-                        AppBlockerManager.parseStringSet(raw)
+                    val localHidden = if (replaceSeededWithCloud) {
+                        emptySet()
+                    } else {
+                        try {
+                            subPrefs.getStringSet("hidden_subjects_set", emptySet()) ?: emptySet()
+                        } catch (_: ClassCastException) {
+                            val raw = runCatching { subPrefs.getString("hidden_subjects_set", null) }.getOrNull()
+                            AppBlockerManager.parseStringSet(raw)
+                        }
                     }
                     val mergedHidden = HashSet(localHidden)
                     val rawCloudHidden = cloudSubObj.get("hidden_subjects_set")
@@ -791,6 +800,10 @@ object CloudSyncManager {
                     }
                     subEditor.putStringSet("hidden_subjects_set", mergedHidden)
                 }
+                if (replaceSeededWithCloud) {
+                    subEditor.putBoolean("subjects_seeded_by_onboarding", false)
+                }
+                SubjectTagManager.invalidateCache()
 
                 // Merge durations maps
                 for (durKey in listOf("subject_durations_json", "daily_subject_durations_json", "daily_subject_break_durations_json")) {

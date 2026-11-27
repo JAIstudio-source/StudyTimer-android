@@ -91,7 +91,7 @@ object WallpaperManager {
 
     fun getActivePresetId(context: Context): String {
         val id = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_PRESET_ID, "stationery_nordic_mint") ?: "stationery_nordic_mint"
+            .getString(KEY_PRESET_ID, "stationery_warm_parchment") ?: "stationery_warm_parchment"
         if (id == "studying_desk") {
             setActivePreset(context, "stationery_nordic_mint")
             return "stationery_nordic_mint"

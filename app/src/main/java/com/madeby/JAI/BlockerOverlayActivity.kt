@@ -102,8 +102,14 @@ class BlockerOverlayActivity : Activity() {
                 WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             )
         }
-        window.statusBarColor = Color.BLACK
-        window.navigationBarColor = Color.BLACK
+        val isDark = ThemeCoordinator(this).apply { applyThemeCoordinates() }.isDarkMode()
+        val barColor = if (isDark) Color.BLACK else 0xFFF8FAFC.toInt()
+        window.statusBarColor = barColor
+        window.navigationBarColor = barColor
+        androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).let { controller ->
+            controller.isAppearanceLightStatusBars = !isDark
+            controller.isAppearanceLightNavigationBars = !isDark
+        }
     }
 
     private fun dp(v: Int): Int {
@@ -111,6 +117,12 @@ class BlockerOverlayActivity : Activity() {
     }
 
     private fun updateBlockedAppDetails() {
+        if (blockedPackageName == AppBlockerManager.FOCUS_LOCK_PACKAGE) {
+            noticeTextView?.text = "Focus Lock is active during study"
+            appIconView?.setImageResource(R.drawable.mylogo)
+            appIconView?.visibility = View.VISIBLE
+            return
+        }
         val pm = packageManager
         val appInfo = runCatching { pm.getApplicationInfo(blockedPackageName, 0) }.getOrNull()
         val appLabel = appInfo?.let { runCatching { pm.getApplicationLabel(it).toString() }.getOrNull() } ?: "Distracting App"
@@ -127,6 +139,16 @@ class BlockerOverlayActivity : Activity() {
 
     private fun buildView(): View {
         val theme = ThemeCoordinator(this).apply { applyThemeCoordinates() }
+        val isDark = theme.isDarkMode()
+        val overlayBg = if (isDark) 0xFF000000.toInt() else 0xFFF8FAFC.toInt()
+        val primaryText = if (isDark) Color.WHITE else 0xFF0F172A.toInt()
+        val cardFill = if (isDark) 0x18FFFFFF.toInt() else Color.WHITE
+        val cardStroke = if (isDark) 0x22FFFFFF.toInt() else 0xFFE2E8F0.toInt()
+        val noticeTextCol = if (isDark) 0xFFE2E8F0.toInt() else 0xFF334155.toInt()
+        val mutedTextCol = if (isDark) 0x8AFFFFFF.toInt() else 0xFF64748B.toInt()
+        val secondaryLinkCol = if (isDark) 0x99FFFFFF.toInt() else 0xFF475569.toInt()
+        val emergencyLinkCol = if (isDark) 0x55FFFFFF.toInt() else 0xFF94A3B8.toInt()
+
         val activeSubject = runCatching { SubjectTagManager.getSelectedSubject(this) }.getOrNull()
         val subjectColor = try {
             Color.parseColor(activeSubject?.colorHex ?: "#A78BFA")
@@ -136,7 +158,7 @@ class BlockerOverlayActivity : Activity() {
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF000000.toInt()) // Pure OLED Black
+            setBackgroundColor(overlayBg)
             gravity = Gravity.CENTER_HORIZONTAL
             setPadding(dp(24), dp(48), dp(24), dp(36))
             layoutParams = ViewGroup.LayoutParams(
@@ -174,7 +196,7 @@ class BlockerOverlayActivity : Activity() {
             text = activeSubject?.name ?: "Focus Session"
             textSize = 17f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(primaryText)
             gravity = Gravity.CENTER
         }
         centerContainer.addView(subjectTitle)
@@ -184,7 +206,7 @@ class BlockerOverlayActivity : Activity() {
             text = "00:00"
             textSize = 50f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(primaryText)
             letterSpacing = 0.05f
             gravity = Gravity.CENTER
             setPadding(0, dp(6), 0, dp(24))
@@ -197,8 +219,8 @@ class BlockerOverlayActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             background = GradientDrawable().apply {
                 cornerRadius = dp(14).toFloat()
-                setColor(0x18FFFFFF.toInt())
-                setStroke(dp(1), 0x22FFFFFF.toInt())
+                setColor(cardFill)
+                setStroke(dp(1), cardStroke)
             }
             setPadding(dp(16), dp(12), dp(16), dp(12))
             layoutParams = LinearLayout.LayoutParams(
@@ -220,7 +242,7 @@ class BlockerOverlayActivity : Activity() {
         val noticeText = TextView(this).apply {
             textSize = 14f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextColor(0xFFE2E8F0.toInt())
+            setTextColor(noticeTextCol)
         }
         noticeTextView = noticeText
         blockedNoticeCard.addView(noticeText)
@@ -234,7 +256,7 @@ class BlockerOverlayActivity : Activity() {
             text = "Your attention is valuable. Protect your momentum."
             textSize = 13f
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            setTextColor(0x8AFFFFFF.toInt()) // 54% opacity
+            setTextColor(mutedTextCol)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(dp(270), LinearLayout.LayoutParams.WRAP_CONTENT)
         }
@@ -257,7 +279,7 @@ class BlockerOverlayActivity : Activity() {
             text = "Return to Study"
             textSize = 16f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
-            setTextColor(Color.WHITE)
+            setTextColor(ThemeCoordinator.getContrastColor(subjectColor))
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
                 cornerRadius = dp(14).toFloat()
@@ -287,7 +309,7 @@ class BlockerOverlayActivity : Activity() {
             text = "Go to Home screen"
             textSize = 14f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextColor(0x99FFFFFF.toInt()) // 60% opacity white
+            setTextColor(secondaryLinkCol)
             setPadding(dp(16), dp(8), dp(16), dp(12))
             setOnClickListener {
                 HapticFeedbackHelper.performMicroHaptic(this@BlockerOverlayActivity, it)
@@ -307,7 +329,7 @@ class BlockerOverlayActivity : Activity() {
             text = "its important, let me use the app"
             textSize = 12f
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            setTextColor(0x55FFFFFF.toInt()) // 33% opacity muted text
+            setTextColor(emergencyLinkCol)
             setPadding(dp(16), dp(8), dp(16), dp(8))
             setOnClickListener {
                 HapticFeedbackHelper.performMicroHaptic(this@BlockerOverlayActivity, it)

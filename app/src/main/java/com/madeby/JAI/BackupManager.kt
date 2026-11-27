@@ -106,7 +106,15 @@ class BackupManager(private val context: Context) {
                         is Number -> subEditor.putLong(k, v.toLong())
                     }
                 }
+                subEditor.putBoolean("subjects_seeded_by_onboarding", false)
                 subEditor.commit()
+                SubjectTagManager.invalidateCache()
+            } else {
+                val subPrefs = context.getSharedPreferences("studytimer_subject_tags", Context.MODE_PRIVATE)
+                if (subPrefs.getBoolean("subjects_seeded_by_onboarding", false)) {
+                    subPrefs.edit().putBoolean("subjects_seeded_by_onboarding", false).commit()
+                }
+                SubjectTagManager.invalidateCache()
             }
         } catch (_: Exception) {}
     }

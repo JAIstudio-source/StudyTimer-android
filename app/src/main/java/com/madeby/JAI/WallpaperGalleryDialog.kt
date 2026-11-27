@@ -166,6 +166,9 @@ object WallpaperGalleryDialog {
             setPadding(activity.dp(2), activity.dp(2), activity.dp(2), activity.dp(2))
         }
 
+        val livePreviewViews = mutableListOf<LiveWallpaperView>()
+        var activeShaderBorder: View? = null
+
         liveShaders.forEach { (shaderType, title, _) ->
             val isSelected = (activeType == shaderType)
 
@@ -176,23 +179,36 @@ object WallpaperGalleryDialog {
                         outline.setRoundRect(0, 0, view.width, view.height, cardCornerRadius)
                     }
                 }
-                val bgColors = when (shaderType) {
-                    WallpaperManager.TYPE_LIVE_AURORA -> intArrayOf(0xFF0F172A.toInt(), 0xFF065F46.toInt(), 0xFF4C1D95.toInt())
-                    WallpaperManager.TYPE_LIVE_COSMIC -> intArrayOf(0xFF090D16.toInt(), 0xFF1E1B4B.toInt(), 0xFF312E81.toInt())
-                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> intArrayOf(0xFF0F172A.toInt(), 0xFF1E293B.toInt(), 0xFF334155.toInt())
-                    else -> intArrayOf(0xFF0F172A.toInt(), 0xFF065F46.toInt(), 0xFF4C1D95.toInt())
-                }
-                background = GradientDrawable(GradientDrawable.Orientation.TL_BR, bgColors).apply {
-                    cornerRadius = cardCornerRadius
-                    if (isSelected) {
-                        setStroke(activity.dp(2), themeCoordinator.primaryColor)
-                    } else {
-                        setStroke(activity.dp(1), 0x22FFFFFF)
-                    }
-                }
+                setBackgroundColor(0xFF090D16.toInt())
                 layoutParams = LinearLayout.LayoutParams(activity.dp(135), activity.dp(92)).apply {
                     setMargins(activity.dp(4), 0, activity.dp(6), 0)
                 }
+            }
+
+            val previewLiveView = LiveWallpaperView(context).apply {
+                setWallpaperMode(shaderType)
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
+            }
+            livePreviewViews.add(previewLiveView)
+            shaderCard.addView(previewLiveView)
+
+            val borderOverlay = View(context).apply {
+                background = GradientDrawable().apply {
+                    cornerRadius = cardCornerRadius
+                    setColor(Color.TRANSPARENT)
+                    if (isSelected) {
+                        setStroke(activity.dp(2), themeCoordinator.primaryColor)
+                    } else {
+                        setStroke(activity.dp(1), 0x33FFFFFF)
+                    }
+                }
+                layoutParams = FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                )
             }
 
             val shaderTextLayout = LinearLayout(context).apply {
@@ -225,6 +241,7 @@ object WallpaperGalleryDialog {
                 })
             }
             shaderCard.addView(shaderTextLayout)
+            shaderCard.addView(borderOverlay)
 
             val shaderBadge = TextView(context).apply {
                 text = "✓"
@@ -246,7 +263,7 @@ object WallpaperGalleryDialog {
             shaderCard.addView(shaderBadge)
 
             if (isSelected) {
-                activeBorderCard = shaderCard
+                activeShaderBorder = borderOverlay
                 activeCheckBadge = shaderBadge
             }
 
@@ -258,20 +275,21 @@ object WallpaperGalleryDialog {
                     setColor(0xFF1E293B.toInt())
                     setStroke(activity.dp(1), 0x22FFFFFF)
                 }
+                activeShaderBorder?.background = GradientDrawable().apply {
+                    cornerRadius = cardCornerRadius
+                    setColor(Color.TRANSPARENT)
+                    setStroke(activity.dp(1), 0x33FFFFFF)
+                }
                 activeCheckBadge?.visibility = View.GONE
 
-                val bgColors = when (shaderType) {
-                    WallpaperManager.TYPE_LIVE_AURORA -> intArrayOf(0xFF0F172A.toInt(), 0xFF065F46.toInt(), 0xFF4C1D95.toInt())
-                    WallpaperManager.TYPE_LIVE_COSMIC -> intArrayOf(0xFF090D16.toInt(), 0xFF1E1B4B.toInt(), 0xFF312E81.toInt())
-                    WallpaperManager.TYPE_LIVE_LOFI_RAIN -> intArrayOf(0xFF0F172A.toInt(), 0xFF1E293B.toInt(), 0xFF334155.toInt())
-                    else -> intArrayOf(0xFF0F172A.toInt(), 0xFF065F46.toInt(), 0xFF4C1D95.toInt())
-                }
-                shaderCard.background = GradientDrawable(GradientDrawable.Orientation.TL_BR, bgColors).apply {
+                borderOverlay.background = GradientDrawable().apply {
                     cornerRadius = cardCornerRadius
+                    setColor(Color.TRANSPARENT)
                     setStroke(activity.dp(2), themeCoordinator.primaryColor)
                 }
                 shaderBadge.visibility = View.VISIBLE
-                activeBorderCard = shaderCard
+                activeBorderCard = null
+                activeShaderBorder = borderOverlay
                 activeCheckBadge = shaderBadge
 
                 activity.setLiveWallpaper(shaderType)
@@ -623,6 +641,9 @@ object WallpaperGalleryDialog {
         dialog.setOnShowListener {
             dialog.behavior.skipCollapsed = true
             dialog.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+        }
+        dialog.setOnDismissListener {
+            livePreviewViews.forEach { it.pause() }
         }
         dialog.show()
     }

@@ -12,9 +12,9 @@ class ThemeCoordinator(private val context: Context) {
     var bgColor = 0xFFF8FAFC.toInt()
     var boxColor = 0xFFFFFFFF.toInt()
     var textColor = 0xFF0F172A.toInt()
-    var primaryColor = Color.parseColor("#4F46E5")
-    var secondaryColor = Color.parseColor("#0284C7")
-    var accentColor = Color.parseColor("#4F46E5")
+    var primaryColor = Color.parseColor("#38BDF8")
+    var secondaryColor = Color.parseColor("#818CF8")
+    var accentColor = Color.parseColor("#38BDF8")
 
     companion object {
         fun getContrastColor(bgColor: Int): Int {
@@ -85,22 +85,31 @@ class ThemeCoordinator(private val context: Context) {
         val INSIGHTS_NAV_ACCENT = Color.parseColor("#6366F1")
     }
 
-    fun applyThemeCoordinates() {
+    fun applyThemeCoordinates(systemDarkOverride: Boolean? = null) {
         val sharedPrefs = context.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+        val isSystemDark = systemDarkOverride ?: ((context.resources.configuration.uiMode and
+            android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES)
 
         if (!sharedPrefs.contains("activeBgMode")) {
             sharedPrefs.edit()
-                .putString("activeBgMode", "LIGHT")
+                .putString("activeBgMode", if (isSystemDark) "OLED" else "LIGHT")
+                .putBoolean("follow_system_theme", true)
                 .putString("ui_style", "GLASS")
-                .putInt("customHue", 243)
-                .putInt("customPrimary", Color.parseColor("#4F46E5"))
-                .putInt("customSecondaryHue", 199)
-                .putInt("customSecondary", Color.parseColor("#0284C7"))
+                .putInt("customHue", 198)
+                .putInt("customPrimary", Color.parseColor("#38BDF8"))
+                .putInt("customSecondaryHue", 234)
+                .putInt("customSecondary", Color.parseColor("#818CF8"))
                 .apply()
         }
 
         var storedMode = sharedPrefs.getString("activeBgMode", "LIGHT") ?: "LIGHT"
-        if (storedMode == "ECLIPSE") {
+        if (sharedPrefs.getBoolean("follow_system_theme", false)) {
+            val systemMode = if (isSystemDark) "OLED" else "LIGHT"
+            if (storedMode != systemMode) {
+                storedMode = systemMode
+                sharedPrefs.edit().putString("activeBgMode", storedMode).apply()
+            }
+        } else if (storedMode == "ECLIPSE") {
             storedMode = "LIGHT"
             sharedPrefs.edit().putString("activeBgMode", "LIGHT").apply()
         } else if (storedMode != "LIGHT" && storedMode != "OLED") {
@@ -130,8 +139,8 @@ class ThemeCoordinator(private val context: Context) {
             secondaryColor = context.getColor(android.R.color.system_accent2_500)
             accentColor = context.getColor(android.R.color.system_accent1_300)
         } else {
-            val defaultPrimary = if (activeBgMode == "LIGHT") Color.parseColor("#4F46E5") else Color.parseColor("#A78BFA")
-            val defaultSecondary = if (activeBgMode == "LIGHT") Color.parseColor("#0284C7") else Color.parseColor("#38BDF8")
+            val defaultPrimary = Color.parseColor("#38BDF8")
+            val defaultSecondary = Color.parseColor("#818CF8")
             primaryColor = sharedPrefs.safeInt("customPrimary", defaultPrimary)
             secondaryColor = sharedPrefs.safeInt("customSecondary", defaultSecondary)
         }
@@ -190,8 +199,8 @@ class ThemeCoordinator(private val context: Context) {
         }
 
         // Glass Mode: Frosted translucent glass card that blends with custom wallpapers and canvas
-        val fillCol = if (isLightSurface) Color.argb(205, 255, 255, 255) else Color.argb(170, 14, 16, 24)
-        val strokeCol = if (isLightSurface) Color.argb(80, 203, 213, 225) else Color.argb(45, 255, 255, 255)
+        val fillCol = if (isLightSurface) Color.argb(148, 255, 255, 255) else Color.argb(170, 14, 16, 24)
+        val strokeCol = if (isLightSurface) Color.argb(115, 255, 255, 255) else Color.argb(45, 255, 255, 255)
         return GradientDrawable().apply {
             this.cornerRadius = cornerRadius * density
             setColor(fillCol)
@@ -204,8 +213,8 @@ class ThemeCoordinator(private val context: Context) {
         if (activeBgMode == "LIGHT") {
             return GradientDrawable().apply {
                 this.cornerRadius = cornerRadius * density
-                setColor(0xFFFFFFFF.toInt())
-                setStroke((1f * density).toInt(), 0xFFE2E8F0.toInt())
+                setColor(if (isGlassStyle()) 0xEAFFFFFF.toInt() else 0xFFFFFFFF.toInt())
+                setStroke((1f * density).toInt(), if (isGlassStyle()) 0x99CBD5E1.toInt() else 0xFFE2E8F0.toInt())
             }
         }
         if (isBubbleStyle()) {
@@ -281,8 +290,8 @@ class ThemeCoordinator(private val context: Context) {
                 setStroke((1 * density).toInt(), stroke)
             }
         }
-        val fill = if (isDarkMode()) 0x22FFFFFF.toInt() else 0xFFF1F5F9.toInt()
-        val stroke = if (isDarkMode()) borderColor else (if (borderColor != 0) borderColor else Color.argb(50, 15, 23, 42))
+        val fill = if (isDarkMode()) 0x22FFFFFF.toInt() else 0x99FFFFFF.toInt()
+        val stroke = if (isDarkMode()) borderColor else (if (borderColor != 0) borderColor else Color.argb(55, 15, 23, 42))
         return GradientDrawable().apply {
             this.cornerRadius = cornerRadius * density
             setColor(fill)
@@ -308,7 +317,7 @@ class ThemeCoordinator(private val context: Context) {
                 setStroke((1 * density).toInt(), if (activeBgMode == "LIGHT") 0xFFE2E8F0.toInt() else Color.argb(35, 255, 255, 255))
             }
         }
-        val fill = if (isDarkMode()) 0x1CFFFFFF.toInt() else 0xFFF1F5F9.toInt()
+        val fill = if (isDarkMode()) 0x1CFFFFFF.toInt() else 0x88FFFFFF.toInt()
         return GradientDrawable().apply {
             shape = GradientDrawable.OVAL
             setColor(fill)

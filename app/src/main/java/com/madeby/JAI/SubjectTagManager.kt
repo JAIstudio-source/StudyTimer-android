@@ -25,6 +25,7 @@ object SubjectTagManager {
     private const val KEY_CUSTOM_SUBJECTS_JSON = "custom_subjects_json"
     private const val KEY_HIDDEN_SUBJECTS = "hidden_subjects_set"
     private const val KEY_SUBJECT_DURATIONS = "subject_durations_json"
+    private const val KEY_SUBJECTS_SEEDED_BY_ONBOARDING = "subjects_seeded_by_onboarding"
     private const val KEY_SUBJECT_SUBTOPICS_JSON = "subject_subtopics_json"
     private const val KEY_SUBJECT_WEEKLY_TARGETS_JSON = "subject_weekly_targets_json"
 
@@ -807,5 +808,143 @@ object SubjectTagManager {
             }
         } catch (_: Exception) {}
         return map
+    }
+
+    /**
+     * Seeds exam-specific default subjects ONLY for fresh first-time users (no existing custom
+     * subjects and no recorded study durations). Restored/logged-in cloud data takes precedence.
+     */
+    fun seedDefaultSubjectsForExam(context: Context, examSelection: String) {
+        val prefs = getPrefs(context)
+        val existingCustom = prefs.getString(KEY_CUSTOM_SUBJECTS_JSON, "[]") ?: "[]"
+        val existingDurations = prefs.getString(KEY_SUBJECT_DURATIONS, "{}") ?: "{}"
+        if (existingCustom != "[]" && existingCustom.isNotBlank()) return
+        if (existingDurations != "{}" && existingDurations.isNotBlank()) return
+
+        val subjectsForExam = getRecommendedSubjectsForExam(examSelection)
+        if (subjectsForExam.isEmpty()) return
+
+        val palette = listOf("#10B981", "#3B82F6", "#8B5CF6", "#F59E0B", "#EC4899", "#06B6D4")
+        val arr = JSONArray()
+        subjectsForExam.forEachIndexed { idx, name ->
+            val cleanId = "exam_${name.lowercase(Locale.US).replace(Regex("[^a-z0-9]+"), "_").trim('_')}"
+            val obj = JSONObject().apply {
+                put("id", cleanId)
+                put("name", name)
+                put("iconEmoji", "")
+                put("colorHex", palette[idx % palette.size])
+            }
+            arr.put(obj)
+        }
+
+        val hiddenDefaults = setOf("math", "coding", "physics", "history", "science")
+        prefs.edit()
+            .putStringSet(KEY_HIDDEN_SUBJECTS, hiddenDefaults)
+            .putString(KEY_CUSTOM_SUBJECTS_JSON, arr.toString())
+            .putBoolean(KEY_SUBJECTS_SEEDED_BY_ONBOARDING, true)
+            .apply()
+        cachedSubjects = null
+    }
+
+    private fun getRecommendedSubjectsForExam(examSelection: String): List<String> {
+        val sel = examSelection.trim()
+        return when {
+            sel.contains("JEE", ignoreCase = true) ||
+                sel.contains("BITSAT", ignoreCase = true) ||
+                sel.contains("VITEEE", ignoreCase = true) ||
+                sel.contains("KCET", ignoreCase = true) ||
+                sel.contains("WBJEE", ignoreCase = true) ||
+                sel.contains("COMEDK", ignoreCase = true) ||
+                sel.contains("MHT-CET", ignoreCase = true) -> listOf("Physics", "Chemistry", "Mathematics")
+
+            sel.contains("GATE", ignoreCase = true) -> listOf("Core Subject", "Engineering Math", "General Aptitude")
+            sel.contains("CSIR NET", ignoreCase = true) ||
+                sel.contains("ISRO", ignoreCase = true) ||
+                sel.contains("BARC", ignoreCase = true) -> listOf("Core Subject", "General Aptitude", "PYQs & Practice")
+
+            sel.contains("NEET PG", ignoreCase = true) ||
+                sel.contains("INI-CET", ignoreCase = true) ||
+                sel.contains("FMGE", ignoreCase = true) -> listOf("Pre-Clinical", "Para-Clinical", "Clinical", "MCQs & PYQs")
+
+            sel.contains("NEET", ignoreCase = true) ||
+                sel.contains("AIIMS Nursing", ignoreCase = true) -> listOf("Biology", "Physics", "Chemistry")
+
+            sel.contains("UPSC CSE", ignoreCase = true) ||
+                sel.contains("State PSC", ignoreCase = true) -> listOf("Polity & GS", "History", "Geography", "Economy", "Current Affairs")
+
+            sel.contains("NDA", ignoreCase = true) ||
+                sel.contains("CDS", ignoreCase = true) ||
+                sel.contains("CAPF", ignoreCase = true) ||
+                sel.contains("AFCAT", ignoreCase = true) ||
+                sel.contains("Agniveer", ignoreCase = true) -> listOf("Mathematics", "General Ability", "English", "Current Affairs")
+
+            sel.contains("SSC", ignoreCase = true) ||
+                sel.contains("RRB", ignoreCase = true) ||
+                sel.contains("IBPS", ignoreCase = true) ||
+                sel.contains("SBI", ignoreCase = true) ||
+                sel.contains("RBI", ignoreCase = true) ||
+                sel.contains("NABARD", ignoreCase = true) ||
+                sel.contains("SEBI", ignoreCase = true) ||
+                sel.contains("LIC", ignoreCase = true) -> listOf("Quantitative Aptitude", "Reasoning", "English", "General Awareness")
+
+            sel.contains("CAT", ignoreCase = true) ||
+                sel.contains("XAT", ignoreCase = true) -> listOf("VARC", "DILR", "Quantitative Aptitude")
+
+            sel.contains("CA (", ignoreCase = true) -> listOf("Accounting", "Law & Audit", "Taxation", "Finance & Costing")
+            sel.contains("CS / CMA", ignoreCase = true) -> listOf("Company Law", "Accounting", "Taxation", "Management")
+
+            sel.contains("CLAT", ignoreCase = true) ||
+                sel.contains("AILET", ignoreCase = true) -> listOf("Legal Reasoning", "Logical Reasoning", "English", "Current Affairs")
+
+            sel.contains("CUET", ignoreCase = true) -> listOf("Domain Subjects", "General Test", "English")
+            sel.contains("UGC NET", ignoreCase = true) -> listOf("Paper 1 (General)", "Paper 2 (Core Subject)")
+            sel.contains("CTET", ignoreCase = true) ||
+                sel.contains("KVS", ignoreCase = true) ||
+                sel.contains("DSSSB", ignoreCase = true) -> listOf("Pedagogy", "Language", "Mathematics", "EVS & GS")
+
+            sel.contains("NIFT", ignoreCase = true) ||
+                sel.contains("NID", ignoreCase = true) ||
+                sel.contains("UCEED", ignoreCase = true) -> listOf("Design & Sketching", "General Ability", "Logical Reasoning")
+
+            sel.contains("GRE", ignoreCase = true) ||
+                sel.contains("GMAT", ignoreCase = true) -> listOf("Quantitative", "Verbal", "Analytical Writing")
+
+            sel.contains("IELTS", ignoreCase = true) ||
+                sel.contains("TOEFL", ignoreCase = true) ||
+                sel.contains("SAT", ignoreCase = true) -> listOf("Reading", "Writing", "Listening & Speaking")
+
+            sel.contains("CBSE", ignoreCase = true) ||
+                sel.contains("ICSE", ignoreCase = true) ||
+                sel.contains("State Board", ignoreCase = true) ||
+                sel.contains("Class 6", ignoreCase = true) ||
+                sel.contains("Olympiads", ignoreCase = true) ||
+                sel.equals("School & Board Exams", ignoreCase = true) -> listOf("Mathematics", "Science", "English", "Social Studies")
+
+            sel.contains("B.Tech", ignoreCase = true) ||
+                sel.contains("B.E.", ignoreCase = true) -> listOf("Core Engineering", "Mathematics", "Programming", "Labs & Projects")
+
+            sel.contains("MBBS", ignoreCase = true) -> listOf("Anatomy & Physiology", "Pathology & Pharma", "Clinical", "MCQs")
+            sel.contains("B.Sc", ignoreCase = true) -> listOf("Major Subject", "Allied Subject", "Lab & Research")
+            sel.contains("B.Com", ignoreCase = true) ||
+                sel.contains("BBA", ignoreCase = true) -> listOf("Accounting", "Finance", "Economics", "Management")
+
+            sel.contains("B.A", ignoreCase = true) ||
+                sel.contains("Humanities", ignoreCase = true) -> listOf("History", "Political Science", "Economics", "Literature")
+
+            sel.contains("LLB", ignoreCase = true) -> listOf("Constitutional Law", "Criminal Law", "Civil & Contracts", "Case Reading")
+
+            sel.contains("DSA", ignoreCase = true) -> listOf("DSA", "System Design", "Core CS")
+            sel.contains("Web / App", ignoreCase = true) -> listOf("Frontend", "Backend", "Projects")
+            sel.contains("AI / ML", ignoreCase = true) -> listOf("Python & Math", "Machine Learning", "Projects")
+            sel.contains("Cloud", ignoreCase = true) ||
+                sel.contains("DevOps", ignoreCase = true) -> listOf("Linux & Networking", "Cloud & DevOps", "Security")
+            sel.equals("Programming & Tech", ignoreCase = true) -> listOf("DSA", "Development", "Core CS")
+
+            sel.contains("Languages", ignoreCase = true) -> listOf("Reading", "Vocabulary", "Speaking & Listening")
+            sel.contains("Skill Building", ignoreCase = true) ||
+                sel.equals("Self-Study", ignoreCase = true) -> listOf("Practice", "Projects", "Reading")
+
+            else -> emptyList()
+        }
     }
 }
