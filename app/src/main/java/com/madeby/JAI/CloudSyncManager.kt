@@ -787,9 +787,8 @@ object CloudSyncManager {
                 val cloudSubObj = JSONObject(subjectTagsStr)
 
                 val wasSeededOnly = subPrefs.getBoolean("subjects_seeded_by_onboarding", false)
-                val localDurCheck = subPrefs.getString("subject_durations_json", "{}") ?: "{}"
                 val cloudHasSubjects = cloudSubObj.has("custom_subjects_json") || cloudSubObj.has("hidden_subjects_set")
-                val replaceSeededWithCloud = wasSeededOnly && (localDurCheck == "{}" || localDurCheck.isBlank()) && cloudHasSubjects
+                val replaceSeededWithCloud = wasSeededOnly && cloudHasSubjects
 
                 // Merge custom subjects (or replace temporary onboarding defaults with cloud data)
                 if (cloudSubObj.has("custom_subjects_json")) {
@@ -852,7 +851,6 @@ object CloudSyncManager {
                 if (replaceSeededWithCloud) {
                     subEditor.putBoolean("subjects_seeded_by_onboarding", false)
                 }
-                SubjectTagManager.invalidateCache()
 
                 // Merge durations maps
                 for (durKey in listOf("subject_durations_json", "daily_subject_durations_json", "daily_subject_break_durations_json")) {
@@ -974,7 +972,8 @@ object CloudSyncManager {
                         subEditor.putString("daily_subtopic_durations_json", localJson.toString())
                     } catch (_: Exception) {}
                 }
-                subEditor.apply()
+                subEditor.commit()
+                SubjectTagManager.invalidateCache()
             }
 
             // 4. Merge Exam Countdowns
@@ -1250,6 +1249,7 @@ object CloudSyncManager {
 
                 if (subjectTagsStr.isNotEmpty()) {
                     val subEditor = subPrefs.edit()
+                    subEditor.clear()
                     val subObj = JSONObject(subjectTagsStr)
                     val subKeys = subObj.keys()
                     while (subKeys.hasNext()) {
@@ -1290,6 +1290,7 @@ object CloudSyncManager {
                         }
                     }
                     subEditor.commit()
+                    SubjectTagManager.invalidateCache()
                 }
 
                 val cloudExamsStr = if (record.has("exam_countdowns_data") && record.optString("exam_countdowns_data").isNotEmpty()) {
