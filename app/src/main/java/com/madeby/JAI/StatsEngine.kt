@@ -418,8 +418,8 @@ class StatsEngine(private val context: Context) {
         val breakKey = "${dateStr}_break_total"
         val storedFocus = prefs.safeLong(focusKey, 0L)
         val storedBreak = prefs.safeLong(breakKey, 0L)
-        val effectiveFocus = focusSum
-        val effectiveBreak = breakSum
+        val effectiveFocus = if (storedFocus > 0L && focusSum == 0L) storedFocus else focusSum
+        val effectiveBreak = if (storedBreak > 0L && breakSum == 0L) storedBreak else breakSum
         if (storedFocus != effectiveFocus || storedBreak != effectiveBreak) {
             val editor = prefs.edit()
             if (storedFocus != effectiveFocus) {

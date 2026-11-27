@@ -2752,7 +2752,7 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         if (currentPanel == AppPanel.STATS && currentStatsTab == AppStatsTab.OVERVIEW) {
-                val todayFocus = snap.todayFocus
+                val todayFocus = FocusTimeProvider.getTodayFocusSeconds(this)
                 val todayH = todayFocus / 3600
                 val todayM = (todayFocus % 3600) / 60
                 val todayBH = snap.todayBreak / 3600
@@ -3061,11 +3061,12 @@ class MainActivity : AppCompatActivity() {
         val sp = getSharedPreferences("StudyTimerPrefs", MODE_PRIVATE)
         val curFocus = sp.getLong("${todayStr}_focus_total", 0L)
         val curBreak = sp.getLong("${todayStr}_break_total", 0L)
-        if (savedStudy > 0L || savedBreak > 0L) {
-            sp.edit()
-                .putLong("${todayStr}_focus_total", curFocus + savedStudy)
-                .putLong("${todayStr}_break_total", curBreak + savedBreak)
-                .apply()
+        val shouldCommitFocus = savedStudy > 0L && (silent || savedStudy >= 60L)
+        if (shouldCommitFocus || savedBreak > 0L) {
+            sp.edit().apply {
+                if (shouldCommitFocus) putLong("${todayStr}_focus_total", curFocus + savedStudy)
+                if (savedBreak > 0L) putLong("${todayStr}_break_total", curBreak + savedBreak)
+            }.apply()
         }
 
         TimelineLogger.record(this, TimerState.IDLE)
@@ -3853,6 +3854,7 @@ class MainActivity : AppCompatActivity() {
         syncFlipToFocusState()
         if (AppBlockerManager.isEnabled(this) && !AppBlockerManager.canActivateBlocker(this)) {
             AppBlockerManager.setEnabled(this, false)
+            AppGuideHelper.maybeShowBlockerPermissionNudge(this)
             if (currentPanel == AppPanel.SETTINGS) {
                 tabPageCache.clear()
                 buildCurrentPanel()

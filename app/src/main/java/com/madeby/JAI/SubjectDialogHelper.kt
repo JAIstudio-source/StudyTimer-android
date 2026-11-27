@@ -153,6 +153,7 @@ class SubjectDialogHelper(private val host: MainActivity) {
                             SubjectTagManager.finalizePomoGraceReallocation(host, subj.id)
                         }
                         SubjectTagManager.setSelectedSubject(host, subj.id)
+                        SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
                         if (host.currentTimerState != TimerState.IDLE) {
                             TimelineLogger.record(host, host.currentTimerState, subId = subj.id, subName = subj.name, subColor = subj.colorHex)
                             StudyWidgetProvider.refresh(host)
@@ -161,14 +162,11 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         val subTopics = SubjectTagManager.getSubTopics(host, subj.id)
                         dialog.dismiss()
                         if (subTopics.isNotEmpty()) {
-                            showSubTopicPickerDialog(subj) {
+                            host.navigateToPanel(AppPanel.FOCUS)
+                            showSubTopicPickerDialog(subj, autoStartOnSelect = autoStartOnSelect) {
                                 host.navigateToPanel(AppPanel.FOCUS)
-                                if (autoStartOnSelect && host.currentTimerState == TimerState.IDLE) {
-                                    host.handleStateToggle()
-                                }
                             }
                         } else {
-                            SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
                             host.navigateToPanel(AppPanel.FOCUS)
                             AppToast.show(host, "Subject selected: ${subj.name}")
                             if (autoStartOnSelect && host.currentTimerState == TimerState.IDLE) {
@@ -617,24 +615,44 @@ class SubjectDialogHelper(private val host: MainActivity) {
         } catch (e: Exception) {}
     }
 
-    fun showSubTopicPickerDialog(subj: SubjectTag, onSelected: ((String?) -> Unit)? = null) {
+    fun showSubTopicPickerDialog(
+        subj: SubjectTag,
+        allowActiveSwitch: Boolean = false,
+        autoStartOnSelect: Boolean = false,
+        onSelected: ((String?) -> Unit)? = null
+    ) {
         val isBreak = host.currentTimerState == TimerState.BREAK
-        if (!isBreak && host.currentTimerState != TimerState.IDLE) {
+        if (!allowActiveSwitch && !isBreak && host.currentTimerState != TimerState.IDLE) {
             DeveloperToolsHelper.showThemedConfirmDialog(
                 activity = host,
                 themeCoordinator = themeCoordinator,
-                title = "Active Session Running",
-                message = "Chapters cannot be changed during an active study session.\n\nYou can change chapters during breaks, between Pomodoro rounds, or when the timer is idle.",
-                confirmText = "OK",
+                title = "⏱️ Active Session Running",
+                message = "Switching chapters mid-session will end and save your current chapter session, open the chapter list, and automatically start counting for the new chapter once you pick it.",
+                confirmText = "Switch Chapter",
                 isDestructive = false,
                 onCancel = {}
-            ) {}
+            ) {
+                host.handleStopSession(silent = true)
+                showSubTopicPickerDialog(subj, allowActiveSwitch = true, autoStartOnSelect = true, onSelected = onSelected)
+            }
             return
         }
         try {
             val dialog = Dialog(host)
             dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
             dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            var chapterSelectionHandled = false
+            dialog.setOnDismissListener {
+                if (!chapterSelectionHandled) {
+                    SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
+                    onSelected?.invoke(null)
+                    host.buildCurrentPanel()
+                    AppToast.show(host, "Studying: ${subj.name} • All Chapters")
+                    if (autoStartOnSelect && host.currentTimerState == TimerState.IDLE) {
+                        host.handleStateToggle()
+                    }
+                }
+            }
 
             val parsedColor = try {
                 Color.parseColor(subj.colorHex)
@@ -772,12 +790,16 @@ class SubjectDialogHelper(private val host: MainActivity) {
                         setMargins(0, 0, 0, dp(6))
                     }
                     setOnClickListener {
+                        chapterSelectionHandled = true
                         HapticFeedbackHelper.performMicroHaptic(host, this)
                         SubjectTagManager.setSelectedSubTopic(host, subj.id, null)
                         dialog.dismiss()
                         onSelected?.invoke(null)
                         host.buildCurrentPanel()
                         AppToast.show(host, "Studying: ${subj.name} • All Chapters")
+                        if (autoStartOnSelect && host.currentTimerState == TimerState.IDLE) {
+                            host.handleStateToggle()
+                        }
                     }
                 }
 
@@ -855,12 +877,16 @@ class SubjectDialogHelper(private val host: MainActivity) {
                             setMargins(0, 0, 0, dp(6))
                         }
                         setOnClickListener {
+                            chapterSelectionHandled = true
                             HapticFeedbackHelper.performMicroHaptic(host, this)
                             SubjectTagManager.setSelectedSubTopic(host, subj.id, topic)
                             dialog.dismiss()
                             onSelected?.invoke(topic)
                             host.buildCurrentPanel()
                             AppToast.show(host, "Studying: ${subj.name} • $topic")
+                            if (autoStartOnSelect && host.currentTimerState == TimerState.IDLE) {
+                                host.handleStateToggle()
+                            }
                         }
                     }
 

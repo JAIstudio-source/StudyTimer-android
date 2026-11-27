@@ -1224,6 +1224,21 @@ object DeveloperToolsHelper {
             })
         }
 
+        // 2B. Guide Nudges Testing
+        addSection("GUIDE NUDGES TESTING", "💡") {
+            addView(devButton("Reset All Nudge Flags & Unmute", "Clears all nudge_shown_* flags, cooldowns, and unmutes tips", Color.parseColor("#10B981")) {
+                AppGuideHelper.resetAllNudgeFlags(activity)
+                Toast.makeText(activity, "All guide nudge flags & cooldowns reset!", Toast.LENGTH_SHORT).show()
+            })
+
+            for (item in AppGuideHelper.getAllNudgeTestItems()) {
+                addView(devButton("Trigger: ${item.label}", item.description) {
+                    dialog.dismiss()
+                    AppGuideHelper.triggerNudgeById(activity, item.id, force = true)
+                })
+            }
+        }
+
         // 3. Sync & Cloud Conflict Simulation
         addSection("SYNC & CLOUD CONFLICT SIMULATION", "☁️") {
             addView(devButton("Simulate Remote Cloud Conflict", "Triggers the 3-option conflict resolution dialog with a mock newer cloud snapshot", Color.parseColor("#F59E0B")) {

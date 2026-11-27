@@ -27,6 +27,7 @@ class CalendarTimeline(private val host: MainActivity) {
 
     fun build(content: LinearLayout, snap: StatsSnapshot, todayStr: String) {
         with(host) {
+            AppGuideHelper.maybeShowTimelineEditNudge(this, snap.todayFocus)
             val anchor = calendarAnchor()
             val year = anchor.get(Calendar.YEAR)
             val month = anchor.get(Calendar.MONTH)
@@ -956,7 +957,7 @@ class CalendarTimeline(private val host: MainActivity) {
         } else {
             val passedBanner = TextView(activity).apply {
                 text = "Exam passed ${breakdown.daysAgo} days ago"
-                setTextColor(Color.parseColor("#94A3B8"))
+                setTextColor(if (themeCoordinator.isDarkMode()) 0xFF94A3B8.toInt() else 0xFF475569.toInt())
                 textSize = 13f
                 typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
                 gravity = Gravity.CENTER

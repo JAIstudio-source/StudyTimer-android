@@ -713,6 +713,7 @@ class StatsPanelBuilder(private val host: MainActivity) {
         val streak = snap.streak
         CelebrationEngine.showPendingStreakIfNeeded(host)
         AppGuideHelper.maybeShowStreakFreezeNudge(host, streak)
+        AppGuideHelper.maybeShowWeeklyShareNudge(host, snap.thisWeek)
 
         val avg7 = snap.avg7
         val avgH = avg7 / 3600

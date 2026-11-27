@@ -713,11 +713,9 @@ class TimerService : Service() {
         isPendingActivityConfirmation = false
         activityConfirmationPromptTime = 0L
         cancelInactivityCheckNotification()
-        if (isMicroSession && startTs > 0L) {
-            TimelineLogger.removeEntriesSince(this, startTs)
-        } else {
-            TimelineLogger.record(this, TimerState.IDLE)
-        }
+        // Silent stop is used when switching subjects/chapters mid-session:
+        // preserve the previous subject's timeline block so its time is never orphaned onto another subject.
+        TimelineLogger.record(this, TimerState.IDLE)
         val stopSilentPrefs = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
         stopSilentPrefs.edit()
             .putLong("focus_remaining_secs", 0L)
@@ -1057,6 +1055,7 @@ class TimerService : Service() {
                                 sp.edit()
                                     .putBoolean("pending_inactivity_check", true)
                                     .putLong("inactivity_prompt_timestamp", now)
+                                    .putLong("activity_confirmation_prompt_time", now)
                                     .apply()
                                 postInactivityCheckNotification()
                                 triggerInactivityVibration()
@@ -1074,6 +1073,7 @@ class TimerService : Service() {
                                 val sp = getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
                                 sp.edit()
                                     .putBoolean("pending_inactivity_check", false)
+                                    .putLong("inactivity_prompt_timestamp", 0L)
                                     .putLong("activity_confirmation_prompt_time", 0L)
                                     .apply()
                                 saveState()
@@ -1745,7 +1745,13 @@ class TimerService : Service() {
         NotificationHelper.createAllNotificationChannels(this)
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        saveState()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        saveState()
         stopBlockerMonitor()
         StudyAudioManager.stopAmbient()
         handler.removeCallbacks(timerRunnable)

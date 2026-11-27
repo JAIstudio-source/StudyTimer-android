@@ -1343,13 +1343,15 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val prog = progressMap[goal.id]
                 val actualMins = prog?.actualMinutes ?: 0
 
+                val hasDragHandle = !isDayOff && todayGoalsToRender.size > 1
                 val goalCard = LinearLayout(host).apply {
+                    tag = goal.id
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                     clipChildren = false
                     clipToPadding = false
                     background = themeCoordinator.createCardBackground()
-                    setPadding(dp(14), dp(10), dp(14), dp(10))
+                    setPadding(dp(14), if (hasDragHandle) 0 else dp(10), if (hasDragHandle) 0 else dp(14), if (hasDragHandle) 0 else dp(10))
                     if (isDayOff) {
                         alpha = 0.52f
                     }
@@ -1411,6 +1413,9 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 // 2. Middle: Content Column (Title, Note, Progression Bar, Scope, Timing)
                 val mainContentCol = LinearLayout(host).apply {
                     orientation = LinearLayout.VERTICAL
+                    if (hasDragHandle) {
+                        setPadding(0, dp(10), 0, dp(10))
+                    }
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                         setMargins(0, 0, dp(6), 0)
                     }
@@ -1630,9 +1635,12 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 val rightCol = LinearLayout(host).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
+                    if (hasDragHandle) {
+                        setPadding(0, dp(10), 0, dp(10))
+                    }
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
+                        if (hasDragHandle) LinearLayout.LayoutParams.MATCH_PARENT else LinearLayout.LayoutParams.WRAP_CONTENT
                     ).apply {
                         gravity = Gravity.CENTER_VERTICAL
                     }
@@ -1678,26 +1686,247 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                     rightCol.addView(playIcon)
                 }
 
-                if (!isDayOff && activeGoalsList.size > 1) {
+                if (hasDragHandle) {
                     val gripBtn = TextView(host).apply {
                         text = "\u283F"
-                        textSize = 15f
-                        setTextColor(tintedColor(themeCoordinator.textColor, 80))
-                        setPadding(dp(4), dp(4), dp(2), dp(4))
+                        textSize = 16f
+                        gravity = Gravity.CENTER
+                        minWidth = dp(44)
+                        minHeight = dp(48)
+                        isClickable = true
+                        isFocusable = true
+                        contentDescription = "Drag to reorder ${goal.title}"
+                        setTextColor(tintedColor(themeCoordinator.textColor, 105))
+                        setPadding(dp(10), dp(6), dp(14), dp(6))
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.MATCH_PARENT
+                        )
                     }
                     rightCol.addView(gripBtn)
 
-                    gripBtn.setOnLongClickListener { v ->
-                        val clipData = android.content.ClipData.newPlainText("goal_id", goal.id)
-                        val shadow = View.DragShadowBuilder(goalCard)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                            v.startDragAndDrop(clipData, shadow, goal.id, 0)
-                        } else {
-                            @Suppress("DEPRECATION")
-                            v.startDrag(clipData, shadow, goal.id, 0)
+                    var dragStartRawY = 0f
+                    var dragStartScrollY = 0
+                    var dragFingerRawY = 0f
+                    var dragStartIdx = -1
+                    var dragTargetIdx = -1
+                    var draggedTy = 0f
+                    var isDraggingCard = false
+                    var dragCards: List<View> = emptyList()
+                    var restTops = IntArray(0)
+                    var cardHeights = IntArray(0)
+                    var gapPx = dp(6)
+                    var hostScrollView: ScrollView? = null
+                    val scrollRect = android.graphics.Rect()
+
+                    fun setParentScrollLocked(view: View, locked: Boolean) {
+                        var p: android.view.ViewParent? = view.parent
+                        while (p != null) {
+                            p.requestDisallowInterceptTouchEvent(locked)
+                            p = p.parent
                         }
-                        v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                        true
+                    }
+
+                    fun findParentScrollView(view: View): ScrollView? {
+                        var p: android.view.ViewParent? = view.parent
+                        while (p != null) {
+                            val cur = p ?: break
+                            if (cur is ScrollView) return cur
+                            p = cur.parent
+                        }
+                        return null
+                    }
+
+                    fun getMinTy(): Float {
+                        if (dragCards.isEmpty() || dragStartIdx !in dragCards.indices) return 0f
+                        return (restTops.first() - restTops[dragStartIdx]).toFloat() - dp(6)
+                    }
+
+                    fun getMaxTy(): Float {
+                        if (dragCards.isEmpty() || dragStartIdx !in dragCards.indices) return 0f
+                        return ((restTops.last() + cardHeights.last()) - (restTops[dragStartIdx] + cardHeights[dragStartIdx])).toFloat() + dp(6)
+                    }
+
+                    fun syncDraggedCardToFinger() {
+                        if (dragCards.isEmpty() || dragStartIdx !in dragCards.indices) return
+                        val curScrollY = hostScrollView?.scrollY ?: 0
+                        val rawTy = (dragFingerRawY - dragStartRawY) + (curScrollY - dragStartScrollY)
+                        draggedTy = rawTy.coerceIn(getMinTy(), getMaxTy())
+                        goalCard.translationY = draggedTy
+
+                        val draggedCenterY = restTops[dragStartIdx] + cardHeights[dragStartIdx] / 2f + draggedTy
+                        var newTargetIdx = dragStartIdx
+                        if (draggedCenterY < restTops[dragStartIdx] + cardHeights[dragStartIdx] / 2f) {
+                            for (i in (dragStartIdx - 1) downTo 0) {
+                                if (draggedCenterY < restTops[i] + cardHeights[i] / 2f) {
+                                    newTargetIdx = i
+                                } else {
+                                    break
+                                }
+                            }
+                        } else {
+                            for (i in (dragStartIdx + 1) until dragCards.size) {
+                                if (draggedCenterY > restTops[i] + cardHeights[i] / 2f) {
+                                    newTargetIdx = i
+                                } else {
+                                    break
+                                }
+                            }
+                        }
+
+                        if (newTargetIdx != dragTargetIdx) {
+                            dragTargetIdx = newTargetIdx
+                            goalCard.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                            val shiftDist = (cardHeights[dragStartIdx] + gapPx).toFloat()
+                            for (i in dragCards.indices) {
+                                if (i == dragStartIdx) continue
+                                val desiredTy = when {
+                                    dragStartIdx < dragTargetIdx && i in (dragStartIdx + 1)..dragTargetIdx -> -shiftDist
+                                    dragStartIdx > dragTargetIdx && i in dragTargetIdx until dragStartIdx -> shiftDist
+                                    else -> 0f
+                                }
+                                dragCards[i].animate()
+                                    .translationY(desiredTy)
+                                    .setDuration(170L)
+                                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                                    .start()
+                            }
+                        }
+                    }
+
+                    val autoScrollRunnable = object : Runnable {
+                        override fun run() {
+                            if (!isDraggingCard) return
+                            val sv = hostScrollView
+                            if (sv != null && sv.getGlobalVisibleRect(scrollRect)) {
+                                val edgeZone = dp(76).toFloat()
+                                val maxStep = dp(10).toFloat()
+                                var requestedDy = 0
+                                if (dragFingerRawY < scrollRect.top + edgeZone && sv.canScrollVertically(-1) && draggedTy > getMinTy()) {
+                                    val ratio = ((scrollRect.top + edgeZone - dragFingerRawY) / edgeZone).coerceIn(0.15f, 1f)
+                                    requestedDy = -(maxStep * ratio).toInt().coerceAtLeast(2)
+                                } else if (dragFingerRawY > scrollRect.bottom - edgeZone && sv.canScrollVertically(1) && draggedTy < getMaxTy()) {
+                                    val ratio = ((dragFingerRawY - (scrollRect.bottom - edgeZone)) / edgeZone).coerceIn(0.15f, 1f)
+                                    requestedDy = (maxStep * ratio).toInt().coerceAtLeast(2)
+                                }
+                                if (requestedDy != 0) {
+                                    val beforeScrollY = sv.scrollY
+                                    sv.scrollBy(0, requestedDy)
+                                    if (sv.scrollY != beforeScrollY) {
+                                        syncDraggedCardToFinger()
+                                    }
+                                }
+                            }
+                            goalCard.postOnAnimation(this)
+                        }
+                    }
+
+                    gripBtn.setOnTouchListener { v, event ->
+                        when (event.actionMasked) {
+                            android.view.MotionEvent.ACTION_DOWN -> {
+                                val count = goalsContainer.childCount
+                                val cardsList = (0 until count).map { goalsContainer.getChildAt(it) }
+                                val idx = cardsList.indexOf(goalCard)
+                                if (idx == -1 || count <= 1) return@setOnTouchListener false
+
+                                isDraggingCard = true
+                                dragCards = cardsList
+                                restTops = IntArray(count) { cardsList[it].top }
+                                cardHeights = IntArray(count) { cardsList[it].height }
+                                gapPx = if (count >= 2) (restTops[1] - (restTops[0] + cardHeights[0])).coerceAtLeast(0) else dp(6)
+                                dragStartIdx = idx
+                                dragTargetIdx = idx
+                                draggedTy = 0f
+                                dragStartRawY = event.rawY
+                                dragFingerRawY = event.rawY
+                                hostScrollView = plannerScrollView ?: findParentScrollView(goalCard)
+                                dragStartScrollY = hostScrollView?.scrollY ?: 0
+
+                                setParentScrollLocked(v, true)
+                                v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                goalCard.animate().cancel()
+                                goalCard.translationZ = dp(8).toFloat()
+                                goalCard.animate()
+                                    .scaleX(1.015f)
+                                    .scaleY(1.015f)
+                                    .setDuration(100L)
+                                    .start()
+                                goalCard.removeCallbacks(autoScrollRunnable)
+                                goalCard.postOnAnimation(autoScrollRunnable)
+                                true
+                            }
+                            android.view.MotionEvent.ACTION_MOVE -> {
+                                if (!isDraggingCard || dragCards.isEmpty()) return@setOnTouchListener false
+                                dragFingerRawY = event.rawY
+                                syncDraggedCardToFinger()
+                                true
+                            }
+                            android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> {
+                                if (!isDraggingCard) return@setOnTouchListener false
+                                isDraggingCard = false
+                                goalCard.removeCallbacks(autoScrollRunnable)
+                                setParentScrollLocked(v, false)
+
+                                val fromIdx = dragStartIdx
+                                val toIdx = dragTargetIdx
+                                val capturedCards = dragCards
+                                val finalTy = when {
+                                    toIdx > fromIdx && toIdx in restTops.indices ->
+                                        ((restTops[toIdx] + cardHeights[toIdx]) - (restTops[fromIdx] + cardHeights[fromIdx])).toFloat()
+                                    toIdx < fromIdx && toIdx in restTops.indices ->
+                                        (restTops[toIdx] - restTops[fromIdx]).toFloat()
+                                    else -> 0f
+                                }
+
+                                goalCard.animate()
+                                    .translationY(finalTy)
+                                    .scaleX(1f)
+                                    .scaleY(1f)
+                                    .setDuration(170L)
+                                    .setInterpolator(android.view.animation.DecelerateInterpolator())
+                                    .withEndAction {
+                                        for (c in capturedCards) {
+                                            c.animate().cancel()
+                                            c.translationY = 0f
+                                            c.translationZ = 0f
+                                        }
+                                        if (toIdx != fromIdx && fromIdx in 0 until goalsContainer.childCount && toIdx in 0 until goalsContainer.childCount) {
+                                            goalsContainer.removeViewAt(fromIdx)
+                                            goalsContainer.addView(goalCard, toIdx)
+
+                                            val reorderedIds = (0 until goalsContainer.childCount).mapNotNull {
+                                                goalsContainer.getChildAt(it)?.tag as? String
+                                            }
+                                            val latestGoals = loadSessionGoalsFromJson(
+                                                host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE)
+                                                    .getString("session_goals_json", "[]") ?: "[]"
+                                            )
+                                            val idSet = reorderedIds.toHashSet()
+                                            val goalById = latestGoals.associateBy { it.id }
+                                            val mutable = latestGoals.toMutableList()
+                                            val slotIndices = mutable.indices.filter { mutable[it].id in idSet }
+                                            if (slotIndices.size == reorderedIds.size) {
+                                                for (k in slotIndices.indices) {
+                                                    val g = goalById[reorderedIds[k]]
+                                                    if (g != null) mutable[slotIndices[k]] = g
+                                                }
+                                                saveSessionGoalsToJson(mutable)
+                                                val wasNonDefaultSort = currentPlannerSort != PlannerSort.DEFAULT
+                                                currentPlannerSort = PlannerSort.DEFAULT
+                                                host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
+                                                    .putString("planner_sort_mode", "DEFAULT").apply()
+                                                PlannerHistoryManager.snapshotToday(host, mutable)
+                                                if (wasNonDefaultSort) {
+                                                    reloadPlanner()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .start()
+                                true
+                            }
+                            else -> false
+                        }
                     }
                 }
 
@@ -1720,47 +1949,6 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                         v.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                         showGoalActionMenu(goal) { animateToggleGoalAction(checkBtn, goal) }
                         true
-                    }
-                }
-
-                if (!isDayOff && activeGoalsList.size > 1) {
-                    goalCard.setOnDragListener { v, event ->
-                        when (event.action) {
-                            android.view.DragEvent.ACTION_DRAG_STARTED -> true
-                            android.view.DragEvent.ACTION_DRAG_ENTERED -> {
-                                v.alpha = 0.55f
-                                true
-                            }
-                            android.view.DragEvent.ACTION_DRAG_EXITED -> {
-                                v.alpha = 1.0f
-                                true
-                            }
-                            android.view.DragEvent.ACTION_DROP -> {
-                                v.alpha = 1.0f
-                                val draggedGoalId = event.localState as? String
-                                if (!draggedGoalId.isNullOrEmpty() && draggedGoalId != goal.id) {
-                                    val fromIdx = activeGoalsList.indexOfFirst { it.id == draggedGoalId }
-                                    val toIdx = activeGoalsList.indexOfFirst { it.id == goal.id }
-                                    if (fromIdx != -1 && toIdx != -1 && fromIdx != toIdx) {
-                                        val mutable = activeGoalsList.toMutableList()
-                                        val moved = mutable.removeAt(fromIdx)
-                                        mutable.add(toIdx, moved)
-                                        saveSessionGoalsToJson(mutable)
-                                        currentPlannerSort = PlannerSort.DEFAULT
-                                        host.getSharedPreferences("StudyTimerPrefs", Context.MODE_PRIVATE).edit()
-                                            .putString("planner_sort_mode", "DEFAULT").apply()
-                                        PlannerHistoryManager.snapshotToday(host, mutable)
-                                        reloadPlanner()
-                                    }
-                                }
-                                true
-                            }
-                            android.view.DragEvent.ACTION_DRAG_ENDED -> {
-                                v.alpha = 1.0f
-                                true
-                            }
-                            else -> true
-                        }
                     }
                 }
 
@@ -2903,7 +3091,7 @@ class PlannerPanelBuilder(private val host: MainActivity) {
                 text = label.uppercase(Locale.getDefault())
                 textSize = 10f
                 typeface = Typeface.DEFAULT_BOLD
-                setTextColor(if (isDark) 0x88FFFFFF.toInt() else 0xFF94A3B8.toInt())
+                setTextColor(if (isDark) 0x99FFFFFF.toInt() else 0xFF64748B.toInt())
             })
             chip.addView(TextView(host).apply {
                 text = value
@@ -3491,7 +3679,26 @@ class PlannerPanelBuilder(private val host: MainActivity) {
 
             splitLayout.addView(rightScroll)
 
-            matrixContainer.addView(splitLayout)
+            val matrixMaxHeight = if (isFullscreen) {
+                (host.resources.displayMetrics.heightPixels * 0.60f).toInt()
+            } else {
+                (host.resources.displayMetrics.heightPixels * 0.42f).toInt().coerceIn(dp(180), dp(360))
+            }
+            val matrixVerticalScroll = object : ScrollView(host) {
+                override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                    val maxHSpec = View.MeasureSpec.makeMeasureSpec(matrixMaxHeight, View.MeasureSpec.AT_MOST)
+                    super.onMeasure(widthMeasureSpec, maxHSpec)
+                }
+            }.apply {
+                isVerticalScrollBarEnabled = true
+                overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            matrixVerticalScroll.addView(splitLayout)
+            matrixContainer.addView(matrixVerticalScroll)
 
             if (rangeDays == 0 && !reachedEarliest) {
                 val loadMoreBtn = TextView(host).apply {

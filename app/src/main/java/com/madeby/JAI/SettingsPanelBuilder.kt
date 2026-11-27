@@ -140,7 +140,7 @@ class SettingsPanelBuilder(private val host: MainActivity) {
                     gravity = Gravity.CENTER
                     isSingleLine = true
                     maxLines = 1
-                    minHeight = dp(36)
+                    minHeight = dp(44)
                     minWidth = dp(48)
                     contentDescription = "Return to All Settings Hub"
                     typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)

@@ -101,6 +101,11 @@ class LiveWallpaperView @JvmOverloads constructor(
         canvasView.pause()
     }
 
+    override fun onDetachedFromWindow() {
+        release()
+        super.onDetachedFromWindow()
+    }
+
     private fun setupVideoPlayer() {
         if (videoTextureView == null) {
             val tv = TextureView(context)

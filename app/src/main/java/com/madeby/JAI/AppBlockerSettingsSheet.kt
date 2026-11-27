@@ -213,7 +213,7 @@ object AppBlockerSettingsSheet {
                 masterDesc.text = "Active only while study timer is running"
             } else {
                 masterBadge.text = "Off"
-                masterBadge.setTextColor(if (isDark) 0x77FFFFFF.toInt() else 0xFF94A3B8.toInt())
+                masterBadge.setTextColor(if (isDark) 0x99FFFFFF.toInt() else 0xFF475569.toInt())
                 masterBadge.background = GradientDrawable().apply {
                     cornerRadius = dp(6).toFloat()
                     setColor(if (isDark) 0x18FFFFFF.toInt() else 0x12000000.toInt())
@@ -252,7 +252,7 @@ object AppBlockerSettingsSheet {
             text = "⌕"
             textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(if (isDark) 0x77FFFFFF.toInt() else 0xFF94A3B8.toInt())
+            setTextColor(if (isDark) 0x99FFFFFF.toInt() else 0xFF64748B.toInt())
             setPadding(0, 0, dp(8), 0)
         }
         searchBox.addView(searchPrompt)
@@ -262,7 +262,7 @@ object AppBlockerSettingsSheet {
             textSize = 13.5f
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             setTextColor(textColor)
-            setHintTextColor(if (isDark) 0x55FFFFFF.toInt() else 0xFF94A3B8.toInt())
+            setHintTextColor(if (isDark) 0x88FFFFFF.toInt() else 0xFF64748B.toInt())
             background = null
             setSingleLine(true)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -272,7 +272,11 @@ object AppBlockerSettingsSheet {
         val clearSearchBtn = TextView(activity).apply {
             text = "✕"
             textSize = 12f
-            setTextColor(if (isDark) 0x77FFFFFF.toInt() else 0xFF94A3B8.toInt())
+            gravity = Gravity.CENTER
+            minWidth = dp(40)
+            minHeight = dp(40)
+            contentDescription = "Clear search"
+            setTextColor(if (isDark) 0x99FFFFFF.toInt() else 0xFF64748B.toInt())
             setPadding(dp(8), dp(4), dp(8), dp(4))
             visibility = View.GONE
             isClickable = true
@@ -347,7 +351,7 @@ object AppBlockerSettingsSheet {
         val actionDivider = TextView(activity).apply {
             text = "•"
             textSize = 11f
-            setTextColor(if (isDark) 0x44FFFFFF.toInt() else 0xFFCBD5E1.toInt())
+            setTextColor(if (isDark) 0x77FFFFFF.toInt() else 0xFF64748B.toInt())
             setPadding(dp(2), 0, dp(2), 0)
         }
         val allowAllLink = TextView(activity).apply {
@@ -382,7 +386,7 @@ object AppBlockerSettingsSheet {
             text = "No apps found"
             textSize = 13f
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-            setTextColor(if (isDark) 0x66FFFFFF.toInt() else 0xFF94A3B8.toInt())
+            setTextColor(if (isDark) 0x99FFFFFF.toInt() else 0xFF64748B.toInt())
             gravity = Gravity.CENTER
             setPadding(0, dp(24), 0, dp(24))
             visibility = View.GONE
